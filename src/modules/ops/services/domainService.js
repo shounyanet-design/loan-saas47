@@ -1,5 +1,6 @@
 const crypto = require('crypto');
 const dns = require('dns').promises;
+const dnsPromises = require('dns').promises;
 const tenantContext = require('../../../tenancy/tenantContext');
 const TenantDomain = require('../../../models/TenantDomain');
 const logger = require('./loggingService');
@@ -30,18 +31,68 @@ async function verifyDomain(tenantId, domainId) {
   return tenantContext.runAsSystem(async () => {
     const doc = await TenantDomain.findOne({ _id: domainId, tenantId });
     if (!doc) throw Object.assign(new Error('Domain not found'), { status: 404 });
-    let verified = false; let detail = '';
+    
+    doc.verificationAttempts += 1;
+    let verified = false; 
+    let detail = '';
+    const expectedValue = `${VERIFY_PREFIX}${doc.verificationToken}`;
+    
+    const startTime = performance.now();
+    
+    // Attempt 1: TXT Record
     try {
-      const records = await dns.resolveTxt(doc.domain);
+      const records = await dnsPromises.resolveTxt(doc.domain);
       const flat = records.flat().join(' ');
-      verified = flat.includes(`${VERIFY_PREFIX}${doc.verificationToken}`);
-      detail = verified ? 'TXT record matched' : 'TXT record not found';
-    } catch (e) { detail = `DNS lookup failed: ${e.code || e.message}`; }
+      if (flat.includes(expectedValue)) {
+        verified = true;
+        detail = 'TXT record matched';
+      }
+    } catch (e) { detail = `TXT lookup failed: ${e.code || e.message}`; }
+
+    // Attempt 2: CNAME Record
+    if (!verified) {
+      try {
+        const cnameRecords = await dnsPromises.resolveCname(doc.domain);
+        if (cnameRecords.some(r => r.includes('loan-saas47-production.up.railway.app'))) {
+          verified = true;
+          detail = 'CNAME record matched';
+        }
+      } catch (e) {}
+    }
+
+    // Attempt 3: A Record
+    if (!verified) {
+      try {
+        const aRecords = await dnsPromises.resolve4(doc.domain);
+        if (aRecords.includes('196.26.75.163')) {
+          verified = true;
+          detail = 'A record matched';
+        }
+      } catch (e) {}
+    }
+
+    // Record Diagnostics
+    doc.dnsDiagnostics = {
+      resolver: dnsPromises.getServers().join(', '),
+      lookupTimeMs: Math.round(performance.now() - startTime),
+      propagationStatus: verified ? 'propagated' : 'pending',
+      lastSuccessfulLookup: verified ? new Date() : doc.dnsDiagnostics?.lastSuccessfulLookup
+    };
+
     doc.verificationStatus = verified ? 'verified' : 'failed';
     doc.dnsStatus = verified ? 'configured' : 'pending';
-    if (verified) { doc.verifiedAt = new Date(); doc.sslStatus = 'pending'; }
+    doc.lastDnsCheck = new Date();
+    
+    if (verified) { 
+      doc.verifiedAt = new Date(); 
+      doc.sslStatus = 'pending'; 
+      doc.lastFailureReason = null;
+    } else {
+      doc.lastFailureReason = detail;
+    }
+    
     await doc.save();
-    return { verified, detail, expectedTxt: `${VERIFY_PREFIX}${doc.verificationToken}` };
+    return { verified, detail, expectedTxt: expectedValue, diagnostics: doc.dnsDiagnostics };
   });
 }
 
@@ -65,6 +116,39 @@ async function removeDomain(tenantId, domainId) {
   return tenantContext.runAsSystem(() => TenantDomain.deleteOne({ _id: domainId, tenantId }));
 }
 
+async function setPrimaryDomain(tenantId, domainId) {
+  return tenantContext.runAsSystem(async () => {
+    // Unset current primary
+    await TenantDomain.updateMany({ tenantId }, { $set: { isPrimary: false } });
+    // Set new primary
+    const doc = await TenantDomain.findOneAndUpdate(
+      { _id: domainId, tenantId, verificationStatus: 'verified' },
+      { $set: { isPrimary: true } },
+      { new: true }
+    );
+    if (!doc) throw Object.assign(new Error('Domain not found or not verified'), { status: 404 });
+    return doc;
+  });
+}
+
+async function refreshDns(tenantId, domainId) {
+  // Triggers the verification engine directly
+  return verifyDomain(tenantId, domainId);
+}
+
+async function updateDomainSettings(tenantId, domainId, settings) {
+  return tenantContext.runAsSystem(async () => {
+    const doc = await TenantDomain.findOne({ _id: domainId, tenantId });
+    if (!doc) throw Object.assign(new Error('Domain not found'), { status: 404 });
+    
+    if (settings.rootRedirect) doc.rootRedirect = settings.rootRedirect;
+    if (typeof settings.httpsEnabled === 'boolean') doc.httpsEnabled = settings.httpsEnabled;
+    
+    await doc.save();
+    return doc;
+  });
+}
+
 /** Resolve a Host header to a tenant (used by the optional domain resolver). */
 async function resolveByHost(host) {
   if (!host) return null;
@@ -72,4 +156,15 @@ async function resolveByHost(host) {
   return tenantContext.runAsSystem(() => TenantDomain.findOne({ domain, status: 'active', verificationStatus: 'verified' }).lean());
 }
 
-module.exports = { addDomain, verifyDomain, forceVerify, listForTenant, removeDomain, resolveByHost, VERIFY_PREFIX };
+module.exports = { 
+  addDomain, 
+  verifyDomain, 
+  forceVerify, 
+  listForTenant, 
+  removeDomain, 
+  setPrimaryDomain,
+  refreshDns,
+  updateDomainSettings,
+  resolveByHost, 
+  VERIFY_PREFIX 
+};

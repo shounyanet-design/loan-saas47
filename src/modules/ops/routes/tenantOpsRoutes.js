@@ -10,8 +10,12 @@ const c = require('../controllers/tenantOpsController');
 router.use(protect, authorize('admin'), validateSubscription());
 
 router.get('/domains', c.listDomains);
+router.get('/domains/availability', c.checkAvailability);
 router.post('/domains', c.addDomain);
 router.post('/domains/:id/verify', c.verifyDomain);
+router.post('/domains/:id/set-primary', c.setPrimaryDomain);
+router.patch('/domains/:id/settings', c.updateDomainSettings);
+router.post('/domains/:id/refresh-dns', c.refreshDns);
 router.delete('/domains/:id', c.removeDomain);
 router.get('/system-status', c.systemStatus);
 router.get('/backup-status', c.backupStatus);

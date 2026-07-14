@@ -1,6 +1,7 @@
 const asyncHandler = require('../../../utils/asyncHandler');
 const { sendSuccess, sendError } = require('../../../utils/responseHandler');
 const domainService = require('../services/domainService');
+const domainAvailabilityService = require('../services/domainAvailabilityService');
 const monitoringService = require('../services/monitoringService');
 const backupService = require('../services/backupService');
 const { audit } = require('../../saas/utils/auditAny');
@@ -24,6 +25,50 @@ exports.removeDomain = asyncHandler(async (req, res) => {
   await domainService.removeDomain(req.tenantId, req.params.id);
   await audit(req, { action: 'DOMAIN_REMOVED', entity: 'TenantDomain', entityId: req.params.id });
   return sendSuccess(res, 'Domain removed');
+});
+
+// Domain Availability (Case 3)
+exports.checkAvailability = asyncHandler(async (req, res) => {
+  const { domain } = req.query;
+  if (!domain) return sendError(res, 'Domain parameter is required', 400);
+  try {
+    const result = await domainAvailabilityService.checkAvailability(domain);
+    return sendSuccess(res, 'Availability result', result);
+  } catch (e) {
+    return sendError(res, e.message, 500);
+  }
+});
+
+// Set Primary Domain
+exports.setPrimaryDomain = asyncHandler(async (req, res) => {
+  try {
+    const doc = await domainService.setPrimaryDomain(req.tenantId, req.params.id);
+    await audit(req, { action: 'PRIMARY_DOMAIN_SET', entity: 'TenantDomain', entityId: req.params.id });
+    return sendSuccess(res, 'Primary domain updated', doc);
+  } catch (e) {
+    return sendError(res, e.message, e.status || 500);
+  }
+});
+
+// Update Domain Settings (HTTPS, Redirects)
+exports.updateDomainSettings = asyncHandler(async (req, res) => {
+  try {
+    const doc = await domainService.updateDomainSettings(req.tenantId, req.params.id, req.body);
+    await audit(req, { action: 'DOMAIN_SETTINGS_UPDATED', entity: 'TenantDomain', entityId: req.params.id });
+    return sendSuccess(res, 'Domain settings updated', doc);
+  } catch (e) {
+    return sendError(res, e.message, e.status || 500);
+  }
+});
+
+// Refresh DNS manually
+exports.refreshDns = asyncHandler(async (req, res) => {
+  try {
+    const result = await domainService.refreshDns(req.tenantId, req.params.id);
+    return sendSuccess(res, 'DNS refreshed', result);
+  } catch (e) {
+    return sendError(res, e.message, e.status || 500);
+  }
 });
 
 // System status (tenant-facing subset of monitoring — no platform internals).

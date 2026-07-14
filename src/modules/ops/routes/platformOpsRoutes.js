@@ -15,6 +15,8 @@ router.get('/backups', requirePermission('MANAGE_GLOBAL_SETTINGS'), c.listBackup
 router.post('/backups', requirePermission('MANAGE_GLOBAL_SETTINGS'), c.createBackup);
 router.post('/backups/:id/verify', requirePermission('MANAGE_GLOBAL_SETTINGS'), c.verifyBackup);
 router.post('/backups/:id/restore', requirePermission('MANAGE_GLOBAL_SETTINGS'), c.restoreBackup);
+router.get('/domains', requirePermission('MANAGE_TENANTS'), c.listAllDomains);
+router.get('/domains/analytics', requirePermission('MANAGE_TENANTS'), c.domainAnalytics);
 router.post('/domains/:id/force-verify', requirePermission('MANAGE_TENANTS'), c.forceVerifyDomain);
 
 module.exports = router;

@@ -104,11 +104,11 @@ exports.register = asyncHandler(async (req, res) => {
 // @route   POST /api/auth/login
 // @access  Public
 exports.login = asyncHandler(async (req, res) => {
-  const { email, password, role } = req.body;
+  const { email, password } = req.body;
 
   // Validation
-  if (!email || !password || !role) {
-    return sendError(res, 'Please provide email, password and role', 400);
+  if (!email || !password) {
+    return sendError(res, 'Please provide email and password', 400);
   }
 
   // Check for user. Login is pre-tenant (we don't yet know which tenant the
@@ -147,10 +147,7 @@ exports.login = asyncHandler(async (req, res) => {
     }
   }
 
-  // Check if role matches
-  if (user.role !== role) {
-    return sendError(res, `Unauthorized: Your account does not have ${role} privileges`, 403);
-  }
+
 
   // Check if user is active
   if (!user.isActive) {

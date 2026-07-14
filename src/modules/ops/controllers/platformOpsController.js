@@ -5,6 +5,7 @@ const queueService = require('../services/queueService');
 const loggingService = require('../services/loggingService');
 const backupService = require('../services/backupService');
 const domainService = require('../services/domainService');
+const TenantDomain = require('../../../models/TenantDomain');
 const { audit } = require('../../saas/utils/auditAny');
 
 // Monitoring
@@ -45,4 +46,60 @@ exports.forceVerifyDomain = asyncHandler(async (req, res) => {
   const doc = await domainService.forceVerify(req.params.id);
   await audit(req, { action: 'DOMAIN_FORCE_VERIFIED', entity: 'TenantDomain', entityId: req.params.id });
   return sendSuccess(res, 'Domain verified', doc);
+});
+
+exports.listAllDomains = asyncHandler(async (req, res) => {
+  const { search, status, verificationStatus } = req.query;
+  const query = {};
+  if (search) query.domain = { $regex: search, $options: 'i' };
+  if (status) query.status = status;
+  if (verificationStatus) query.verificationStatus = verificationStatus;
+  
+  const domains = await TenantDomain.find(query)
+    .sort({ createdAt: -1 })
+    .lean();
+    
+  return sendSuccess(res, 'All domains', domains);
+});
+
+exports.domainAnalytics = asyncHandler(async (req, res) => {
+  const twoWeeksFromNow = new Date();
+  twoWeeksFromNow.setDate(twoWeeksFromNow.getDate() + 14);
+
+  const [stats] = await TenantDomain.aggregate([
+    {
+      $facet: {
+        total: [{ $count: "count" }],
+        pendingVerification: [
+          { $match: { verificationStatus: 'pending' } },
+          { $count: "count" }
+        ],
+        failedVerification: [
+          { $match: { verificationStatus: 'failed' } },
+          { $count: "count" }
+        ],
+        expiringSsl: [
+          { $match: { "certificate.expiresAt": { $lte: twoWeeksFromNow, $gt: new Date() } } },
+          { $count: "count" }
+        ],
+        registrarDistribution: [
+          { $match: { registrar: { $exists: true, $ne: null } } },
+          { $group: { _id: "$registrar", count: { $sum: 1 } } }
+        ]
+      }
+    }
+  ]);
+
+  const analytics = {
+    total: stats.total[0]?.count || 0,
+    pendingVerification: stats.pendingVerification[0]?.count || 0,
+    failedVerification: stats.failedVerification[0]?.count || 0,
+    expiringSsl: stats.expiringSsl[0]?.count || 0,
+    registrarDistribution: stats.registrarDistribution.reduce((acc, curr) => {
+      acc[curr._id] = curr.count;
+      return acc;
+    }, {})
+  };
+
+  return sendSuccess(res, 'Domain analytics', analytics);
 });
