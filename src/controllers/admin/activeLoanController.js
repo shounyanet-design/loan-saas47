@@ -42,6 +42,10 @@ const getAllActiveLoans = asyncHandler(async (req, res) => {
 
   const skip = (page - 1) * limit;
 
+
+
+
+  
   const activeLoans = await ActiveLoan.find(query)
     .sort({ createdAt: -1 })
     .skip(skip)
