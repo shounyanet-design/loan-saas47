@@ -251,7 +251,7 @@ exports.markNotificationRead = asyncHandler(async (req, res) => {
     isRead: true,
     status: 'READ',
     readAt: new Date()
-  }, { new: true });
+  }, { returnDocument: 'after' });
 
   sendSuccess(res, 'Notification marked as read', notification);
 });
@@ -400,7 +400,7 @@ exports.deleteNotification = asyncHandler(async (req, res) => {
   const notification = await Notification.findOneAndUpdate(
     { _id: req.params.id, receiverId: req.user._id },
     { isDeleted: true },
-    { new: true }
+    { returnDocument: 'after' }
   );
 
   if (!notification) {

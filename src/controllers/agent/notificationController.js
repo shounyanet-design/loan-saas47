@@ -109,7 +109,7 @@ const markAsRead = asyncHandler(async (req, res) => {
   const notification = await Notification.findOneAndUpdate(
     { _id: req.params.id, receiverId: req.user._id },
     { status: 'READ', isRead: true, readAt: new Date() },
-    { new: true }
+    { returnDocument: 'after' }
   );
 
   if (!notification) {
@@ -159,7 +159,7 @@ const deleteNotification = asyncHandler(async (req, res) => {
   const notification = await Notification.findOneAndUpdate(
     { _id: req.params.id, receiverId: req.user._id },
     { isDeleted: true },
-    { new: true }
+    { returnDocument: 'after' }
   );
 
   if (!notification) {

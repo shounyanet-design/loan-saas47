@@ -117,7 +117,7 @@ const markAsRead = asyncHandler(async (req, res) => {
   const notification = await Notification.findByIdAndUpdate(
     req.params.id,
     { isRead: true },
-    { new: true }
+    { returnDocument: 'after' }
   ).populate('senderId', 'fullName role profilePhoto');
 
   if (!notification) {
@@ -162,7 +162,7 @@ const deleteNotification = asyncHandler(async (req, res) => {
   const notification = await Notification.findByIdAndUpdate(
     req.params.id,
     { isDeleted: true },
-    { new: true }
+    { returnDocument: 'after' }
   );
 
   if (!notification) {

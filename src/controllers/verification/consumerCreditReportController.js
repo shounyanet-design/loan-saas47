@@ -491,7 +491,7 @@ exports.fetchConsumerCreditReportController = async (req, res) => {
       'consumerCreditReport.monthlyPaymentHistory': reportData.monthlyPaymentHistory,
       'consumerCreditReport.pdfReport': undefined, // stripped to prevent bloating
       'consumerCreditReport.rawResponse': reportData.rawResponse
-    }, { new: true });
+    }, { returnDocument: 'after' });
 
     let currentHash = '';
     if (updatedApp) {

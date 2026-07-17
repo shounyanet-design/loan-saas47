@@ -1,6 +1,6 @@
 const datanamixAxiosClient = require('./datanamixClient');
 
-const ENDPOINT = '/v1/kyc/address-plus-profile-idv';
+const ENDPOINT = '/v1/id-verification/AddressPlusProfileIDV';
 
 // ─── Deceased detection helper ────────────────────────────────────────────────
 // API returns strings like "Yes - 2017-12-01", "Yes", "Y", "NO", "N", or null.

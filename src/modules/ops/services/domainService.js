@@ -124,7 +124,7 @@ async function setPrimaryDomain(tenantId, domainId) {
     const doc = await TenantDomain.findOneAndUpdate(
       { _id: domainId, tenantId, verificationStatus: 'verified' },
       { $set: { isPrimary: true } },
-      { new: true }
+      { returnDocument: 'after' }
     );
     if (!doc) throw Object.assign(new Error('Domain not found or not verified'), { status: 404 });
     return doc;

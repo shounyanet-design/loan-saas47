@@ -81,7 +81,7 @@ async function applyTokenDelta(p) {
         if (p.touchReserved) inc.reservedTokens = p.touchReserved;
         if (p.touchMoney) inc.currentBalance = p.touchMoney;
 
-        const updated = await Wallet.findOneAndUpdate(filter, { $inc: inc }, { new: true, session });
+        const updated = await Wallet.findOneAndUpdate(filter, { $inc: inc }, { returnDocument: 'after', session });
         if (!updated) {
           throw Object.assign(new Error('Insufficient token balance'), { status: 402, code: 'INSUFFICIENT_BALANCE' });
         }

@@ -36,7 +36,7 @@ const updateAdminProfile = asyncHandler(async (req, res) => {
   const updatedUser = await User.findByIdAndUpdate(
     req.user._id,
     { $set: updateData },
-    { new: true, runValidators: true }
+    { returnDocument: 'after', runValidators: true }
   ).select('-password');
 
   if (!updatedUser) {
@@ -67,7 +67,7 @@ const updateProfilePhoto = asyncHandler(async (req, res) => {
     const updatedUser = await User.findByIdAndUpdate(
       req.user._id,
       { $set: { profilePhoto: uploadResponse.url } },
-      { new: true }
+      { returnDocument: 'after' }
     ).select('-password');
 
     sendSuccess(res, 'Profile photo updated successfully', {

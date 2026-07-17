@@ -12,7 +12,7 @@ async function listPublished({ category, search } = {}) {
 
 async function getBySlug(slug) {
   const article = await KnowledgeArticle.findOneAndUpdate(
-    { slug, published: true }, { $inc: { views: 1 } }, { new: true }
+    { slug, published: true }, { $inc: { views: 1 } }, { returnDocument: 'after' }
   ).lean();
   return article;
 }

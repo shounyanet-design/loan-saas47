@@ -53,7 +53,7 @@ async function markInvoicePaid(tenantId, invoiceId, amount) {
   return tenantContext.runAsSystem(() => Invoice.findOneAndUpdate(
     { _id: invoiceId, tenantId },
     { $set: { status: 'paid', amountPaid: amount, paidAt: new Date() } },
-    { new: true }
+    { returnDocument: 'after' }
   ));
 }
 
@@ -61,7 +61,7 @@ async function transitionPayment(tenantId, paymentId, status, note) {
   return tenantContext.runAsSystem(() => CommercePayment.findOneAndUpdate(
     { _id: paymentId, tenantId },
     { $set: { status }, $push: { history: { status, note } } },
-    { new: true }
+    { returnDocument: 'after' }
   ));
 }
 

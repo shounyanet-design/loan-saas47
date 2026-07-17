@@ -28,7 +28,7 @@ exports.annCreate = asyncHandler(async (req, res) => {
   return sendSuccess(res, 'Announcement created', a, 201);
 });
 exports.annUpdate = asyncHandler(async (req, res) => {
-  const a = await Announcement.findByIdAndUpdate(req.params.id, { $set: req.body }, { new: true });
+  const a = await Announcement.findByIdAndUpdate(req.params.id, { $set: req.body }, { returnDocument: 'after' });
   if (!a) return sendError(res, 'Not found', 404);
   await audit(req, { action: 'ANNOUNCEMENT_UPDATED', entity: 'Announcement', entityId: a._id });
   return sendSuccess(res, 'Announcement updated', a);

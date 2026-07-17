@@ -40,7 +40,7 @@ async function assignPlan({ tenantId, planId, type = 'trial', actor }) {
     const sub = await TenantSubscription.findOneAndUpdate(
       { tenantId },
       { $set: { tenantId, planId: plan._id, autoRenew: true, cancelReason: undefined, ...dates } },
-      { new: true, upsert: true, setDefaultsOnInsert: true }
+      { returnDocument: 'after', upsert: true, setDefaultsOnInsert: true }
     );
 
     await SubscriptionHistory.create({ tenantId, planId: plan._id, fromPlanId: existing ? existing.planId : undefined, event, actor, snapshot: sub.toObject() });

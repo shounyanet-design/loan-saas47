@@ -296,7 +296,7 @@ const updateNotes = asyncHandler(async (req, res) => {
   const duePayment = await DuePayment.findOneAndUpdate(
     { _id: req.params.id, isDeleted: false },
     { notes },
-    { new: true }
+    { returnDocument: 'after' }
   );
 
   if (!duePayment) return sendError(res, 'Due payment not found', 404);

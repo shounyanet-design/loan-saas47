@@ -268,7 +268,7 @@ exports.changePermissions = asyncHandler(async (req, res) => {
   const staff = await Staff.findByIdAndUpdate(
     req.params.id,
     { permissions },
-    { new: true, runValidators: true }
+    { returnDocument: 'after', runValidators: true }
   );
   if (!staff) return sendError(res, 'Staff not found', 404);
   sendSuccess(res, 'Permissions updated', { staff });
@@ -278,7 +278,7 @@ exports.changePermissions = asyncHandler(async (req, res) => {
  * @desc    Activate Staff
  */
 exports.activateStaff = asyncHandler(async (req, res) => {
-  const staff = await Staff.findByIdAndUpdate(req.params.id, { status: 'Active' }, { new: true });
+  const staff = await Staff.findByIdAndUpdate(req.params.id, { status: 'Active' }, { returnDocument: 'after' });
   await User.findByIdAndUpdate(staff.userId, { isActive: true, operationalStatus: 'Active' });
   sendSuccess(res, 'Staff activated');
 });
@@ -287,7 +287,7 @@ exports.activateStaff = asyncHandler(async (req, res) => {
  * @desc    Mark Inactive
  */
 exports.markInactive = asyncHandler(async (req, res) => {
-  const staff = await Staff.findByIdAndUpdate(req.params.id, { status: 'Inactive' }, { new: true });
+  const staff = await Staff.findByIdAndUpdate(req.params.id, { status: 'Inactive' }, { returnDocument: 'after' });
   await User.findByIdAndUpdate(staff.userId, { operationalStatus: 'Inactive' });
   sendSuccess(res, 'Staff marked as inactive');
 });
@@ -296,7 +296,7 @@ exports.markInactive = asyncHandler(async (req, res) => {
  * @desc    Suspend Staff
  */
 exports.suspendStaff = asyncHandler(async (req, res) => {
-  const staff = await Staff.findByIdAndUpdate(req.params.id, { status: 'Suspended' }, { new: true });
+  const staff = await Staff.findByIdAndUpdate(req.params.id, { status: 'Suspended' }, { returnDocument: 'after' });
   await User.findByIdAndUpdate(staff.userId, { isActive: false, operationalStatus: 'Suspended' });
   sendSuccess(res, 'Staff suspended');
 });

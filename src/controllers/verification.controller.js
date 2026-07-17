@@ -1731,7 +1731,7 @@ exports.runCreditAssessmentController = async (req, res) => {
         'affordabilityOutcome.disposableIncome':  affordabilityBody?.disposableIncome || 0,
         'affordabilityOutcome.debtToIncomeRatio': affordabilityBody?.debtToIncomeRatio || 0,
         'affordabilityOutcome.isNcrCompliant':    affordabilityBody?.isNcrCompliant || false
-      }, { new: true });
+      }, { returnDocument: 'after' });
 
       if (updatedApp) {
         currentHash = generateVerificationHash(updatedApp, borrower);

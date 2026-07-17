@@ -28,7 +28,7 @@ exports.upsertPricing = asyncHandler(async (req, res) => {
   const { service } = req.params;
   const fields = (({ label, tokenCost, providerCost, sellingPrice, currency, enabled }) => ({ label, tokenCost, providerCost, sellingPrice, currency, enabled }))(req.body);
   Object.keys(fields).forEach((k) => fields[k] === undefined && delete fields[k]);
-  const doc = await ApiPricing.findOneAndUpdate({ service }, { $set: fields, $setOnInsert: { service } }, { new: true, upsert: true });
+  const doc = await ApiPricing.findOneAndUpdate({ service }, { $set: fields, $setOnInsert: { service } }, { returnDocument: 'after', upsert: true });
   await audit(req, { action: 'API_PRICING_UPDATED', entity: 'ApiPricing', entityId: service, newValues: fields });
   return sendSuccess(res, 'Pricing saved', doc);
 });
