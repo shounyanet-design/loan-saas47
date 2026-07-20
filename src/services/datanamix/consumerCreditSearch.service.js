@@ -77,7 +77,7 @@ const callConsumerCreditSearch = async ({
   const clientRef = reference || `CREDIT-${Date.now()}`;
 
   const payload = {
-    EnvironmentType: 'SANDBOX',
+    EnvironmentType: 'PRODUCTION',
     EnquiryReason:   'Credit Check',
     IdNumber:        idNumber,
     Reference:       clientRef,

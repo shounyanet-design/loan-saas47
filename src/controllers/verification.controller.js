@@ -21,6 +21,7 @@ const { callPhoneVerification }     = require('../services/datanamix/phoneVerifi
 const { callBankVerification }      = require('../services/datanamix/bankVerification.service');
 const { callAMLVerification }       = require('../services/datanamix/amlVerification.service');
 const { getIO } = require('../socket/socketServer');
+const tenantContext = require('../tenancy/tenantContext');
 const { isDevelopmentSandboxBypassEnabled, isDevelopmentNextStepBypassEnabled } = require('../utils/devSandboxBypass');
 
 const validateSAPhone = (phone) => {
@@ -517,130 +518,132 @@ exports.verifyBorrowerKYCController = async (req, res) => {
 
   // borrowerId: use body value or fall back to the authenticated user's _id
   const borrowerId = bodyBorrowerId || initiatedBy;
+  const tenantId = req.tenantId || req.user?.tenantId;
 
-  if (!idNumber) {
-    return res.status(400).json({ success: false, message: 'idNumber is required' });
-  }
+  return tenantContext.runWithTenant(tenantId, async () => {
+    if (!idNumber) {
+      return res.status(400).json({ success: false, message: 'idNumber is required' });
+    }
 
-  const idFrontFile = req.files?.idFrontImage?.[0] || req.file;
-  if (!idFrontFile) {
-    return res.status(400).json({ success: false, message: 'idFrontImage is required' });
-  }
+    const idFrontFile = req.files?.idFrontImage?.[0] || req.file;
+    if (!idFrontFile) {
+      return res.status(400).json({ success: false, message: 'idFrontImage is required' });
+    }
 
-  try {
-    console.log(`[KYC Controller] Starting verification — ID: ${idNumber}`);
+    try {
+      console.log(`[KYC Controller] Starting verification — ID: ${idNumber}`);
 
-    const tenantId = req.tenantId || req.user?.tenantId;
-    const idemKey = `idem-kyc-ocr-${idNumber}-${applicationId || ''}`;
-    await tokenService.charge(tenantId, 'ocr', {
-      actor: initiatedBy,
-      idempotencyKey: idemKey,
-      metadata: { borrowerId, applicationId, idNumber }
-    });
+      const idemKey = `idem-kyc-ocr-${idNumber}-${applicationId || ''}`;
+      await tokenService.charge(tenantId, 'ocr', {
+        actor: initiatedBy,
+        idempotencyKey: idemKey,
+        metadata: { borrowerId, applicationId, idNumber }
+      });
 
-    const result = await callProfileIdPhotoMatch({
-      idNumber,
-      captureImageBuffer: idFrontFile.buffer,
-      clientReference: applicationId || `TEMP-${Date.now()}`,
-    });
+      const result = await callProfileIdPhotoMatch({
+        idNumber,
+        captureImageBuffer: idFrontFile.buffer,
+        clientReference: applicationId || `TEMP-${Date.now()}`,
+      });
 
-    // ── Audit log ──────────────────────────────────────────────────────────
-    await writeAuditLog({
-      borrowerId,
-      applicationId: applicationId || undefined,
-      verificationType: 'KYC_PROFILE_PHOTO',
-      status: result.verificationStatus === 'Verified' ? 'SUCCESS' : 'FAILED',
-      initiatedBy,
-      requestPayload: { idNumber, clientReference: applicationId },
-      responsePayload: {
-        responseStatusCode: result.responseStatusCode,
-        verificationStatus: result.verificationStatus,
-        faceMatchScore: result.faceMatchScore,
-        verificationReference: result.verificationReference,
-      },
-    });
+      // ── Audit log ──────────────────────────────────────────────────────────
+      await writeAuditLog({
+        borrowerId,
+        applicationId: applicationId || undefined,
+        verificationType: 'KYC_PROFILE_PHOTO',
+        status: result.verificationStatus === 'Verified' ? 'SUCCESS' : 'FAILED',
+        initiatedBy,
+        requestPayload: { idNumber, clientReference: applicationId },
+        responsePayload: {
+          responseStatusCode: result.responseStatusCode,
+          verificationStatus: result.verificationStatus,
+          faceMatchScore: result.faceMatchScore,
+          verificationReference: result.verificationReference,
+        },
+      });
 
-    // ── Persist into LoanApplication if applicationId provided ─────────────
-    if (applicationId) {
-      await LoanApplication.findByIdAndUpdate(applicationId, {
-        'kycVerification.verificationStatus': result.verificationStatus,
-        'kycVerification.responseStatusCode': result.responseStatusCode,
-        'kycVerification.responseMessage': result.responseMessage,
-        'kycVerification.faceMatchScore': result.faceMatchScore,
-        'kycVerification.verificationReference': result.verificationReference,
-        'kycVerification.verificationTimestamp': new Date(),
-        'kycVerification.fraudFlags': result.fraudFlags,
-        'kycVerification.extractedOCRData': result.extractedOCRData,
-        'kycVerification.verificationPdf': result.verificationPdf,
-        'kycVerification.rawApiResponse': result.rawApiResponse,
-        'kycVerification.verifiedBy': initiatedBy,
-        'kycVerification.verificationSource': 'DATANAMIX',
-        'kycVerification.verificationProvider': 'Profile Plus ID Photo Match',
+      // ── Persist into LoanApplication if applicationId provided ─────────────
+      if (applicationId) {
+        await LoanApplication.findByIdAndUpdate(applicationId, {
+          'kycVerification.verificationStatus': result.verificationStatus,
+          'kycVerification.responseStatusCode': result.responseStatusCode,
+          'kycVerification.responseMessage': result.responseMessage,
+          'kycVerification.faceMatchScore': result.faceMatchScore,
+          'kycVerification.verificationReference': result.verificationReference,
+          'kycVerification.verificationTimestamp': new Date(),
+          'kycVerification.fraudFlags': result.fraudFlags,
+          'kycVerification.extractedOCRData': result.extractedOCRData,
+          'kycVerification.verificationPdf': result.verificationPdf,
+          'kycVerification.rawApiResponse': result.rawApiResponse,
+          'kycVerification.verifiedBy': initiatedBy,
+          'kycVerification.verificationSource': 'DATANAMIX',
+          'kycVerification.verificationProvider': 'Profile Plus ID Photo Match',
+        });
+      }
+
+      // ── Socket events ──────────────────────────────────────────────────────
+      try {
+        const io = getIO();
+        const roomId = borrowerId?.toString();
+        if (result.verificationStatus === 'Verified') {
+          io.to(roomId).emit('verification-completed', {
+            applicationId,
+            faceMatchScore: result.faceMatchScore,
+            message: 'Identity verified successfully',
+          });
+        } else {
+          io.to(roomId).emit('verification-failed', {
+            applicationId,
+            responseMessage: result.responseMessage,
+            message: 'Identity verification failed',
+          });
+
+          if (result.fraudFlags?.length) {
+            io.to(roomId).emit('fraud-flagged', {
+              applicationId,
+              fraudFlags: result.fraudFlags,
+            });
+          }
+        }
+      } catch {
+        // Socket not initialized — non-fatal
+      }
+
+      return res.status(200).json({
+        success: true,
+        message: result.verificationStatus === 'Verified'
+          ? 'Identity verified successfully'
+          : 'Identity verification failed',
+        data: {
+          verificationStatus: result.verificationStatus,
+          responseStatusCode: result.responseStatusCode,
+          responseMessage: result.responseMessage,
+          faceMatchScore: result.faceMatchScore,
+          verificationReference: result.verificationReference,
+          verificationTimestamp: new Date(),
+          fraudFlags: result.fraudFlags,
+          extractedOCRData: result.extractedOCRData,
+        },
+      });
+    } catch (error) {
+      console.error('[KYC Controller Error]:', error.message);
+
+      await writeAuditLog({
+        borrowerId,
+        applicationId: applicationId || undefined,
+        verificationType: 'KYC_PROFILE_PHOTO',
+        status: 'ERROR',
+        initiatedBy,
+        requestPayload: { idNumber },
+        errorMessage: error.message,
+      });
+
+      return res.status(error.status || error.response?.status || 500).json({
+        success: false,
+        message: error.response?.data?.message || error.message || 'KYC verification failed',
       });
     }
-
-    // ── Socket events ──────────────────────────────────────────────────────
-    try {
-      const io = getIO();
-      const roomId = borrowerId?.toString();
-      if (result.verificationStatus === 'Verified') {
-        io.to(roomId).emit('verification-completed', {
-          applicationId,
-          faceMatchScore: result.faceMatchScore,
-          message: 'Identity verified successfully',
-        });
-      } else {
-        io.to(roomId).emit('verification-failed', {
-          applicationId,
-          responseMessage: result.responseMessage,
-          message: 'Identity verification failed',
-        });
-
-        if (result.fraudFlags?.length) {
-          io.to(roomId).emit('fraud-flagged', {
-            applicationId,
-            fraudFlags: result.fraudFlags,
-          });
-        }
-      }
-    } catch {
-      // Socket not initialized — non-fatal
-    }
-
-    return res.status(200).json({
-      success: true,
-      message: result.verificationStatus === 'Verified'
-        ? 'Identity verified successfully'
-        : 'Identity verification failed',
-      data: {
-        verificationStatus: result.verificationStatus,
-        responseStatusCode: result.responseStatusCode,
-        responseMessage: result.responseMessage,
-        faceMatchScore: result.faceMatchScore,
-        verificationReference: result.verificationReference,
-        verificationTimestamp: new Date(),
-        fraudFlags: result.fraudFlags,
-        extractedOCRData: result.extractedOCRData,
-      },
-    });
-  } catch (error) {
-    console.error('[KYC Controller Error]:', error.message);
-
-    await writeAuditLog({
-      borrowerId,
-      applicationId: applicationId || undefined,
-      verificationType: 'KYC_PROFILE_PHOTO',
-      status: 'ERROR',
-      initiatedBy,
-      requestPayload: { idNumber },
-      errorMessage: error.message,
-    });
-
-    return res.status(error.status || error.response?.status || 500).json({
-      success: false,
-      message: error.response?.data?.message || error.message || 'KYC verification failed',
-    });
-  }
+  });
 };
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -422,7 +422,7 @@ const callConsumerCreditResult = async ({ enquiryId, enquiryResultId, clientRefe
   const reference = clientReference || `RESULT-${Date.now()}`;
 
   const payload = {
-    EnvironmentType:       'SANDBOX',
+    EnvironmentType:       'PRODUCTION',
     EnquiryId:             enquiryId,
     EnquiryResultId:       enquiryResultId,
     OutputFormat:          'JSON',

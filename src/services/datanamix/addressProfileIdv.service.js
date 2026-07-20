@@ -1,6 +1,6 @@
 const datanamixAxiosClient = require('./datanamixClient');
 
-const ENDPOINT = '/v1/id-verification/AddressPlusProfileIDV';
+const ENDPOINT = '/v1/kyc/address-plus-profile-idv';
 
 // ─── Deceased detection helper ────────────────────────────────────────────────
 // API returns strings like "Yes - 2017-12-01", "Yes", "Y", "NO", "N", or null.
@@ -237,7 +237,7 @@ const callAddressPlusProfileIdv = async ({
     ClientReference:       reference,
     OutputFormat:          'JSON_AND_PDF',
     PDFEncryptionPassword: '0123456789',
-    EnvironmentType:       'SANDBOX',
+    EnvironmentType:       'PRODUCTION',
   };
 
   console.log("ADDRESS PLUS OUTGOING PAYLOAD", payload);
