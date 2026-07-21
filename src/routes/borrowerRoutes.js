@@ -23,10 +23,12 @@ const {
 } = require('../controllers/borrower/profileController');
 const { getBorrowerDashboard } = require('../controllers/borrower/dashboardController');
 const { protect } = require('../middlewares/authMiddleware');
+const { tenantMiddleware } = require('../middlewares/tenantMiddleware');
 const upload = require('../middlewares/uploadMiddleware');
 
 // All routes are protected and for borrowers
 router.use(protect);
+router.use(tenantMiddleware);
 
 router.get('/dashboard', getBorrowerDashboard);
 router.get('/my-loans', getMyLoans);
@@ -36,7 +38,7 @@ router.post('/download-loan-statement', downloadStatement);
 
 // Payment routes
 router.get('/payment-dashboard', getPaymentDashboard);
-router.post('/submit-payment', upload.single('paymentProof'), submitPayment);
+router.post('/submit-payment', upload.single('paymentProof'), tenantMiddleware, submitPayment);
 router.get('/payment-history', getPaymentHistory);
 router.get('/payment-receipt/:paymentId', getReceiptDetails);
 router.get('/download-receipt/:paymentId', downloadReceipt);
@@ -46,7 +48,7 @@ router.post('/download-payment-statement', downloadPaymentStatement);
 // Profile routes
 router.get('/profile', getProfile);
 router.put('/profile/update', updateProfile);
-router.put('/profile/photo', upload.single('profilePhoto'), updateProfilePhoto);
+router.put('/profile/photo', upload.single('profilePhoto'), tenantMiddleware, updateProfilePhoto);
 router.put('/profile/change-password', updatePassword);
 
 module.exports = router;

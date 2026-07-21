@@ -2,6 +2,7 @@ const cron = require('node-cron');
 const RepaymentSchedule = require('../models/RepaymentSchedule');
 const Notification = require('../models/Notification');
 const LoanActivity = require('../models/LoanActivity');
+const Loan = require('../models/Loan');
 const Borrower = require('../models/Borrower');
 const BorrowerAlert = require('../models/BorrowerAlert');
 const Tenant = require('../models/Tenant');
@@ -56,25 +57,33 @@ const checkUpcomingEMIs = async () => {
     const io = getIO();
 
     for (const emi of upcomingEmis) {
-      const borrower = await Borrower.findById(emi.borrowerId);
-      if (!borrower) continue;
+      if (!emi.loanId || !emi.borrowerId) {
+        console.warn(`[Cron] Repayment schedule ${emi._id} references missing loan or borrower. Skipping.`);
+        continue;
+      }
+
+      const borrower = emi.borrowerId;
+      const loan = emi.loanId;
+      const borrowerUserId = borrower.userId ? borrower.userId.toString() : null;
 
       const message = `Your EMI payment of R ${emi.amount.toLocaleString()} is due on ${new Date(emi.dueDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}`;
 
-      // 1. Create Notification
-      await createNotification({
-        receiverId: borrower.userId,
-        receiverRole: 'borrower',
-        type: 'DUE_REMINDER',
-        title: 'Upcoming EMI Reminder',
-        message: message,
-        priority: 'IMPORTANT',
-        metadata: {
-          loanId: emi.loanId._id,
-          emiNumber: emi.emiNumber,
-          amount: emi.amount
-        }
-      });
+      // 1. Create Notification if borrower has an associated user account
+      if (borrower.userId) {
+        await createNotification({
+          receiverId: borrower.userId,
+          receiverRole: 'borrower',
+          type: 'DUE_REMINDER',
+          title: 'Upcoming EMI Reminder',
+          message: message,
+          priority: 'IMPORTANT',
+          metadata: {
+            loanId: loan._id,
+            emiNumber: emi.emiNumber,
+            amount: emi.amount
+          }
+        });
+      }
 
       // 1b. Create BorrowerAlert
       await BorrowerAlert.create({
@@ -86,19 +95,19 @@ const checkUpcomingEMIs = async () => {
       });
 
       // 2. Emit Socket.IO event
-      if (io) {
-        io.to(borrower.userId.toString()).emit('emi-due-alert', {
+      if (io && borrowerUserId) {
+        io.to(borrowerUserId).emit('emi-due-alert', {
           title: 'Upcoming EMI Reminder',
           message: message,
-          loanId: emi.loanId._id,
+          loanId: loan._id,
           dueDate: emi.dueDate
         });
-        io.to(borrower.userId.toString()).emit('dashboard-updated');
+        io.to(borrowerUserId).emit('dashboard-updated');
       }
 
       // 3. Log Activity
       await LoanActivity.create({
-        loanId: emi.loanId._id,
+        loanId: loan._id,
         borrowerId: borrower._id,
         title: 'Upcoming EMI Reminder Sent',
         message: message,
@@ -120,10 +129,6 @@ const checkOverdueEMIs = async () => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    const yesterday = new Date(today);
-    yesterday.setDate(yesterday.getDate() - 1);
-    yesterday.setHours(23, 59, 59, 999);
-
     const overdueEmis = await RepaymentSchedule.find({
       status: 'Pending',
       dueDate: { $lt: today }
@@ -132,34 +137,41 @@ const checkOverdueEMIs = async () => {
     const io = getIO();
 
     for (const emi of overdueEmis) {
-      const borrower = await Borrower.findById(emi.borrowerId);
-      if (!borrower) continue;
+      if (!emi.loanId || !emi.borrowerId) {
+        console.warn(`[Cron] Overdue repayment schedule ${emi._id} references missing loan or borrower. Skipping.`);
+        continue;
+      }
+
+      const borrower = emi.borrowerId;
+      const loan = emi.loanId;
+      const borrowerUserId = borrower.userId ? borrower.userId.toString() : null;
 
       // Update status to Overdue
       emi.status = 'Overdue';
       await emi.save();
 
       // Update Loan status to Overdue if it was Active
-      if (emi.loanId.loanStatus === 'Active') {
-        emi.loanId.loanStatus = 'Overdue';
-        await emi.loanId.save();
+      if (loan.loanStatus === 'Active') {
+        await Loan.findByIdAndUpdate(loan._id, { loanStatus: 'Overdue' });
       }
 
       const message = `Urgent: Your EMI # ${emi.emiNumber} of R ${emi.amount.toLocaleString()} is OVERDUE since ${new Date(emi.dueDate).toLocaleDateString()}.`;
 
-      // 1. Create Notification
-      await createNotification({
-        receiverId: borrower.userId,
-        receiverRole: 'borrower',
-        type: 'OVERDUE_WARNING',
-        title: 'EMI Overdue Alert',
-        message: message,
-        priority: 'URGENT',
-        metadata: {
-          loanId: emi.loanId._id,
-          emiNumber: emi.emiNumber
-        }
-      });
+      // 1. Create Notification if borrower has an associated user account
+      if (borrower.userId) {
+        await createNotification({
+          receiverId: borrower.userId,
+          receiverRole: 'borrower',
+          type: 'OVERDUE_WARNING',
+          title: 'EMI Overdue Alert',
+          message: message,
+          priority: 'URGENT',
+          metadata: {
+            loanId: loan._id,
+            emiNumber: emi.emiNumber
+          }
+        });
+      }
 
       // 1b. Create BorrowerAlert
       await BorrowerAlert.create({
@@ -171,18 +183,18 @@ const checkOverdueEMIs = async () => {
       });
 
       // 2. Emit Socket.IO event
-      if (io) {
-        io.to(borrower.userId.toString()).emit('overdue-alert', {
+      if (io && borrowerUserId) {
+        io.to(borrowerUserId).emit('overdue-alert', {
           title: 'EMI Overdue Alert',
           message: message,
-          loanId: emi.loanId._id
+          loanId: loan._id
         });
-        io.to(borrower.userId.toString()).emit('dashboard-updated');
+        io.to(borrowerUserId).emit('dashboard-updated');
       }
 
       // 3. Log Activity
       await LoanActivity.create({
-        loanId: emi.loanId._id,
+        loanId: loan._id,
         borrowerId: borrower._id,
         title: 'EMI Marked Overdue',
         message: message,

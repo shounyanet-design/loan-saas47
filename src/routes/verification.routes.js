@@ -45,9 +45,10 @@ const {
 const { protectVerification } = require('../middleware/auth.middleware');
 const { requireConsent, validateProfileData } = require('../middleware/verification.middleware');
 const multer = require('multer');
+const tenantContext = require('../tenancy/tenantContext');
 
 // Memory-storage multer for KYC image uploads (no disk I/O, consistent with uploadMiddleware)
-const kycUpload = multer({
+const rawKycUpload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 10 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
@@ -55,6 +56,23 @@ const kycUpload = multer({
     cb(null, allowed.includes(file.mimetype));
   },
 });
+
+const kycUpload = {
+  fields: (fieldsArray) => {
+    const middleware = rawKycUpload.fields(fieldsArray);
+    return (req, res, next) => {
+      const tenantId = req.tenantId || (req.user && req.user.tenantId);
+      middleware(req, res, (err) => {
+        if (err) return next(err);
+        const activeTenantId = req.tenantId || (req.user && req.user.tenantId) || tenantId;
+        if (activeTenantId) {
+          return tenantContext.runWithTenant(activeTenantId, () => next());
+        }
+        return next();
+      });
+    };
+  }
+};
 
 // Apply protection to all integration routes
 router.use(protectVerification);

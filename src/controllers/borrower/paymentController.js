@@ -8,6 +8,7 @@ const { sendSuccess, sendError } = require('../../utils/responseHandler');
 const { createNotification } = require('../../utils/notificationHelper');
 const imagekit = require('../../config/imagekit');
 const mongoose = require('mongoose');
+const tenantContext = require('../../tenancy/tenantContext');
 
 /**
  * @desc    Get data for borrower payment dashboard
@@ -79,100 +80,109 @@ exports.getPaymentDashboard = asyncHandler(async (req, res) => {
  * @route   POST /api/borrower/submit-payment
  */
 exports.submitPayment = asyncHandler(async (req, res) => {
-  const { loanId, emiId, paymentAmount, paymentMethod, paymentDate, transactionReference } = req.body;
-  const userId = req.user._id;
+  const tenantId = req.tenantId || req.user?.tenantId;
 
-  // 1. Validation
-  if (!loanId || !paymentAmount || !paymentMethod || !paymentDate || !transactionReference) {
-    return sendError(res, 'All fields are required', 400);
-  }
+  const processSubmit = async () => {
+    const { loanId, emiId, paymentAmount, paymentMethod, paymentDate, transactionReference } = req.body;
+    const userId = req.user._id;
 
-  // 2. Verify loan ownership
-  const borrower = await Borrower.findOne({ userId });
-  const profileId = borrower ? borrower._id : null;
-
-  const loan = await ActiveLoan.findOne({ 
-    _id: loanId, 
-    $or: [{ borrowerId: profileId }, { borrowerId: userId }]
-  });
-
-  if (!loan) {
-    return sendError(res, 'Loan not found or unauthorized', 404);
-  }
-
-  // 3. Handle File Upload (Payment Proof)
-  let receiptUrl = '';
-  let receiptFileId = '';
-
-  if (req.file) {
-    try {
-      const uploadResponse = await imagekit.upload({
-        file: req.file.buffer,
-        fileName: `payment_proof_${Date.now()}_${req.file.originalname}`,
-        folder: '/payments/proofs',
-      });
-      receiptUrl = uploadResponse.url;
-      receiptFileId = uploadResponse.fileId;
-    } catch (uploadError) {
-      console.error('ImageKit Upload Error:', uploadError);
-      return sendError(res, 'Failed to upload payment proof', 500);
+    // 1. Validation
+    if (!loanId || !paymentAmount || !paymentMethod || !paymentDate || !transactionReference) {
+      return sendError(res, 'All fields are required', 400);
     }
-  } else {
-    return sendError(res, 'Payment proof is required', 400);
+
+    // 2. Verify loan ownership
+    const borrower = await Borrower.findOne({ userId });
+    const profileId = borrower ? borrower._id : null;
+
+    const loan = await ActiveLoan.findOne({ 
+      _id: loanId, 
+      $or: [{ borrowerId: profileId }, { borrowerId: userId }]
+    });
+
+    if (!loan) {
+      return sendError(res, 'Loan not found or unauthorized', 404);
+    }
+
+    // 3. Handle File Upload (Payment Proof)
+    let receiptUrl = '';
+    let receiptFileId = '';
+
+    if (req.file) {
+      try {
+        const uploadResponse = await imagekit.upload({
+          file: req.file.buffer,
+          fileName: `payment_proof_${Date.now()}_${req.file.originalname}`,
+          folder: '/payments/proofs',
+        });
+        receiptUrl = uploadResponse.url;
+        receiptFileId = uploadResponse.fileId;
+      } catch (uploadError) {
+        console.error('ImageKit Upload Error:', uploadError);
+        return sendError(res, 'Failed to upload payment proof', 500);
+      }
+    } else {
+      return sendError(res, 'Payment proof is required', 400);
+    }
+
+    // 4. Create Payment Submission
+    const payment = await Payment.create({
+      borrowerId: profileId || userId,
+      borrowerName: req.user.fullName,
+      borrowerPhone: req.user.phone,
+      loanId: loan._id,
+      loanCode: loan.loanCode,
+      paymentAmount: Number(paymentAmount),
+      paymentDate: new Date(paymentDate),
+      paymentMethod,
+      receiptImage: receiptUrl,
+      receiptFile: receiptFileId,
+      notes: transactionReference, // Use notes for transaction reference if no explicit field
+      paymentStatus: 'Pending',
+      paymentType: 'EMI Payment'
+    });
+
+    // 5. Log Activity
+    await LoanActivity.create({
+      loanId: loan._id,
+      borrowerId: profileId || userId,
+      type: 'Payment',
+      title: 'Payment Submitted',
+      message: `Payment of R${paymentAmount} submitted for verification. Ref: ${transactionReference}`,
+      severity: 'info'
+    });
+
+    // 6. Notifications
+    await createNotification({
+      receiverRole: 'admin',
+      title: 'New Payment Submission',
+      message: `Borrower ${req.user.fullName} submitted a payment of R${paymentAmount}.`,
+      type: 'Payment Submission',
+      relatedId: payment._id,
+      relatedModel: 'Payment'
+    });
+
+    await createNotification({
+      receiverRole: 'staff',
+      title: 'Payment Verification Required',
+      message: `A new payment proof requires verification for loan ${loan.loanCode}.`,
+      type: 'Payment Submission',
+      relatedId: payment._id,
+      relatedModel: 'Payment'
+    });
+
+    return sendSuccess(res, 'Payment submitted successfully for verification', {
+      paymentId: payment._id,
+      transactionId: payment.transactionId,
+      amount: payment.paymentAmount,
+      status: 'Pending Verification'
+    });
+  };
+
+  if (tenantId) {
+    return tenantContext.runWithTenant(tenantId, processSubmit);
   }
-
-  // 4. Create Payment Submission
-  const payment = await Payment.create({
-    borrowerId: profileId || userId,
-    borrowerName: req.user.fullName,
-    borrowerPhone: req.user.phone,
-    loanId: loan._id,
-    loanCode: loan.loanCode,
-    paymentAmount: Number(paymentAmount),
-    paymentDate: new Date(paymentDate),
-    paymentMethod,
-    receiptImage: receiptUrl,
-    receiptFile: receiptFileId,
-    notes: transactionReference, // Use notes for transaction reference if no explicit field
-    paymentStatus: 'Pending',
-    paymentType: 'EMI Payment'
-  });
-
-  // 5. Log Activity
-  await LoanActivity.create({
-    loanId: loan._id,
-    borrowerId: profileId || userId,
-    type: 'Payment',
-    title: 'Payment Submitted',
-    message: `Payment of R${paymentAmount} submitted for verification. Ref: ${transactionReference}`,
-    severity: 'info'
-  });
-
-  // 6. Notifications
-  await createNotification({
-    receiverRole: 'admin',
-    title: 'New Payment Submission',
-    message: `Borrower ${req.user.fullName} submitted a payment of R${paymentAmount}.`,
-    type: 'Payment Submission',
-    relatedId: payment._id,
-    relatedModel: 'Payment'
-  });
-
-  await createNotification({
-    receiverRole: 'staff',
-    title: 'Payment Verification Required',
-    message: `A new payment proof requires verification for loan ${loan.loanCode}.`,
-    type: 'Payment Submission',
-    relatedId: payment._id,
-    relatedModel: 'Payment'
-  });
-
-  sendSuccess(res, 'Payment submitted successfully for verification', {
-    paymentId: payment._id,
-    transactionId: payment.transactionId,
-    amount: payment.paymentAmount,
-    status: 'Pending Verification'
-  });
+  return processSubmit();
 });
 
 /**
