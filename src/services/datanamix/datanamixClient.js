@@ -26,7 +26,11 @@ datanamixAxiosClient.interceptors.request.use(
       if (resolved && resolved.source === 'tenant') {
         const creds = resolved.credentials || {};
         if (creds.baseUrl) {
-          config.baseURL = creds.baseUrl.replace(/\/$/, '');
+          try {
+            config.baseURL = new URL(creds.baseUrl).origin;
+          } catch (e) {
+            config.baseURL = creds.baseUrl.replace(/\/$/, '');
+          }
         }
       }
     } else {

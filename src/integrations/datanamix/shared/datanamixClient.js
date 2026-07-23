@@ -28,7 +28,12 @@ const datanamixClient = async (requestOptions = {}) => {
         const creds = resolved.credentials || {};
         if (creds.baseUrl) {
           const configBaseUrl = (datanamixConfig.baseUrl || 'https://api.datanamix.com').replace(/\/$/, '');
-          const tenantBaseUrl = creds.baseUrl.replace(/\/$/, '');
+          let tenantBaseUrl;
+          try {
+            tenantBaseUrl = new URL(creds.baseUrl).origin;
+          } catch (e) {
+            tenantBaseUrl = creds.baseUrl.replace(/\/$/, '');
+          }
           if (endpoint.startsWith(configBaseUrl)) {
             endpoint = endpoint.replace(configBaseUrl, tenantBaseUrl);
           } else if (endpoint.startsWith('/')) {

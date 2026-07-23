@@ -24,7 +24,11 @@ const loginToDatanamix = async (tenantId) => {
       const creds = resolved.credentials || {};
       clientId = creds.clientId || clientId;
       clientSecret = creds.clientSecret || clientSecret;
-      baseUrl = (creds.baseUrl || baseUrl).replace(/\/$/, '');
+      try {
+        baseUrl = new URL(creds.baseUrl || baseUrl).origin;
+      } catch (e) {
+        baseUrl = (creds.baseUrl || baseUrl).replace(/\/$/, '');
+      }
     } else if (process.env.NODE_ENV === 'production' && resolved.source === 'env') {
       throw new Error('Datanamix credentials are not configured for this tenant in production.');
     }
