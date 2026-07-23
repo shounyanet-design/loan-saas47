@@ -119,11 +119,11 @@ const systemSettingsSchema = new mongoose.Schema({
   retryAttempts: { type: Number, default: 3 },
   manualOverrideAllowed: { type: Boolean, default: true },
   fallbackVerificationMode: { type: String, enum: ['AVS Only', 'Manual Review'], default: 'Manual Review' },
-  bankVerificationEnvironment: { type: String, enum: ['SANDBOX', 'LIVE'], default: 'SANDBOX' },
+  bankVerificationEnvironment: { type: String, default: 'LIVE' },
   bankAutoApprovalRulesEnabled: { type: Boolean, default: true },
-  bankMismatchTolerance: { type: String, enum: ['Strict', 'Flexible'], default: 'Flexible' },
+  bankMismatchTolerance: { type: String, enum: ['Strict', 'Flexible', 'Disabled'], default: 'Flexible' },
   bankWarningThresholds: { type: Number, default: 3 },
-  bankPdfGenerationMode: { type: String, enum: ['JSON_AND_PDF', 'JSON_ONLY'], default: 'JSON_AND_PDF' },
+  bankPdfGenerationMode: { type: String, enum: ['JSON_ONLY', 'JSON_AND_PDF'], default: 'JSON_AND_PDF' },
 
   // Compliance Engine Settings
   amlAutoRejectEnabled: { type: Boolean, default: true },
@@ -137,14 +137,14 @@ const systemSettingsSchema = new mongoose.Schema({
   approvalRouting: { type: String, enum: ['Strict Admin Only', 'Reviewer Direct'], default: 'Strict Admin Only' },
   rejectionPermissions: { type: String, enum: ['Admin Only', 'Reviewer Allowed'], default: 'Admin Only' },
   escalationTriggers: { type: Boolean, default: true },
-  testMode: { type: Boolean, default: true },
+  testMode: { type: Boolean, default: false },
 
   // PDF Compliance Settings
   enableBureauPdfArchiving: { type: Boolean, default: true },
   allowPdfDownload: { type: Boolean, default: true },
   allowPdfPrint: { type: Boolean, default: true },
   requirePdfBeforeApproval: { type: Boolean, default: false },
-  enableSandboxWatermark: { type: Boolean, default: true },
+  enableSandboxWatermark: { type: Boolean, default: false },
   enablePdfHashValidation: { type: Boolean, default: true },
   pdfRetentionPeriod: { type: Number, default: 60 },
   allowVersionHistory: { type: Boolean, default: true }

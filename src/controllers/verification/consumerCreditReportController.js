@@ -145,7 +145,7 @@ exports.fetchConsumerCreditReportController = async (req, res) => {
 
     // 4. Fetch Admin Lending Settings
     const settings = (await SystemSettings.findOne()) || {};
-    const testModeActive = settings.testMode !== undefined ? settings.testMode : true;
+    const testModeActive = settings.testMode !== undefined ? settings.testMode : false;
 
     // 5. Call official Datanamix API (using the new service)
     console.log(`[CREDIT REPORT] Fetching Datanamix report for App: ${applicationId}. Mode: ${testModeActive ? 'SANDBOX' : 'LIVE'}`);
