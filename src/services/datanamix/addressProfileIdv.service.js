@@ -237,7 +237,7 @@ const callAddressPlusProfileIdv = async ({
     ClientReference:       reference,
     OutputFormat:          'JSON_AND_PDF',
     PDFEncryptionPassword: '0123456789',
-    EnvironmentType:       'PRODUCTION',
+    EnvironmentType:       (process.env.DATANAMIX_ENVIRONMENT === 'PRODUCTION' || process.env.DATANAMIX_ENVIRONMENT === 'LIVE') ? 'LIVE' : 'SANDBOX',
   };
 
   console.log("ADDRESS PLUS OUTGOING PAYLOAD", payload);

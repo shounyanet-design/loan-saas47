@@ -133,7 +133,7 @@ const callProfileIdPhotoMatch = async ({
     IDNumber: idNumber,
     ClientReference: reference,
     PDFEncryptionPassword: '0123456789',
-    EnvironmentType: 'PRODUCTION',
+    EnvironmentType: (process.env.DATANAMIX_ENVIRONMENT === 'PRODUCTION' || process.env.DATANAMIX_ENVIRONMENT === 'LIVE') ? 'LIVE' : 'SANDBOX',
     OutputFormat: 'JSON',
     CaptureImage: captureImage,
   };

@@ -77,7 +77,7 @@ const callConsumerCreditSearch = async ({
   const clientRef = reference || `CREDIT-${Date.now()}`;
 
   const payload = {
-    EnvironmentType: 'PRODUCTION',
+    EnvironmentType: (process.env.DATANAMIX_ENVIRONMENT === 'PRODUCTION' || process.env.DATANAMIX_ENVIRONMENT === 'LIVE') ? 'LIVE' : 'SANDBOX',
     EnquiryReason:   'Credit Check',
     IdNumber:        idNumber,
     Reference:       clientRef,
