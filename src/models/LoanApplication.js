@@ -408,6 +408,7 @@ const loanApplicationSchema = new mongoose.Schema(
           "NOT_STARTED",
           "VERIFYING",
           "CLEARED",
+          "CLEAR",
           "MANUAL_REVIEW",
           "AUTO_REJECT",
           "HIGH_RISK",

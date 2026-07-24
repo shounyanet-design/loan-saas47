@@ -9,7 +9,16 @@ const loanDocumentSchema = new mongoose.Schema({
   },
   documentType: {
     type: String,
-    enum: ['ID Document', 'Payslip', 'Bank Statement', 'Proof Of Address'],
+    enum: [
+      'ID Document',
+      'ID Front',
+      'ID Back',
+      'Selfie',
+      'Payslip',
+      'Bank Statement',
+      'Proof Of Address',
+      'Proof of Residence'
+    ],
     required: true
   },
   fileUrl: {
