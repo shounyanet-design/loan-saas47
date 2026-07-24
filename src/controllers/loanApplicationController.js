@@ -960,6 +960,7 @@ const deleteApplication = asyncHandler(async (req, res) => {
  */
 const createApplicationOnBehalf = asyncHandler(async (req, res) => {
   const {
+    draftApplicationId,
     borrowerId,
     personal,
     employment,
@@ -976,6 +977,19 @@ const createApplicationOnBehalf = asyncHandler(async (req, res) => {
 
   if (!personal || !employment || !banking) {
     return sendError(res, 'Missing required information blocks', 400);
+  }
+
+  // Retrieve existing draft application created during wizard verification steps
+  let draft = null;
+  if (draftApplicationId) {
+    draft = await LoanApplication.findById(draftApplicationId);
+  }
+  if (!draft && borrowerId && personal.idNumber) {
+    draft = await LoanApplication.findOne({
+      borrowerId: borrowerId,
+      idNumber: personal.idNumber,
+      status: { $in: ['Draft', 'Pending Review', 'New', 'Submitted'] }
+    }).sort({ createdAt: -1 });
   }
 
   // --- Dynamic Centralized Rules Validation ---
@@ -1000,8 +1014,15 @@ const createApplicationOnBehalf = asyncHandler(async (req, res) => {
     });
   }
 
-  // Unique ID Check
-  const existingApp = await LoanApplication.findOne({ idNumber: personal.idNumber, status: { $ne: 'Rejected' } });
+  // Unique ID Check — exclude the current draft being finalized
+  const duplicateQuery = { 
+    idNumber: personal.idNumber, 
+    status: { $nin: ['Rejected', 'Draft', 'Pending Review'] } 
+  };
+  if (draft) {
+    duplicateQuery._id = { $ne: draft._id };
+  }
+  const existingApp = await LoanApplication.findOne(duplicateQuery);
   if (existingApp) {
     return sendError(res, 'An active application with this ID Number already exists', 400);
   }
@@ -1091,8 +1112,6 @@ const createApplicationOnBehalf = asyncHandler(async (req, res) => {
   const documentVerificationStatus = allDocsPresent ? 'Complete' : submittedDocTypes.length > 0 ? 'Incomplete' : 'Pending';
   const creditRiskReady = allDocsPresent && !!creditConsentAccepted;
 
-  // Retrieve existing draft for compliance check & preservation
-  const draft = await LoanApplication.findOne({ borrowerId: borrowerId, idNumber: personal.idNumber, status: 'Draft' });
   const aml = draft?.amlVerification || {};
   const amlStatus = aml.verificationStatus || 'NOT_STARTED';
 
