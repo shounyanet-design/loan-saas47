@@ -25,8 +25,8 @@ router.post('/send-otp', validateAgreementAccess, sendOtp);
 // Resend OTP - Borrower, Staff, Admin
 router.post('/resend-otp', validateAgreementAccess, resendOtp);
 
-// Verify OTP - Borrower only (Since they are the ones signing)
-router.post('/verify-otp', authorize('borrower'), validateAgreementAccess, verifyOtp);
+// Verify OTP - Borrower, Staff, Admin
+router.post('/verify-otp', authorize('borrower', 'staff', 'admin'), validateAgreementAccess, verifyOtp);
 
 // Get Status & History - Borrower, Staff, Admin
 router.get('/status/:loanId', validateAgreementAccess, getAgreementStatus);
