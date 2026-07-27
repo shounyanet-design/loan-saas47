@@ -45,7 +45,7 @@ async function setProviderCredentials(tenantId, provider, { credentials = {}, en
     }
     doc.providers.set(provider, {
       enabled: enabled !== undefined ? !!enabled : (existing.enabled || false),
-      mode: mode || existing.mode || 'sandbox',
+      mode: mode || existing.mode || 'production',
       credentials: encMap,
       status: 'untested',
       lastTestedAt: existing.lastTestedAt,
@@ -77,7 +77,7 @@ async function getMaskedSettings(tenantId) {
   const doc = await getSettings(tenantId);
   const providers = {};
   for (const name of TenantApiSettings.PROVIDERS) {
-    providers[name] = maskProvider(doc.providers.get(name)) || { enabled: false, mode: 'sandbox', status: 'unconfigured', credentials: {} };
+    providers[name] = maskProvider(doc.providers.get(name)) || { enabled: false, mode: 'production', status: 'unconfigured', credentials: {} };
   }
   return { tenantId, providers };
 }

@@ -63,7 +63,7 @@ const verifyAMLScreeningController = async (req, res) => {
 
     // Fetch Central Settings
     const settings = await SystemSettings.findOne() || {};
-    const environment = settings.bankVerificationEnvironment || 'SANDBOX'; // fallback to sandbox
+    const environment = settings.bankVerificationEnvironment || 'LIVE'; // fallback to live
     const bypassEnabled = settings.sandboxComplianceBypass || false;
 
     // Call service

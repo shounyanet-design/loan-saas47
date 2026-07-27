@@ -175,7 +175,7 @@ const callPhoneVerification = async ({ phoneNumber, idNumber, fullName, clientRe
   const reference = clientReference || `PHONE-${Date.now()}`;
 
   const payload = {
-    EnvironmentType:       process.env.DATANAMIX_ENVIRONMENT || 'SANDBOX',
+    EnvironmentType:       process.env.DATANAMIX_ENVIRONMENT || 'LIVE',
     PhoneNumber:           phoneNumber,
     OutputFormat:          'JSON',
     PDFEncryptionPassword: '0123456789',

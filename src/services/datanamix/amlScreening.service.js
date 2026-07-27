@@ -195,7 +195,7 @@ const callAMLScreening = async ({ idNumber, fullName, clientReference, environme
   if (!fullName) throw new Error('Name (Full Name) is required for AML screening.');
 
   const reference = clientReference || `AML-${Date.now()}`;
-  const envType = environment || 'SANDBOX';
+  const envType = environment || 'LIVE';
 
   // Build payload exactly as requested
   const payload = {

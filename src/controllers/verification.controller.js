@@ -1340,7 +1340,7 @@ exports.verifyBankVerificationController = async (req, res) => {
         result.avs?.emailMatch === 'No' ? 'EMAIL_MISMATCH' : null,
       ].filter(Boolean),
       'bankVerification.sandboxBypassEnabled': isDevelopmentSandboxBypassEnabled(),
-      'bankVerification.environmentType':      settings.bankVerificationEnvironment || 'SANDBOX',
+      'bankVerification.environmentType':      settings.bankVerificationEnvironment || 'LIVE',
       'bankVerification.bypassReason':         isDevelopmentSandboxBypassEnabled() ? 'Sandbox test bypass active' : undefined,
       'bankVerification.bypassActivatedAt':    isDevelopmentSandboxBypassEnabled() ? new Date() : undefined,
 
@@ -1435,7 +1435,7 @@ exports.verifyBankVerificationController = async (req, res) => {
         underwritingDecision,
         riskSeverity:        riskLevel,
         sandboxBypassEnabled: isDevelopmentSandboxBypassEnabled(),
-        environmentType:      settings.bankVerificationEnvironment || 'SANDBOX',
+        environmentType:      settings.bankVerificationEnvironment || 'LIVE',
         bypassReason:         isDevelopmentSandboxBypassEnabled() ? 'Sandbox test bypass active' : undefined,
         bypassActivatedAt:    isDevelopmentSandboxBypassEnabled() ? new Date() : undefined,
       },

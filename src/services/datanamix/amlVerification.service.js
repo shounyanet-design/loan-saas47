@@ -227,7 +227,7 @@ const callAMLVerification = async ({ idNumber, fullName, clientReference }) => {
   const reference = clientReference || `AML-${Date.now()}`;
 
   const payload = {
-    EnvironmentType: process.env.DATANAMIX_ENVIRONMENT || 'SANDBOX',
+    EnvironmentType: process.env.DATANAMIX_ENVIRONMENT || 'LIVE',
     OutputFormat: 'JSON_AND_PDF',
     PDFEncryptionPassword: idNumber.trim(),
     ClientReference: reference,

@@ -22,7 +22,7 @@ const PROVIDERS = ['nupay', 'webfin', 'bulksms', 'emailjs', 'smtp', 'imagekit', 
 const providerSchema = new mongoose.Schema(
   {
     enabled: { type: Boolean, default: false },
-    mode: { type: String, enum: ['sandbox', 'production'], default: 'sandbox' },
+    mode: { type: String, enum: ['sandbox', 'production'], default: 'production' },
     // key -> encrypted value
     credentials: { type: Map, of: String, default: {} },
     status: { type: String, enum: ['unconfigured', 'untested', 'valid', 'invalid'], default: 'unconfigured' },
