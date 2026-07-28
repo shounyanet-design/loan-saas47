@@ -97,8 +97,14 @@ exports.create = asyncHandler(async (req, res) => {
   await TenantSettings.updateOne({ tenantId: tenant._id }, { $setOnInsert: { tenantId: tenant._id } }, { upsert: true });
   await TenantApiSettings.updateOne({ tenantId: tenant._id }, { $setOnInsert: { tenantId: tenant._id } }, { upsert: true });
 
-  await recordAudit(req, { action: 'TENANT_CREATED', entity: 'Tenant', entityId: tenant._id, newValues: tenant.toObject() });
-  return sendSuccess(res, 'Tenant created', tenant, 201);
+  // Auto-provision Tenant Admin User if password is supplied
+  let adminUserResult = null;
+  if (req.body.adminPassword || req.body.password) {
+    adminUserResult = await syncTenantAdminUser(tenant, req.body);
+  }
+
+  await recordAudit(req, { action: 'TENANT_CREATED', entity: 'Tenant', entityId: tenant._id, newValues: { ...tenant.toObject(), adminUser: adminUserResult } });
+  return sendSuccess(res, 'Tenant created', { ...tenant.toObject(), adminUser: adminUserResult }, 201);
 });
 
 // @route PUT /api/platform/tenants/:id
@@ -131,8 +137,31 @@ exports.update = asyncHandler(async (req, res) => {
   if (req.body.status !== undefined) tenant.status = toModelStatus(req.body.status);
 
   await tenant.save();
+
+  // Auto-provision or update Tenant Admin User password if password provided
+  if (req.body.adminPassword || req.body.password) {
+    await syncTenantAdminUser(tenant, req.body);
+  }
+
   await recordAudit(req, { action: 'TENANT_UPDATED', entity: 'Tenant', entityId: tenant._id, oldValues: before, newValues: tenant.toObject() });
   return sendSuccess(res, 'Tenant updated', tenant);
+});
+
+// @route POST /api/platform/tenants/:id/provision-admin
+exports.provisionAdmin = asyncHandler(async (req, res) => {
+  const tenant = await Tenant.findById(req.params.id);
+  if (!tenant) return sendError(res, 'Tenant not found', 404);
+
+  const adminEmail = String(req.body.adminEmail || req.body.email || tenant.email || '').toLowerCase().trim();
+  const adminPassword = req.body.adminPassword || req.body.password;
+
+  if (!adminEmail || !adminPassword) {
+    return sendError(res, 'Email and password are required to provision an admin user', 400);
+  }
+
+  const result = await syncTenantAdminUser(tenant, req.body);
+  await recordAudit(req, { action: 'TENANT_ADMIN_PROVISIONED', entity: 'Tenant', entityId: tenant._id, newValues: result });
+  return sendSuccess(res, `Tenant Admin user ${result.action} successfully`, result);
 });
 
 // Shared status transition helper.

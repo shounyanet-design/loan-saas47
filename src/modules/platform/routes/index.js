@@ -31,6 +31,7 @@ router.get('/tenants', requirePermission('MANAGE_TENANTS'), tenants.list);
 router.post('/tenants', requirePermission('MANAGE_TENANTS'), tenants.create);
 router.get('/tenants/:id', requirePermission('MANAGE_TENANTS'), tenants.getOne);
 router.put('/tenants/:id', requirePermission('MANAGE_TENANTS'), tenants.update);
+router.post('/tenants/:id/provision-admin', requirePermission('MANAGE_TENANTS'), tenants.provisionAdmin);
 router.patch('/tenants/:id/suspend', requirePermission('MANAGE_TENANTS'), tenants.suspend);
 router.patch('/tenants/:id/activate', requirePermission('MANAGE_TENANTS'), tenants.activate);
 router.delete('/tenants/:id', requirePermission('MANAGE_TENANTS'), tenants.remove);
