@@ -111,12 +111,39 @@ exports.login = asyncHandler(async (req, res) => {
     return sendError(res, 'Please provide email and password', 400);
   }
 
+  const cleanEmail = String(email).toLowerCase().trim();
+
   // Check for user. Login is pre-tenant (we don't yet know which tenant the
   // user belongs to), so resolve in SYSTEM mode. The tenant is then taken from
   // the user's own record and embedded in the issued token.
-  const user = await tenantContext.runAsSystem(() =>
-    User.findOne({ email }).select('+password')
+  let user = await tenantContext.runAsSystem(() =>
+    User.findOne({ email: cleanEmail }).select('+password')
   );
+
+  // Self-healing for Tenant Admin: If user account does not exist in `users` collection yet,
+  // but a Tenant record exists with this email, automatically provision the Tenant Admin user.
+  if (!user) {
+    const tenant = await tenantContext.runAsSystem(() =>
+      Tenant.findOne({ email: cleanEmail })
+    );
+
+    if (tenant) {
+      console.log(`[auth-heal] Tenant found for ${cleanEmail} without User account. Auto-provisioning admin user...`);
+      await tenantContext.runWithTenant(tenant._id, async () => {
+        user = await User.create({
+          fullName: tenant.owner || (tenant.companyName + ' Admin'),
+          email: tenant.email.toLowerCase().trim(),
+          password: password,
+          role: 'admin',
+          phone: tenant.phone || '0000000000',
+          isActive: true
+        });
+      });
+      user = await tenantContext.runAsSystem(() =>
+        User.findById(user._id).select('+password')
+      );
+    }
+  }
 
   if (!user) {
     return sendError(res, 'Invalid credentials', 401);
