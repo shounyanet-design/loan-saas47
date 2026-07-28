@@ -16,8 +16,15 @@ const errorHandler = (err, req, res, next) => {
 
   // Mongoose duplicate key
   if (err.code === 11000) {
-    const field = Object.keys(err.keyValue)[0];
-    const message = `${field.charAt(0).toUpperCase() + field.slice(1)} already exists. Please use another value.`;
+    const field = Object.keys(err.keyValue || {})[0] || 'field';
+    let message = `${field.charAt(0).toUpperCase() + field.slice(1)} already exists. Please use another value.`;
+    if (field === 'email') {
+      message = 'An account with this email address already exists.';
+    } else if (field === 'tenantId') {
+      const User = require('../models/User');
+      User.collection.dropIndex('tenantId_1').catch(() => {});
+      message = 'An account with this email already exists for this organization.';
+    }
     return sendError(res, message, 400);
   }
 

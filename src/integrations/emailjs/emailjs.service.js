@@ -93,6 +93,68 @@ const sendOtpEmail = async (toEmail, userName, otpCode, agreementNumber) => {
   }
 };
 
+/**
+ * Sends Password Reset Email via EmailJS API
+ */
+const sendPasswordResetEmail = async (toEmail, userName, resetToken) => {
+  if (!toEmail || typeof toEmail !== 'string' || !toEmail.includes('@')) {
+    console.error(`[EmailJS] Email validation failed for recipient: "${toEmail}"`);
+    throw new Error('Invalid email address format.');
+  }
+
+  const serviceId = config.serviceId;
+  const templateId = config.templateId;
+  const publicKey = config.publicKey;
+  const privateKey = config.privateKey;
+  const apiUrl = config.apiUrl || 'https://api.emailjs.com/api/v1.0/email/send';
+
+  const templateParams = {
+    to_email: toEmail,
+    to_name: userName || 'Valued User',
+    otp_code: resetToken,
+    agreement_number: 'PWD-RESET',
+    message: `Your password reset code is: ${resetToken}. Please use this code to reset your password.`,
+  };
+
+  const payload = {
+    service_id: serviceId,
+    template_id: templateId,
+    user_id: publicKey,
+    accessToken: privateKey,
+    template_params: templateParams,
+  };
+
+  try {
+    console.log(`[EmailJS] Dispatching Password Reset Email via REST API to: ${toEmail}`);
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000);
+    let response;
+    try {
+      response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timeout);
+    }
+
+    const responseText = await response.text();
+    if (!response.ok) {
+      console.error(`[EmailJS] Password reset email delivery status ${response.status}: ${responseText}`);
+      return false;
+    }
+
+    console.log(`[EmailJS] Password reset email successfully sent to ${toEmail}. Status: ${response.status}`);
+    return true;
+  } catch (error) {
+    console.error(`[EmailJS] Password reset email error for ${toEmail}:`, error.message);
+    return false;
+  }
+};
+
 module.exports = {
   sendOtpEmail,
+  sendPasswordResetEmail,
 };

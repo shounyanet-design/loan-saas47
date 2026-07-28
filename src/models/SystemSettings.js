@@ -60,7 +60,7 @@ const systemSettingsSchema = new mongoose.Schema({
   employmentType: { type: String, enum: ['Employed', 'Self Employed', 'Both'], default: 'Both' },
   eligibleMinimumPrincipal: { type: Number, default: 1000 },
   eligibleMaximumPrincipal: { type: Number, default: 50000 },
-  allowedRepaymentDurations: { type: String, default: '3, 6, 12, 18, 24' },
+  allowedRepaymentDurations: { type: String, default: '1, 2, 3, 6, 12, 18, 24, 36' },
   employmentCategories: { type: [String], default: ['Permanently Employed', 'Contract Worker', 'Self Employed', 'Pensioner', 'Government Employee'] },
   salaryFrequencies: { type: [String], default: ['Monthly', 'Weekly', 'Fortnightly'] },
   allowedLoanProducts: { type: [String], default: ['Personal Loan', 'Payday Loan', 'Business Loan', 'Debt Consolidation', 'Salary Advance'] },

@@ -12,7 +12,7 @@ const getValidationRules = async () => {
   }
 
   // Parse allowed repayment durations (stored as comma-separated string)
-  let allowedDurations = [3, 6, 12, 18, 24];
+  let allowedDurations = [1, 2, 3, 6, 12, 18, 24, 36];
   if (settings.allowedRepaymentDurations) {
     if (typeof settings.allowedRepaymentDurations === 'string') {
       allowedDurations = settings.allowedRepaymentDurations

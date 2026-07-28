@@ -6,6 +6,7 @@ const TenantApiSettings = require('../../../models/TenantApiSettings');
 const Borrower = require('../../../models/Borrower');
 const Staff = require('../../../models/Staff');
 const User = require('../../../models/User');
+const tenantContext = require('../../../tenancy/tenantContext');
 const { buildQuery, paginate } = require('../utils/queryFeatures');
 const { recordAudit } = require('../utils/audit');
 
@@ -30,6 +31,74 @@ function validateTenantInput(body, { partial = false } = {}) {
   return errors;
 }
 
+// Helper to provision or update tenant admin user
+async function syncTenantAdminUser(tenant, reqBody) {
+  const adminEmail = String(reqBody.adminEmail || reqBody.email || tenant.email || '').toLowerCase().trim();
+  const adminPassword = reqBody.adminPassword || reqBody.password;
+  const adminName = reqBody.adminName || reqBody.owner || tenant.owner || (tenant.companyName + ' Admin');
+
+  if (!adminEmail || !adminPassword) return null;
+
+  return await tenantContext.runAsSystem(async () => {
+    let user = await User.findOne({ email: adminEmail, tenantId: tenant._id });
+    if (!user) {
+      user = await User.findOne({ email: adminEmail });
+    }
+
+    const bcrypt = require('bcryptjs');
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(adminPassword, salt);
+
+    if (user) {
+      await User.collection.updateOne(
+        { _id: user._id },
+        {
+          $set: {
+            tenantId: tenant._id,
+            password: hashedPassword,
+            isActive: true,
+            fullName: adminName,
+            email: adminEmail,
+            role: 'admin',
+          },
+        }
+      );
+      return { userId: user._id, email: adminEmail, action: 'updated' };
+    } else {
+      try {
+        const newUser = await User.create({
+          tenantId: tenant._id,
+          fullName: adminName,
+          email: adminEmail,
+          password: adminPassword,
+          role: 'admin',
+          phone: tenant.phone || reqBody.phone || '0000000000',
+          isActive: true,
+        });
+        return { userId: newUser._id, email: adminEmail, action: 'created' };
+      } catch (createErr) {
+        const existing = await User.findOne({ email: adminEmail });
+        if (existing) {
+          await User.collection.updateOne(
+            { _id: existing._id },
+            {
+              $set: {
+                tenantId: tenant._id,
+                password: hashedPassword,
+                isActive: true,
+                fullName: adminName,
+                role: 'admin',
+              },
+            }
+          );
+          return { userId: existing._id, email: adminEmail, action: 'updated' };
+        }
+        throw createErr;
+      }
+    }
+  });
+}
+
 // @route GET /api/platform/tenants
 exports.list = asyncHandler(async (req, res) => {
   const { page, limit, skip, sort, filter } = buildQuery(req.query, {
@@ -38,7 +107,7 @@ exports.list = asyncHandler(async (req, res) => {
     sortFields: ['companyName', 'companyCode', 'status', 'createdAt', 'lastLoginAt'],
     defaultSort: 'createdAt',
   });
-  // Normalise an uppercase status filter to canonical lowercase.
+
   if (filter.status) filter.status = toModelStatus(filter.status);
 
   const [items, total] = await Promise.all([
@@ -53,7 +122,6 @@ exports.getOne = asyncHandler(async (req, res) => {
   const tenant = await Tenant.findById(req.params.id).lean();
   if (!tenant) return sendError(res, 'Tenant not found', 404);
 
-  // Augment with live per-tenant counts (system-mode → must scope explicitly).
   const [borrowers, staff, users] = await Promise.all([
     Borrower.countDocuments({ tenantId: tenant._id }),
     Staff.countDocuments({ tenantId: tenant._id }),
@@ -184,7 +252,6 @@ exports.suspend = asyncHandler((req, res) => setStatus(req, res, 'suspended', 'T
 exports.activate = asyncHandler((req, res) => setStatus(req, res, 'active', 'TENANT_ACTIVATED'));
 
 // @route DELETE /api/platform/tenants/:id
-// Soft delete by default (status=disabled). Hard delete requires ?hard=true.
 exports.remove = asyncHandler(async (req, res) => {
   const tenant = await Tenant.findById(req.params.id);
   if (!tenant) return sendError(res, 'Tenant not found', 404);

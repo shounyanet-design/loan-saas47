@@ -88,7 +88,10 @@ const validateLoanApplicationData = (data, rules) => {
   // 5. Validate Loan Duration
   const duration = Number(data.requestedDuration || data.duration || data.tenure);
   if (!isNaN(duration) && duration > 0) {
-    if (!rules.allowedDurations.includes(duration)) {
+    const allowed = Array.isArray(rules?.allowedDurations) && rules.allowedDurations.length > 0
+      ? rules.allowedDurations
+      : [1, 2, 3, 6, 12, 18, 24, 36];
+    if (!allowed.includes(duration)) {
       errors.loanDuration = "Selected repayment duration is not permitted.";
     }
   }

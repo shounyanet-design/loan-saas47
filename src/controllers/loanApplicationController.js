@@ -891,24 +891,34 @@ const deleteApplication = asyncHandler(async (req, res) => {
   const Conversation = require('../models/Conversation');
   const Message = require('../models/Message');
 
-  const session = await mongoose.startSession();
-  session.startTransaction();
+  let session = null;
+  let useTransaction = false;
+  try {
+    session = await mongoose.startSession();
+    session.startTransaction();
+    useTransaction = true;
+  } catch (_) {
+    session = null;
+    useTransaction = false;
+  }
 
   try {
+    const opts = useTransaction && session ? { session } : {};
+
     // 1. Cascade delete employment details
-    await LoanEmployment.deleteMany({ loanApplicationId: application._id }, { session });
+    await LoanEmployment.deleteMany({ loanApplicationId: application._id }, opts);
 
     // 2. Cascade delete banking details
-    await LoanBanking.deleteMany({ loanApplicationId: application._id }, { session });
+    await LoanBanking.deleteMany({ loanApplicationId: application._id }, opts);
 
     // 3. Cascade delete documents
-    await LoanDocument.deleteMany({ loanApplicationId: application._id }, { session });
+    await LoanDocument.deleteMany({ loanApplicationId: application._id }, opts);
 
     // 4. Cascade delete reviews
-    await LoanReview.deleteMany({ loanApplicationId: application._id }, { session });
+    await LoanReview.deleteMany({ loanApplicationId: application._id }, opts);
 
     // 5. Cascade delete status history
-    await LoanStatusHistory.deleteMany({ loanApplicationId: application._id }, { session });
+    await LoanStatusHistory.deleteMany({ loanApplicationId: application._id }, opts);
 
     // 6. Cascade delete notifications
     await Notification.deleteMany({ 
@@ -916,21 +926,27 @@ const deleteApplication = asyncHandler(async (req, res) => {
         { loanApplicationId: application._id },
         { relatedId: application._id }
       ]
-    }, { session });
+    }, opts);
 
     // 7. Cascade delete conversations and messages
-    const conversations = await Conversation.find({ applicationId: application._id }).session(session);
+    const conversations = useTransaction && session
+      ? await Conversation.find({ applicationId: application._id }).session(session)
+      : await Conversation.find({ applicationId: application._id });
+
     const convIds = conversations.map(c => c._id);
     if (convIds.length > 0) {
-      await Message.deleteMany({ conversationId: { $in: convIds } }, { session });
-      await Conversation.deleteMany({ _id: { $in: convIds } }, { session });
+      await Message.deleteMany({ conversationId: { $in: convIds } }, opts);
+      await Conversation.deleteMany({ _id: { $in: convIds } }, opts);
     }
 
     // 8. Delete the application itself
-    await application.deleteOne({ session });
-
-    await session.commitTransaction();
-    session.endSession();
+    if (useTransaction && session) {
+      await application.deleteOne({ session });
+      await session.commitTransaction();
+      session.endSession();
+    } else {
+      await LoanApplication.deleteOne({ _id: application._id });
+    }
 
     // Emit real-time update to refresh dashboards
     try {
@@ -942,12 +958,14 @@ const deleteApplication = asyncHandler(async (req, res) => {
       }
     } catch (ioErr) {}
 
-    sendSuccess(res, 'Loan application and all linked records permanently deleted');
+    return sendSuccess(res, 'Loan application and all linked records permanently deleted');
   } catch (err) {
-    if (session.inTransaction()) {
-      await session.abortTransaction();
+    if (useTransaction && session) {
+      try {
+        if (session.inTransaction()) await session.abortTransaction();
+        session.endSession();
+      } catch (_) {}
     }
-    session.endSession();
     console.error('Application deletion cascade error:', err);
     return sendError(res, 'Deletion failed: ' + err.message, 500);
   }

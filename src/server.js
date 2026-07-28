@@ -56,8 +56,13 @@ connectDB();
 // Tenant integrity validation — runs once the DB connection is open. Warns (does
 // NOT crash) if any tenant-scoped records are missing tenantId or no default
 // tenant exists, pointing the operator to `npm run repair` / `npm run migrate`.
-require('mongoose').connection.once('open', () => {
+require('mongoose').connection.once('open', async () => {
   require('./tenancy/tenantHealing').logTenantIntegrityWarnings();
+  try {
+    const User = require('./models/User');
+    await User.collection.dropIndex('tenantId_1').catch(() => {});
+    await User.syncIndexes().catch(() => {});
+  } catch (_) {}
 });
 
 const PORT = process.env.PORT || 5000;

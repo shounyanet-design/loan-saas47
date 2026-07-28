@@ -113,32 +113,48 @@ exports.login = asyncHandler(async (req, res) => {
 
   const cleanEmail = String(email).toLowerCase().trim();
 
-  // Check for user. Login is pre-tenant (we don't yet know which tenant the
-  // user belongs to), so resolve in SYSTEM mode. The tenant is then taken from
-  // the user's own record and embedded in the issued token.
-  let user = await tenantContext.runAsSystem(() =>
-    User.findOne({ email: cleanEmail }).select('+password')
+  const Tenant = require('../models/Tenant');
+  const tenant = await tenantContext.runAsSystem(() =>
+    Tenant.findOne({ email: cleanEmail })
   );
+
+  // Look for a user document matching email. If a tenant exists, prefer the user document already linked to this tenant!
+  let user;
+  if (tenant) {
+    user = await tenantContext.runAsSystem(() =>
+      User.findOne({ email: cleanEmail, tenantId: tenant._id }).select('+password')
+    );
+  }
+  if (!user) {
+    user = await tenantContext.runAsSystem(() =>
+      User.findOne({ email: cleanEmail }).select('+password')
+    );
+  }
 
   // Self-healing for Tenant Admin: If user account does not exist in `users` collection yet,
   // but a Tenant record exists with this email, automatically provision the Tenant Admin user.
-  if (!user) {
-    const tenant = await tenantContext.runAsSystem(() =>
-      Tenant.findOne({ email: cleanEmail })
-    );
-
-    if (tenant) {
-      console.log(`[auth-heal] Tenant found for ${cleanEmail} without User account. Auto-provisioning admin user...`);
-      await tenantContext.runWithTenant(tenant._id, async () => {
-        user = await User.create({
+  if (!user && tenant) {
+    console.log(`[auth-heal] Tenant found for ${cleanEmail} without User account. Auto-provisioning admin user...`);
+    try {
+      user = await tenantContext.runAsSystem(() =>
+        User.create({
           fullName: tenant.owner || (tenant.companyName + ' Admin'),
           email: tenant.email.toLowerCase().trim(),
           password: password,
           role: 'admin',
+          tenantId: tenant._id,
           phone: tenant.phone || '0000000000',
-          isActive: true
-        });
-      });
+          isActive: true,
+        })
+      );
+    } catch (createErr) {
+      // If creation hits an index conflict, fallback to fetching the existing user for this tenant
+      user = await tenantContext.runAsSystem(() =>
+        User.findOne({ email: cleanEmail }).select('+password')
+      );
+    }
+
+    if (user) {
       user = await tenantContext.runAsSystem(() =>
         User.findById(user._id).select('+password')
       );
@@ -153,6 +169,14 @@ exports.login = asyncHandler(async (req, res) => {
   const isMatch = await user.matchPassword(password);
   if (!isMatch) {
     return sendError(res, 'Invalid credentials', 401);
+  }
+
+  // Ensure user is attached to tenantId if missing
+  if (!user.tenantId && tenant) {
+    await tenantContext.runAsSystem(() =>
+      User.collection.updateOne({ _id: user._id }, { $set: { tenantId: tenant._id } })
+    );
+    user.tenantId = tenant._id;
   }
 
   // Check if tenant is active/suspended
@@ -226,6 +250,117 @@ exports.login = asyncHandler(async (req, res) => {
       primaryBranch: user.primaryBranch,
     },
     token,
+  });
+});
+
+// @desc    Forgot Password - Request OTP Code
+// @route   POST /api/auth/forgot-password
+// @access  Public
+exports.forgotPassword = asyncHandler(async (req, res) => {
+  const { email } = req.body;
+  if (!email) {
+    return sendError(res, 'Please provide your email address', 400);
+  }
+
+  const cleanEmail = String(email).toLowerCase().trim();
+  let user = await tenantContext.runAsSystem(() =>
+    User.findOne({ email: cleanEmail })
+  );
+
+  const resetPin = Math.floor(100000 + Math.random() * 900000).toString();
+  const expireTime = new Date(Date.now() + 15 * 60 * 1000);
+
+  if (user) {
+    await tenantContext.runAsSystem(() =>
+      User.collection.updateOne(
+        { _id: user._id },
+        { $set: { resetPasswordToken: resetPin, resetPasswordExpire: expireTime } }
+      )
+    );
+  } else {
+    const rawUser = await tenantContext.runAsSystem(() =>
+      User.collection.findOne({ email: cleanEmail })
+    );
+    if (rawUser) {
+      await tenantContext.runAsSystem(() =>
+        User.collection.updateOne(
+          { _id: rawUser._id },
+          { $set: { resetPasswordToken: resetPin, resetPasswordExpire: expireTime } }
+        )
+      );
+    }
+  }
+
+  const { sendPasswordResetEmail } = require('../integrations/emailjs/emailjs.service');
+  let emailDispatched = false;
+  try {
+    emailDispatched = await sendPasswordResetEmail(cleanEmail, user?.fullName || 'User', resetPin);
+  } catch (e) {
+    console.error('Failed to dispatch password reset email:', e);
+  }
+
+  return sendSuccess(
+    res,
+    `Verification OTP code has been sent to ${cleanEmail}.`,
+    { email: cleanEmail, dispatched: emailDispatched }
+  );
+});
+
+// @desc    Reset Password with OTP Code
+// @route   POST /api/auth/reset-password
+// @access  Public
+exports.resetPassword = asyncHandler(async (req, res) => {
+  const { email, otpCode, newPassword } = req.body;
+  if (!email || !otpCode || !newPassword) {
+    return sendError(res, 'Please provide email, verification OTP code, and new password', 400);
+  }
+
+  const cleanEmail = String(email).toLowerCase().trim();
+  const cleanOtp = String(otpCode).trim();
+
+  // Fetch raw user record from MongoDB collection directly
+  const userDoc = await tenantContext.runAsSystem(() =>
+    User.collection.findOne({ email: cleanEmail })
+  );
+
+  if (!userDoc) {
+    return sendError(res, 'User account not found', 404);
+  }
+
+  const storedToken = userDoc.resetPasswordToken ? String(userDoc.resetPasswordToken).trim() : null;
+
+  if (!storedToken || storedToken !== cleanOtp) {
+    return sendError(res, 'Invalid OTP verification code. Please check your email.', 400);
+  }
+
+  if (userDoc.resetPasswordExpire && new Date(userDoc.resetPasswordExpire) < new Date()) {
+    return sendError(res, 'OTP verification code has expired. Please request a new code.', 400);
+  }
+
+  const bcrypt = require('bcryptjs');
+  const salt = await bcrypt.genSalt(10);
+  const hashedPassword = await bcrypt.hash(newPassword, salt);
+
+  await tenantContext.runAsSystem(() =>
+    User.collection.updateOne(
+      { _id: userDoc._id },
+      {
+        $set: { password: hashedPassword },
+        $unset: { resetPasswordToken: 1, resetPasswordExpire: 1 }
+      }
+    )
+  );
+
+  const token = generateToken(userDoc._id, userDoc.role, userDoc.tenantId);
+
+  return sendSuccess(res, 'Password successfully reset. Logging in...', {
+    user: {
+      _id: userDoc._id,
+      fullName: userDoc.fullName,
+      email: userDoc.email,
+      role: userDoc.role,
+    },
+    token
   });
 });
 
