@@ -1,0 +1,1404 @@
+                 DebiCheck Mandate Initiation
+                       Specifications Document
+                                           DRAFT
+
+
+
+Version   Date          Modified By                Nature of Amendment
+Number
+ V1.0     2019/08/02    Brandon Velloo             Initial Draft
+ V2.0     2020/04/21    Brandon Velloo             Client Reference field is mandatory.
+ V2.1     2020/04/29    Brandon Velloo             Update to Debtor Authentication Required Field
+ V2.2     2020/05/13    Brandon Velloo             Additional SMS field added to Mandate Initiation
+ V2.3     2020/07/08    Brandon Velloo             Addition of Employer Code to Input Fields
+ V2.4     2020/11/19    Brandon Velloo             Addition of Insurance fields
+ V2.5     2021/04/28    Morne Grunig               Amended the adjustment category format.
+ V2.6     2021/11/25    Danielle Haylett           Removal of Citibank
+ V2.7     2022/05/09    Nolwazi Mokgobinyane       Number of instalments for perpetual contracts
+ V2.8     2022/07/21    Nolwazi Mokgobinyane       Recurring/Perpetual Mandates standard terms
+ V2.9     2022/07/22    Nolwazi Mokgobinyane       Bank Universal Branch Codes Table Update
+ V3.0     2023/02/17    Brandon Wasserfall         Update Adjustment Rate format and added adjustment
+                                                   rate error code
+ V3.1     2023/07/07    Danielle Haylett           General updates
+ V3.3     2023/09/11    Danielle Haylett           Removal of Ubank and general description updates
+ V3.4     2023/11/15    Danielle Haylett           Addition of Ubank
+ V3.5     2025/04/03    Danielle Haylett           Addition of RM option to initiation
+ V3.6     2025/10/16    Danielle Haylett           Addition of Discovery and Old Mutual bank ID and
+                                                   branch code
+ V3.6     2026/05/11    Danielle Haylett           General updates
+
+
+
+
+                                           Page 1 of 30                             Version 3.7
+Contents
+Contents ................................................................................................................................................ 2
+1.      Disclaimer ..................................................................................................................................... 3
+2.      Introduction ................................................................................................................................... 3
+     2.1.       System Overview ................................................................................................................ 3
+     2.2.       Security................................................................................................................................. 3
+     2.3.       Best Practice for Webservice Consumption ................................................................... 3
+3.      Connection.................................................................................................................................... 3
+4.      Mandate Initiation Webservice .................................................................................................. 4
+     4.1.       Inputs (JSon Layout) .......................................................................................................... 4
+     4.2.       Outputs (Json Layout) ........................................................................................................ 5
+     4.3.       Input Fields Description ..................................................................................................... 6
+     4.4.       Output Fields Description ................................................................................................ 11
+5.      Appendices ................................................................................................................................. 12
+     5.1.       Frequency .......................................................................................................................... 12
+     5.2.       Collection Day ................................................................................................................... 12
+     5.3.       Identification Type ............................................................................................................. 14
+     5.4.       Account Type..................................................................................................................... 14
+     5.5.       Financial Institution ID ...................................................................................................... 14
+     5.6.       Bank Universal Branch Codes ........................................................................................ 15
+     5.7.       Debit Value Type ID ......................................................................................................... 15
+     5.8.       Entry Class ......................................................................................................................... 16
+     5.9.       DebiCheck Error Codes ................................................................................................... 17
+     5.10.      NuPay Error Codes .......................................................................................................... 30
+
+
+
+
+                                                                  Page 2 of 30                                                    Version 3.7
+   1. Disclaimer
+The DebiCheck payment stream is still under development, thus this document is subject to
+change and it is not the final draft.
+
+   2. Introduction
+This document describes the methods used to load a DebiCheck mandate via NuPay
+webservices.
+
+   2.1.    System Overview
+The merchant will be sending a request type to NuPay via webservices. NuPay needs to
+accept the request and authenticate the merchant using the authentication string. Once
+authentication has taken place the data sent through will be processed. All requests are
+handled by the below mentioned methods of the webservice.
+
+   2.2.    Security
+Security measures include the use of Secure Sockets Layer (SSL) for the connection. It is
+required to use https instead of the normal http when connecting to the server.
+
+   2.3.    Best Practice for Webservice Consumption
+The webservices adhere to the Restful standard, which dictates that the input and output is
+Json data. RESTful web services are built to work best on the web. Representational State
+Transfer (REST) is an architectural style that specifies constraints, such as the uniform
+interface, that if applied to a web service induce desirable properties, such as performance,
+scalability, and modifiability, that enable services to work best on the web. The suggested
+method of using this web service is to supply a JSON call with all the input parameters.
+
+   3. Connection
+URL: https://btm.nupay.co.za/wsDebiCheck/mandate_initiation
+
+
+
+
+                                        Page 3 of 30                           Version 3.7
+4. Mandate Initiation Webservice
+4.1.   Inputs (JSon Layout)
+   {
+           "auth":"",
+           "cardAcceptor": "",
+           "frequency": "",
+           "collectionDay": "",
+           "clientReference": "",
+           "contractReference": "",
+           "debtorName": "",
+           "debtorIdType": "",
+           "debtorId": "",
+           "debtorAccountNumber": "",
+           "debtorAccountType": "",
+           "debtorBankId": "",
+           "debtorBranchNumber": "",
+           "debtorIdUltimate": "",
+           "debtorPhoneNumber": "",
+           "debtorEmail": "",
+           "debtorAuthenticationRequired": "",
+           "firstCollectionAmount": "",
+           "firstCollectionDate": "",
+           "instalmentAmount": "",
+           "maxCollectionAmount": "",
+           "adjustmentCategory": "",
+           "adjustmentAmount": "",
+           "adjustmentRate": "",
+           "startDate": "",
+           "dateAdjustmentRule": "",
+           "debitValueTypeId": "",
+           "instalments": "",
+
+
+
+
+                                        Page 4 of 30   Version 3.7
+             "trackingIndicator": "",
+             "mac": "",
+             "authenticationType": "",
+             "entryClass": "",
+             "loadType": "",
+             "nonWarehouseMandate": "",
+             "smsOptIn": "",
+             "employerCode": "",
+             "insuranceModelID": "",
+             "insuranceAmount": ""
+   }
+
+4.2.   Outputs (Json Layout)
+
+   {
+         “referenceNumbers”:
+         {
+                   “mandateRequestTranId”: “”,
+                   “nedbankMessageId”: “”,
+                   “clientReference”: “”,
+                   “mandateID”: “”,
+                   “contractReference”: “”
+         },
+         “Channel”: “”,
+         “Status”: “”,
+         “ResultCode”: “”,
+         “Date”: “”
+   }
+
+
+
+
+                                        Page 5 of 30   Version 3.7
+       4.3.   Input Fields Description
+Data Element          Data Type    Mandatory (M),                     Description
+                                    Optional (O),
+                                  Co-dependent (C)
+Auth                  string             M              Username and password in format
+                                                        “username:password” and
+                                                        Base64Encoded
+Card acceptor         string                M           Merchant number.
+                                                        This is a unique number supplied by
+                                                        NUPAY
+                                                        Must be zero padded 15 digits.
+
+                                                        Example: 000005500000010
+
+Frequency             string               M            See Appendix 5.1
+Collection day        string              M, C          The collection day must align to the
+                                                        frequency required.
+                                                        0-30, 99
+                                                        See Appendix 5.2
+Client reference      string                M           Non-validated user defined field
+                                                        Character limit is 35 characters.
+Contract reference    string                O           Must be unique. May not contain
+                                                        spaces or special characters.
+
+                                                        If left blank, a contract reference will
+                                                        be autogenerated.
+
+                                                        Character limit is 14 characters.
+Debtor name           string                M           Account holder’s name
+                                                        Character limit is 30 characters.
+Debtor ID type        string               M            See Appendix 5.3
+Debtor ID             string              M, C          Depending on ID type, valid ID
+                                                        number, passport or temporary
+                                                        residence ID or Company registration
+                                                        number
+Debtor account        string                M           Payer’s account number
+number                                                  Character limit is 19 characters.
+
+                                                        Please note mandates cannot be
+                                                        loaded against business accounts
+Debtor account type   string                M           Debtor account type must be a valid
+                                                        account type.
+                                                        See Appendix 5.4
+Debtor bank ID        string                M           Financial institution ID.
+                                                        See Appendix 5.5
+Debtor branch         string                M           Bank universal branch number.
+number                                                  See Appendix 5.6
+Debtor ID ultimate    string                O           User defined field.
+                                                        Character limit is 35 characters.
+
+
+
+
+                                         Page 6 of 30                          Version 3.7
+Debtor phone            string      M           Mobile number needs to cater for the
+number                                          international standard (+27).
+                                                Example “+27-823509883”
+Debtor email            string      O           Email address of debtor.
+                                                Character limit is 90 characters
+Debtor                  string      M           0227 – Debtor authorisation is
+authentication                                  required.
+required                                        This must be used with Authentication
+                                                Type “BATCH” for Transaction type
+                                                TT2 Delayed
+
+                                                OR
+                                                “REAL TIME” for Transaction type
+                                                TT1 Delayed
+
+
+                                                0230 – Authorisation is required in
+                                                Real Time and is processed using cell
+                                                number that is registered at the bank.
+                                                This must be used with Authentication
+                                                Type “REAL TIME” for Transaction
+                                                type TT1 Realtime
+
+                                                0997 – No debtor authorisation
+                                                required. RM (Registered Mandate)
+                                                Authentication type REAL TIME or
+                                                BATCH can be used.
+
+First collection        string     O, C         Currency ZAR. Format 0.00.
+amount                                          If entered, first collection date required
+                                                and vice versa.
+                                                Character limit is 16 characters.
+                                                This is a once off debit and will be
+                                                seen as instalment ‘0’
+First collection date   string     O, C         If entered, first collection amount
+                                                required and vice versa.
+                                                Format YYYY-MM-DD
+                                                This is a once off debit and will be
+                                                seen as instalment ‘0’
+Instalment amount       string      M           Based on fixed, usage, variable for
+                                                maximum collection amount.
+                                                Currency ZAR. Format 0.00.
+                                                Character limit is 16 characters
+Max collection          string      M           The Maximum Collection Amount
+amount                                          cannot be
+                                                greater than 1.5 times the Instalment
+                                                Amount
+                                                if Debit Value Type is “FIXED” or
+                                                “VARIABLE”.
+                                                Example: If R100.00 is the Instalment
+                                                Amount, Maximum Collection Amount
+                                                may not
+                                                exceed R150.00
+
+
+                                 Page 7 of 30                          Version 3.7
+                                              - The Maximum Collection Amount
+                                              must be
+                                              equal to, or greater than the
+                                              Instalment
+                                              Amount.
+                                              Fixed to 2 decimal places. Example
+                                              R1.50.
+                                              Character limit is 16 characters
+Adjustment category   string      M           This field may contain:
+                                              “N” – Never,
+                                              “Q” – Quarterly,
+                                              “A” – Annually,
+                                              “B” – Bi-annually or
+                                              “R” – Repo
+
+                                              “N, Q, A, B, R” may be used with
+                                              “Variable”
+                                              and “Usage Based” debit type value
+
+                                              “FIXED” can only use “N”.
+Adjustment amount     string      C           Based on adjustment category.
+                                              Adjustment Amount to increase by per
+                                              Adjustment Category
+                                              If Adjustment Category is, “N”, then
+                                              field not
+                                              required.
+
+                                              Requires a value when “Adjustment
+                                              Category” is “Q, A, B”
+
+                                              Either “Adjustment Rate” to be used
+                                              or
+                                              “Adjustment Amount”. Both fields may
+                                              not
+                                              be populated with Adjustment
+                                              Category “Q, A,
+                                              B”
+Adjustment rate       string      C           Based on adjustment category.
+
+                                              Adjustment rate to increase by
+                                              Adjustment
+                                              Category
+
+                                              The field must be numeric and allow 3
+                                              digits before the decimal point and 2
+                                              digits after the decimal point.
+                                              Example Format: 1.50 = 1.5%
+
+
+                                              If Adjustment Category is “N”, then
+                                              field not required.
+
+
+
+                               Page 8 of 30                        Version 3.7
+                                               Requires a value when
+                                               “Adjustment
+                                               Category” is “Q, A, B”
+
+                                               When Adjustment Rate is "N", "0"
+                                               filled
+                                               Either "Adjustment Rate" to be used
+                                               or
+
+                                               "Adjustment Amount". Both fields may
+                                               not
+                                               be populated with Adjustment
+                                               Category "Q, A,
+                                               B"
+Start date             string      M           Date the mandate must commence.
+                                               Format YYYY-MM-DD.
+Date adjustment rule   string      M           Either Y or N
+                                               If “Y”, the instalment debit date can be
+                                               changed. If “N”, the date cannot be
+                                               changed.
+
+                                               We recommend setting this field to
+                                               “Y”, unless there is a specific use
+                                               case that requires this to be “N”.
+Debit value type ID    string      M           See Appendix 5.7
+
+                                               Please note when loading a FIXED /
+                                               VARIABLE a user will not be able to
+                                               amend the instalment amount. If you
+                                               would want to amend the amount,
+                                               please load as USAGE
+
+Instalments            string      M           Number of instalments.
+
+                                               Maximum of 30 years for any selected
+                                               frequency (See Appendix 5.1 for each
+                                               Frequency’s Term Limits)
+
+                                               When the number of instalments on
+                                               the Mandate is greater than 5 years
+                                               the mandate will load as
+                                               recurring/perpetual
+Tracking indicator     string      M           Number of tracking days.
+                                               00 – No tracking
+                                               01 to 10 – 1 to 10 days respectively.
+Mac                    string      O           Used for TT3. This requires terminal
+                                               integration. Card and pin used to
+                                               obtain a mac which is then used to
+                                               initiate a mandate. See “Debtor
+                                               Authentication Required” field.
+
+
+
+
+                                Page 9 of 30                         Version 3.7
+                                               For more info, consult NuPay
+                                               (ProductIntegrations@Nupay.co.za)
+Authentication type   string      M            REAL TIME
+                                               PREAUTH (used for a mac)
+                                               BATCH (used for delayed batches
+                                               sent to the bank at different time
+                                               intervals during the day)
+Entry class           string      M            See Appendix 5.8
+Load Type             string      O            This field does not need to be
+                                               included in the request. A mandate
+                                               can be loaded as “active” or “inactive”.
+                                               An “inactive” mandate can be
+                                               activated at a later stage. This
+                                               functionality requires customer opt in
+                                               on NUPAYS system.
+
+                                               If field is left blank, mandate will be
+                                               loaded active automatically.
+
+                                               0 = inactive
+                                               1 = active
+Non-warehouse         string      O            This field does not need to be
+mandate                                        included in the request. A mandate
+                                               can be loaded as warehouse or non-
+                                               warehouse mandate. For a non-
+                                               warehouse mandate, the collection is
+                                               done separately.
+
+                                               Warehouse mandate = 0
+                                               Non-warehouse mandate = 1
+SMS Opt In            String      O            This field does not need to be
+                                               included in the request. The field opts
+                                               in the customer for an additional SMS
+                                               at the cost of the merchant. The SMS
+                                               is sent to the debtor phone number
+                                               provided. If left blank, the field
+                                               defaults to “N”.
+
+                                               The following options apply:
+                                               Y = yes
+                                               N = no
+Employer Code         String      O            Optional user defined field that can be
+                                               left blank.
+
+                                               This field may only contain
+                                               alphanumeric characters. Special
+                                               characters are not allowed.
+                                               Character limit is 8 characters
+Insurance model ID    String      O            Unique insurance model ID that has
+                                               been configured for the specific
+                                               merchant.
+
+
+
+
+                               Page 10 of 30                          Version 3.7
+                                                          Applies to TT1 Real time and
+                                                          Delayed, TT2 and TT3.
+Insurance amount       String              O, C           This field must be populated if the
+                                                          insurance model ID field is populated.
+
+                                                          This is the insurance amount in
+                                                          Rands, for example 1.50 = R1.50
+
+
+    4.4.    Output Fields Description
+  Data Element              Data Type     Description
+
+  Mandate request tran id       string    Mandate request transaction identifier
+
+  Bank message id               string    Message from the bank
+
+  Client reference              string    Client reference.
+
+                                          User defined.
+
+  Contract reference            string    Contract reference.
+
+                                          Must be unique.
+
+  Mandate ID                    string    Mandate ID
+  Channel                       string    ABSA CAPI or NEDCOR MQ
+
+  Status                        string    Accepted, Rejected, Pending Auth, Suspended, No
+                                          Response
+
+  Result code                   string    See Appendix 5.9. and 5.10
+
+  Date                          string    Date and time in format
+
+                                          “YYYY-MM-DDThh:mm:ss”
+
+
+
+
+                                         Page 11 of 30                         Version 3.7
+ 5. Appendices
+ 5.1.   Frequency
+Frequency   Description                                               Instalments
+                                                                         Limit
+
+ADHO        Monthly By Rule                                                360
+
+FRTN        Fortnightly: Event takes place once every two weeks            780
+
+MIAN        Bi Annual: Event takes place once every six months or          60
+            two times a year.
+
+MNTH        Monthly Event: Event takes place once every month or           360
+            once a month.
+
+QURT        Quarterly Event: Event takes place once every three            120
+            months or four times a year.
+
+WEEK        Weekly:      Event takes place once a week                    1560
+
+YEAR        Annual Event: Event takes place once every year or once        30
+            a year.
+
+
+
+ 5.2.   Collection Day
+Frequency                   Rule
+
+ADHO                        01 - Last Monday
+
+                            02 - Last Tuesday
+
+                            03 - Last Wednesday
+
+                            04 – Last Thursday
+
+                            05 - Last Friday
+
+                            06 - Last Saturday
+
+                            07 - First Monday
+
+                            08 - First Tuesday
+
+                            09 - First Wednesday
+
+                            10 – First Thursday
+
+                            11 - First Friday
+
+                            12 - First Saturday
+
+                            14 - 2nd Last Day
+
+
+
+
+                                   Page 12 of 30                      Version 3.7
+       99 - Last Day
+
+FRTN   01 (Monday) to 07 (Sunday)
+
+       (1st week)
+
+       08 (Monday) to 14 (Sunday)
+
+       (2nd week)
+
+MIAN   01-30
+
+       99 - Last Day
+
+       (for February date is 28 if
+       previously indicated 29th)
+
+MNTH   01-30
+
+       (for February date is 28 if
+       previously indicated 29th)
+
+QURT   01-30
+
+       99 - Last Day
+
+       (for February date is 28 if
+       previously indicated 29th)
+
+WEEK   01 (Monday)
+
+       02 (Tuesday)
+
+       03 (Wednesday)
+
+       04 (Thursday)
+
+       05 (Friday)
+
+       06 (Saturday)
+
+       07 (Sunday)
+
+YEAR   01-30
+
+       99 - Last Day
+
+       (for February date is 28 if
+       previously indicated 29th).
+
+
+
+
+               Page 13 of 30         Version 3.7
+      5.3.   Identification Type
+ Identification Type         Description
+
+ 1                           Passport
+
+ 2                           ID Document
+
+ 3                           Temporary Residence ID
+
+ 4                           Juristic
+
+
+
+      5.4.   Account Type
+ Account types               Description
+
+ 01                          Current Account
+
+ 02                          Saving Account
+
+ 03                          Transmission Account
+
+Please note that Account Type must be entered exactly as above i.e 01, 02 or 03
+
+
+
+      5.5.   Financial Institution ID
+ Code                  Bank
+ 1                     SBSA
+
+ 2                     Nedbank
+
+ 3                     FNB
+
+ 6                     GroBank (BOA – Bank of Athens)
+
+ 7                     African Bank
+
+ 9                     Mercantile
+
+ 10                    Capitec
+
+ 16                    ABSA
+
+ 19                    Ubank
+
+ 44                    Bidvest
+
+ 55                    Finbond
+
+
+
+
+                                        Page 14 of 30                  Version 3.7
+61                  Tyme Bank
+
+63                  Discovery Bank
+
+67                  Old Mutual Bank
+
+
+
+     5.6.   Bank Universal Branch Codes
+Universal Branch Code                         Bank Name
+
+051001                                        Standard Bank of S.A. LTD
+
+198765                                        Nedbank
+
+250805                                        First Rand Bank
+
+410506                                        Grobank
+
+430000                                        African Bank
+
+450105                                        Mercantile
+
+470010                                        Capitec Bank Limited
+
+632005                                        ABSA
+
+431010                                        Ubank
+
+462005                                        Bidvest Bank LTD
+
+589000                                        Finbond Mutual Bank
+
+250655                                        First National Bank
+
+410506                                        S.A. Bank of Athens LTD
+
+678910                                        Tyme Bank
+
+679000                                        Discovery Bank
+
+352000                                        Old Mutual Bank
+
+
+
+     5.7.   Debit Value Type ID
+Type Code                                     Debit Value Types
+
+1                                             FIXED
+
+2                                             VARIABLE
+
+3                                             USAGE BASED
+
+
+
+
+                                      Page 15 of 30                       Version 3.7
+  5.8.   Entry Class
+Entry Class Codes      Description
+
+0021                   Insurance Premium
+
+0022                   Pension Fund Contribution
+
+0023                   Medical Aid Fund Contribution
+
+0026                   Unit Trust Purchase
+
+0028                   Charitable or religious contributions
+
+0031                   H.P. Repayment
+
+0032                   Account Repayment
+
+0033                   Loan Repayment (other than Mortgage)
+
+0034                   Rental-Lease (other than Property)
+
+0035                   Service Charge (Maintenance of Service Agreements, etc.)
+
+0036                   Service Charge (Variable Amounts)
+
+0037                   Value Added Tax (Vat collection)
+
+0041                   Rent (Property)
+
+0042                   Bond Repayment
+
+0044                   Bank Use - Debit Transfer
+
+0046                   Bank use – Cheque Card Debits
+
+
+
+
+                                 Page 16 of 30                      Version 3.7
+  5.9.   DebiCheck Error Codes
+error_code   description
+900000       Transaction Successful
+900002       Insufficient funds
+900003       No Debits allowed on Account
+900004       Payment stopped by Account Holder
+900005       Inactive account
+900006       Account Frozen
+900008       Acount in liquidation
+900010       Account in sequestration
+900012       Account closed
+900018       Account holder deceased
+900022       Account effects not cleared
+900026       Non such Account
+900040       Item Limit Exceeded
+900044       System Issues at Debtor bank
+900048       Debtor Account Number Fails CDV Routine
+900056       Not Fica compliant
+900099       Collection in Tracking
+901000       Message ID not completed
+901001       BIC code in MsgID invalid
+901002       Generation number in MsgID invalid
+901003       Sequence number not 000000001
+901004       Sequence number is not continuous
+901005       Message Identifier is not unique
+901006       Creation date and time missing
+901007       Creation date and time in Group Header invalid
+901008       Number of transactions in header not numeric
+901009       Number of transactions invalid at group level
+901010       Control sum is not numeric
+901011       Control sum is not equal to sum of transactions
+901012       Total interbank settlement amount is not numeric
+901013       Total interbank settlement amount does not equal sum of the transactions
+901014       Interbank settlement date has spaces
+901015       Interbank settlement date is invalid
+901016       Clearing System identifier invalid
+901017       Instructing agent BIC code invalid
+901018       Invalid Payment Identifier Structure
+901019       BIC code in payment identification is invalid
+901020       BIC code in payment identification does not match Instructing agent
+901021       Settlement date is not a valid date
+901022       Settlement date invalid for Credit Transfer service
+901023       Payment identifier transaction sequence number invalid
+901024       Duplicate payment transaction identifier
+
+
+
+                                     Page 17 of 30                         Version 3.7
+901025   Clearing Channel not equal to RTGS
+901026   Service Level is invalid
+901027   Category Purpose Code is invalid
+901028   Interbank Settlement Amount is zero
+901029   Currency code on transactions differ from that on the group header
+901030   Interbank Settlement Date is supplied in Group header and transactions
+901031   The number of fractional digits must comply with ISO
+901032   Exchange rate is not permitted unless instructed amount is supplied
+901033   Incorrect charge bearer content
+901034   Ultimate debtor name is same as debtor name
+901035   No spaces required Debtor Name
+901036   Debit account not completed
+901037   Debit agent not completed
+901038   No spaces required Creditor Name
+901039   Ultimate Creditor Name is same as Creditor Name
+901040   Creditor Account not completed
+901041   Invalid Country Code
+901042   Invalid Regulatory Reporting Transaction
+901043   Creditor Agent not completed
+901044   The ACH identifier is incorrect
+901045   Invalid Service Code
+901046   Group Reason Code invalid
+901047   Unable to match group message identifier on payment return
+901048   Return identifier must be unique
+901049   Return transaction sequence number must be contiguous
+901050   Return transaction sequence number must start at one daily
+901051   Invalid End to End Transaction identifier
+901052   Original Payment Identifier not matched
+901053   Returned interbank settlement amount not equal to original amount
+901054   Invalid Transaction Reason code
+901055   Settlement method is invalid
+901056   Duplicate credit transfer
+901057   Cancellation did not match original payment at ACH
+901058   Duplicate credit return
+901059   Resolution of investigation not matched to original cancellation request
+901060   Invalid Tracking Code
+901061   Invalid Instalment Sequence
+901062   Invalid Entry Class
+901063   Interbank settlement amount currencies differ
+901064   Incorrect Requested Collection Date
+901065   The Contact Details for the Creditor are missing
+901066   The Creditor Account Number is invalid
+901067   The Creditor Branch Code or BIC Code is invalid
+901068   The Debtor Account Type is invalid
+901069   The Debtor Branch or BIC is invalid
+
+
+                                  Page 18 of 30                         Version 3.7
+901070   Invalid Debit Sequence Type
+901072   The First Collection Date is not in the future
+901073   The last collection date is not in the future
+901075   Payment Orig Bic Invalid
+901076   Payment Dest Bic Invalid
+901077   Creditor account is invalid
+901078   Instructing Agent is invalid
+901079   Instructed Agent is invalid
+901080   Original message type invalid
+901081   Invalid Status Group Code
+901082   Invalid Reason Code
+901083   Invalid Creditor Contact Details
+901084   Invalid Debit Value Type
+901085   Initiating party may not be spaces
+901086   Invalid Mandate Reason Code
+901087   Invalid Accept Indicator
+901088   Mandate Request Type is invalid
+901089   Transaction Id not matched to original Transaction id
+901090   Ultimate Creditor Name may not be spaces
+901091   Ultimate Debtor Name may not be spaces
+901092   Mandate Reference Number may not be blank or spaces
+901093   Contract reference not matched to original
+901094   Invalid Instructed Amount on Mandate Suspension
+901095   Mandate acceptance out of sequence
+901100   Tracking Indicator invalid
+901101   Invalid authorisation Code
+901102   Invalid Instalment Occurrence
+901103   Invalid Instalment Frequency
+901104   Invalid Mandate Initiation Date on mandate
+901105   Invalid TO date on mandate
+901106   Invalid First Collection Date on mandate
+901107   Invalid Final Collection Date
+901108   Invalid Instalment Amount on mandate
+901109   Invalid Initial Amount on mandate
+901110   Invalid Final Collection Amount on mandate
+901111   Instalment amount is greater than the Maximum Collection Amount
+901112   Invalid Threshold Amount on mandate
+901113   Invalid Creditor Agent on mandate
+901114   Invalid Creditor Account on mandate
+901115   Invalid Debtor Account Number on mandate
+901116   Invalid Debtor Agent on mandate
+901117   Invalid Authentication Indicator on mandate
+901118   Invalid Authentication Type on mandate
+901119   Invalid Debit Value Type on mandate
+901120   Invalid Collection Day on mandate
+
+
+                                Page 19 of 30                       Version 3.7
+901121   Invalid Date Adjustment Rule Indicator on mandate
+901122   Invalid Debtor identifier on mandate
+901123   Debtor Account Number fails CDV
+901124   Mandate Reference Number is blank or spaces
+901125   Invalid Adjustment Frequency on mandate
+901126   Invalid Adjustment Rate on mandate
+901127   Invalid Adjustment Amount on mandate
+901128   Invalid Creditor Name on mandate
+901129   Invalid Ultimate Creditor on mandate
+901130   Invalid Ultimate Debtor on mandate
+901131   Invalid Contract Reference on mandate
+901132   First Collection Date on mandate may not be amended to an earlier date
+901133   Contract Reference not permitted to be amended post the initial Collection
+901134   Invalid Initiating Party
+901135   Tracking Cancellation Indicator Invalid
+901136   Mandate Requested Identifier not found
+901137   First Collection Date on mandate may not be amended to an earlier date
+901138   Mandate amendment not matched
+901139   Mandate amendment date invalid
+901140   Mandate is not in a status to be amended
+901141   Mandate amendment date error
+901142   Mandate amendment failed due to collection response outstanding
+901143   Mandate Cancellation Reason Code is invalid
+901144   Original Mandate Request Identification is not matched
+901145   Mandate cancellation not matched using Mandate Reference Number
+901146   The First Collect ion Date must be 4 days greater than load date
+901147   Invalid Debtor Name on mandate
+901148   Interbank Settlement Amount is zero
+901149   Instalment amount may not be greater than Maximum Amount
+901150   First Collection Date must be greater than or equal to From Date
+901152   The Collection Amount may not exceed the Maximum Collection Amount
+901153   The Maximum amount may not change
+901154   The Country on the address fields may not be changed
+901155   The Creditor Scheme may not be changed
+901156   Creation Date and time may not be in the future
+901158   Message is not for this system
+901159   The mandate amendment reason code is invalid
+901160   Institution is not logged onto system
+901161   Mandate not at a state that allows for amendments
+901162   Mandate Reference Number is required
+901163   Mandate Request Transaction Identifier is spaces
+901164   Bank in Mandate Request Transaction Identifier is invalid
+901165   Date in Mandate Request Transaction Identifier is invalid
+901166   Invalid First Collection Amount on Mandate
+901167   Control sum MAC validation failure
+
+
+                                  Page 20 of 30                         Version 3.7
+901168   Seven Consecutive unsuccessful collections
+901169   Amendment not in period of adjust category
+901170   Creditor Abbreviated Short Name may not be spaces
+901171   Interbank Settlement Date is outside the range into the future
+901172   Duplicate direct debit request
+901173   Duplicate debit return
+901174   Duplicate Cancellation request
+901175   Duplicate Mandate Suspension request
+901176   Duplicate Mandate Suspension Confirmation
+901177   Transaction Disputed based on Invalid Date
+901178   Transaction Disputed based on Invalid Amount
+901179   Sequence Number in Mandate Request Transaction Number Invalid
+901180   Invalid Transaction Status
+901181   Multiple collections in a payment cycle
+901182   Invalid Authorisation Code as per Accept Indicator
+901184   MAC key does not match
+901185   Mandate Request Transaction Identifier must match original message
+901186   The Debtor Account Type and Account number are required on amendment
+901187   MAC is required if Debtor Authentication Required element is 0228
+901188   Creditor Abbreviated Short Name not matched
+901189   MAC must not be populated if Debtor Authentication Required element is not 0228
+901190   Invalid Adjustment Rate or amount for category on mandate
+901191   The Debtor Bank Branch Number and Account number are required on amendment
+901192   MAC is invalid
+901193   Invalid Adjustment Category for Debit Value Type FIXED
+901195   First Collection Date as well as First Collection Amount must be populated
+901196   Invalid Creditor Bank Member ID
+901197   Invalid Debtor Bank Member ID
+901198   Currency Code must be ZAR for South Africa
+901199   Mandate requires re authentication
+902001   Assignment may not be spaces
+902002   Assignment must contain valid AC ACH
+902003   Service ID on Assignment is invalid
+902004   BIC code in Assignment ID invalid
+902005   Invalid file type
+902006   File number is not in sequence
+902007   Assigner BIC code invalid
+902008   Assignee BIC code invalid
+902009   Creation date invalid
+902012   Original interbank settlement amount is zero
+902013   Original interbank settlement date is spaces
+902014   Assignee BIC code is invalid
+902015   Cancellation code is invalid
+902016   Confirmation status is invalid
+902017   Original transaction ID is spaces
+
+
+                                Page 21 of 30                        Version 3.7
+902018   Original transaction End to End ID is spaces
+902019   Transaction Cancellation Status code is invalid
+902020   Cancellation Status Reason Code is invalid
+902021   Original interbank settlement amount is zero on ROI
+902022   Original interbank settlement date is spaces on ROI
+902023   Cancellation request is out of date
+902024   Mandate Suspension sequence number error
+902025   Mandate Suspension identifier invalid
+902026   Original interbank settlement amount does not match transaction amount
+902027   Invalid Mandate Suspension identifier
+902028   Response not matched to request
+902029   Internal system error on real time system
+902100   Debit Amount not equal to Initial Amount
+902101   Debit Amount not equal to Instalment Amount
+902102   Debit amount exceeds Threshold Amount
+902103   Debit amount exceed Final Collection Amount
+902104   Debit date must equal First Collection Date
+902105   Debit date must equal Last Collection Date
+902106   Creditor Name must equal Creditor Name on mandate
+902107   Invalid short name on debit
+902108   Debtor name must equal debtor name on mandate
+902109   Debtor account must be equal to debtor account on mandate
+902110   Mandate Id on debit must equal the Mandate Reference Number on mandate
+902111   Contract Reference does not match mandate
+902112   Mandate Authentication Date is invalid
+902113   Unable to validate file number invalid originating bank identifier
+902114   Invalid country code
+902115   Debit Amount exceeds Instalment Amount on Mandate
+902116   Debit amount may not exceed Maximum Collection Amount on mandate
+902117   First instalment is not equal to First Collection Amount on mandate
+902118   Debtor Account is not open and active
+902119   Unable to reach debtor for authentication
+902120   Duplicate acceptance message identifier
+902121   Invalid file structure
+902122   Amendment cannot be processed while previous amendment not accepted
+902123   Invalid Debtor name of mandate information request
+902124   Bank Identifier on file name must be the same as Instructing Agent Bank Identifier
+902125   Instructing Agent and Instructed Agent cannot have the same Bank Identifier
+902126   Mandate is not in a status to be cancelled
+902127   Invalid Mandate Download Request Type
+902134   Message Id Structure Incorrect
+902135   Invalid Personal Identification type
+902136   Mandates not allowed against this account
+902137   Debit Sequence Type not equal Instalment Occurrence on mandate
+902138   Debit Sequence Type not valid for Instalment Occurrence on mandate
+
+
+                                  Page 22 of 30                         Version 3.7
+902139   Collection Amount is greater than Instalment Amount
+902140   Tracking Period not equal to mandate
+902141   Mandate Request Identifier structure error
+902142   Cellphone number is invalid
+902143   An Amend to the field Requires a new Mandate
+902144   Once off instalment is not equal to First Collection Amount on mandate
+902145   Mandate has expired
+902146   Mandate initiation request has expired
+902147   Original message identification is not matched
+902148   Authentication status is invalid
+902149   Mandate in Suspended state
+902151   Request Transmission Number Required
+902152   Request Transaction Identifier must be unique
+902153   Reason Code must be supplied
+902154   New Mandate Required Account and ID Number in same Amendment request
+902200   Account Invalid
+902201   Duplicate request response from debtor still pending
+902202   Previously Authorised
+902203   All transactions invalid
+902204   Mandate already exists
+902205   Message rejected
+902206   File exceed maximum specified number of records
+902207   Mandate reply already processed
+902208   Duplicate response for mandate request
+902232   Mandate Cancelled due to early settlement
+902233   Contract Expired
+902234   Fraud detected Mandate Cancelled
+902235   Mandate Instalment Amount exceeds industry limit
+902236   Adjustment Amount required for amendments to Adjustment Category
+902237   Collection received from creditor under investigation for DOA
+902317   Debit Sequence Type not equal Instalment Occurrence on mandate
+902318   Debit Sequence Type not valid for Instalment Occurrence on mandate
+902319   Mandate cancelled and collection removed from tracking
+902335   Mandate Instalment Amount exceeds industry limit
+902400   Relationship between Message ID Auth Type and Debtor Auth Required is incorrect
+910000   Successful
+910001   Account Number is invalid
+910002   Account is not matched to ID number
+910003   Account Number not linked to clients profile
+910004   Account open and active incorrect contact details 0229
+910005   Account open and active no contact details
+910006   Multiple signatories not allowed on account
+910099   Message Element must not be zero
+987654   BankServ Error
+999901   Bank not available
+
+
+                                Page 23 of 30                       Version 3.7
+999999   Message timed out
+AAUT     Debtor Response Authenticated
+AC01     Incorrect account number
+AC04     Closed account number
+AC06     Account specified is blocked
+AM02     Message amount is greater than allowed maximum
+AM03     Currency is not allowed
+BE01     Account number not consistent with end customer
+BE05     Unrecognised initiating party
+BE06     End customer specified is not known
+CM01     Mandate of unknown origin
+DT01     Invalid date
+E00001   Invalid header record id
+E00002   Invalid Client ID
+E00003   Invalid Charges Account number
+E00004   The Message ID must not be blank
+E00005   The creation date and time must not be blank
+E00006   Invalid trailer record id
+E00007   Invalid data rec id
+E00008   Invalid Total Num Of Transaction
+E00009   Invalid Total value
+E00010   Invalid hash total
+E00011   Record count should not cross maximum record count
+E00012   The charges account number must not be blank or spaces
+E00013   Invalid ACH ID
+E00014   Client id in Message ID should be same as Client Profile Number
+E00015   Invalid Sequence Number in Message ID
+E00016   Date in Message ID should be same as Creation Date
+E00017   Invalid Client ID
+E00018   All transactions fails
+E00019   Incorrect Field Length
+E00020   No transactions on file
+E00021   Future file date
+E00022   Error code for mandatory field validation fail
+E00023   Technical Error
+E00024   rejected due to file rejection
+E00025   Invalid structure
+E00126   Amendment reason is mandatory
+E00127   Client reference is mandatory
+E00128   Tracking indicator is mandatory
+E00129   Debtor auth required is mandatory
+E00130   Instalment occurrence is mandatory
+E00131   Frequency is mandatory
+E00132   Mandate initiation date is mandatory
+E00133   Collection instalment currency is mandatory
+
+
+                                 Page 24 of 30                        Version 3.7
+E00134   Collection instalment amount is mandatory
+E00135   Max collection currency is mandatory
+E00136   Max collection amount is mandatory
+E00137   Mandate req transmission number is mandatory
+E00138   Creditor branch number is mandatory
+E00139   Debtor identification is mandatory
+E00140   Debtor branch number is mandatory
+E00141   Authentication type is mandatory
+E00142   Collection day is mandatory
+E00143   Date adjustment rule indicator is mandatory
+E00144   ADJ category is mandatory
+E00145   Debit value type is mandatory
+E00146   Mandate info request identifier is mandatory
+E00147   Request type is mandatory
+E00148   Request type not valid
+E00149   Cancellation reason is mandatory
+E00150   Original client ref is mandatory
+E00151   Original creditor name is mandatory
+E00152   Original trans ident is mandatory
+E00153   Original debtor name is mandatory
+E00154   Original debtor branch number is mandatory
+E00155   Client id with status blocked in db
+E00156   Client id with status deleted in db
+E00157   File Date is in past
+E00158   Duplicate file for current date
+E00160   RMS details must match to original mandate
+E00258   Unsuccessful Recall Tracking stopped
+E00259   Stop presentation found
+E00260   Input file is empty
+E00261   No Header Record
+E00262   Invalid Client Profile
+E00263   Client Profile non existent
+E00264   Duplicate file SEQ Num
+E00265   No trailer record on file
+E00266   Trailer not last record
+E00267   Invalid charge Account
+E00268   Invalid Record Identifier
+E00269   Client Blocked
+E00270   Client Deleted
+E00271   More than one Header
+E00272   File name in correct
+E00273   Client ID and Flie Prefix mismatch
+E00274   File is a duplicate
+E00275   Client not loaded for recalls
+E00276   Invalid Client Type
+
+
+                                Page 25 of 30           Version 3.7
+E00277   Invalid Tran type
+E00278   ACTION DATE Not populated
+E00279   Invalid Charge Branch code
+E00280   Record Vetted
+E00281   Number of rejected transactions is more than the threshold value
+E00282   Nedbank
+FF01     Invalid file format
+MA0001   The mandate was not found please verify that the bank mandate reference is correct
+MA0002   Unauthorised mandate requested
+MA0003   Cannot return more than one mandate per status report
+MA0004   Error obtaining the mandate acceptance report
+MA0005   Cannot submit mandate
+MA0006   Cannot get bank reference number
+MA0007   Cannot get reasons list
+MA0009   Cannot get status report
+MA0010   Cannot get mandate request status
+MA0011   Cannot get mandate status
+MA0012   Cannot get pre mandate request status
+MD01     No Mandate Held
+MD02     Missing Mandate Information in Mandate
+MD07     End Customer is Deceased
+MD08     Receiving agent does not offer No Mandate Services
+MD09     Account is not open to specified mandate services
+MD10     Account is not open to specified mandate services for this creditor
+MD11     Agent to whom the mandate needs to be forwarded cannot be located
+MD12     Mandate identification is not unique to the creditor
+MD13     Incorrect Customer Authentication
+MD14     Incorrect agent in payment workflow
+MD15     Incorrect currency on transaction
+MD17     Cancellation or amendment requested By Initiating Party
+ME0010   The transacting account not linked to user
+ME0011   The account does not exist
+ME0064   Errors linking the accounts
+ME0065   The client does not exist
+ME0072   Unable to log in at this time
+ME0079   The corporate client cannot be found
+ME0080   The client account is not registered in the system
+MI0003   Mandate Initiation Date should be today date
+MI0004   First collection date cannot be in the past
+MI0005   Instalment amount is mandatory
+         Maximum Collection Amount cannot be greater than 1.5 times the Instalment
+MI0006   Amount
+MI0011   Debit value type not specified
+MI0012   Collection day should be in range of 1 to 31
+MI0013   Authentication Instrument required
+
+
+                                 Page 26 of 30                        Version 3.7
+         If the Adjustment Category is Never then the adjustment category must be equal to
+MI0014   Fixed and adjustment category must be populated for all debit value types
+MI0015   Valid future date required if the mandate release date is populated
+MI0016   Adjustment rate or Adjustment Amount not populated
+MI0017   Collection Type can only be AC
+         Message Authentication code must not be populated if Debtor Authentication
+MI0025   Instrument is not 0228
+MI0031   Collection Currency can only be ZAR
+MI0035   The original mandate cannot be found
+MI0036   Daily cut off time reached for submissions
+MI0037   Corporate does not have entitlement to do a 0 transaction
+MI0038   Debtor Contact Details required
+MI0039   Debtor name may not contain any numeric characters
+MI0040   Instalment Amount should not exceed the maximum collection amount
+MI0043   Debtor Identification has invalid document type
+MI0046   Debtor Account Number should be numbers only
+MI0049   Debtor branch number should not have a value of 000000
+         If the Debit Value Type is Fixed then the Adjustment Category must be equal to
+MI0052   Never
+         If Adjustment Category is populated and equal to Never or Repo then Adjustment
+MI0053   Rate and Adjustment Amount must not be populated
+MI0060   Incorrect format on Creditor contact details
+MI0064   Entry Class provided is not valid code
+MI0069   Invalid Amendment Code
+MI0070   Invalid Cancellation Code
+MI0071   No changes to Mandate Initiation Date and Mandate Authentication code allowed
+MI0072   Mandate requires re authentication
+         New Mandate required if Frequency Contract Reference Number Debtor Branch
+         Code Mandate Reference number Debit Value Type and A new Account number
+MI0073   with new Bank
+MI0074   Re authentication not required
+MI0076   Incorrect format for Debtor contact details
+MI0078   Incorrect format for Debtor email address
+MI0079   Contract Reference Code is not unique since transmission number 1 specified
+MI0081   Incorrect format creditor email address
+MI0082   Instalment Amount on Fixed Mandate cannot be amended without re-authentication
+         Amendments to Instalment or Max collection Amount where the Adjustment
+MI0083   Category = N requires re-authentication
+         The local instrument needs to be 0227 because the last amendment submitted on
+MI0084   the Adjustment Amount was 0 month on the CAPI Channel
+         The local instrument needs to be 0226 because the last amendment submitted on
+MI0085   the Adjustment Rate was 0 months on the CAPI Channel
+MI0087   Invalid Amendment
+MI0088   Contract Reference not permitted
+MI0089   Collection day for Weekly mandate must be between 1 and 7
+
+
+
+                                 Page 27 of 30                         Version 3.7
+MI0090   Collection day for Fortnightly mandate must be between 1 and 14
+         Collection day for ad-hoc collected mandate must be between 1 and 14 or equal to
+MI0091   99
+         Collection day for monthly collected mandate must be between 1 and 30 or equal to
+MI0092   99
+         Collection day for quarterly collected mandate must be between 1 and 30 or equal to
+MI0093   99
+         Collection day for bi-annually collected mandate must be between 1 and 30 or equal
+MI0094   to 99
+         Collection day for annually collected mandate must be between 1 and 30 or equal to
+MI0095   99
+MI0096   If the {} is populated then the first collection date must also be populated
+MI0097   Must be at least 2 days in the future for real time transactions
+         Maximum collection amount cannot be greater than 1.5 if the debit value type is
+MI0098   usage
+         Mandate request rejected as here is another transaction {ApiRequestReference}
+MI0099   already in progress against this mandate
+ML0001   Error encountered trying to retrieve bank reference number
+ML0002   Error encountered getting the mandate request status
+ML0003   Error encountered retrieving a mandate request
+ML0004   Error encountered searching for mandates
+ML0005   Error encountered retrieving the type list
+ML0006   Error encountered retrieving type details
+MN0001   Error encountered getting the mandate acceptance report
+MN0002   Error encountered while creating a mandate request
+MN0003   Could not find the corporate specified
+MN0004   Error encountered getting mandate status request report
+MN0005   Error encountered amending mandate request
+MN0006   Error encountered cancelling mandate request
+MN0007   Error encountered getting mandate initiation status report
+MN0008   Error encountered retrieving mandate Bank Reference correlation Id list
+MN0009   Error encountered getting reason list
+MN0010   Error encountered getting pre-mandate status report
+MN0011   Error encountered getting mandate amendment status report
+MN0012   Error encountered getting mandate cancellation status report
+MS0001   Error encountered getting mandate acceptance report
+MS0002   Mandate request specified is invalid
+MS0003   Mandate could not be saved
+MS0004   Error getting the mandate initiation status report
+MS0005   The mandate request has not yet been pushed to the internal system
+MS0006   The mandate could not be found by the specified correlation identifier
+MS0007   Error getting the mandate initiation status
+MS0008   Error getting the mandate request status
+MS0009   Error correlating client with new and previous mandate request
+MS0010   The mandate bank request has not been in the system
+MS0011   The mandate request creditor is invalid
+
+
+
+                                 Page 28 of 30                         Version 3.7
+MS0012   Error getting the pre mandate initiation status
+MS0013   The mandate request aggregator is invalid
+MS02     Customer rejected mandate
+NAUT     Debtor Response Not Authenticated
+NRSP     Debtor No Response
+NWIA     Not what I agree to
+R01      Technical Error
+R02      Invalid Client Profile
+R03      Invalid Charge Account Number
+R04      Invalid Data in Request
+R05      Client Profile does not exist
+R06      Client Profile is blocked or deleted
+R07      R07 Charge Account Number does not exist for the Client Profile
+R08      Mandate not found
+RC01     Bank Identifier code has incorrect format
+RF01     Transaction Reference is not unique within the message
+RR02     Missing Debtor Name
+RR03     Missing Creditor Name
+ST001    Fatal File Rejection
+ST002    Rejected Direct Debits
+ST003    Returns Validation
+ST004    Payment Cancellation
+ST005    Debit Response
+ST006    Response Validation
+ST007    Reversal Validation
+ST008    Stop Payment Request
+ST009    Resolution of Investigation
+ST010    Claim non Receipt
+ST100    Mandate Initiation or amendment or acceptance validation
+ST101    Confirmation of authentication request to debtor
+ST102    Validation of ST101 request confirmation
+ST200    Confirmation of Receipt of Dispute from debtor bank
+ST201    Confirmation of Receipt of Stop Payment from Debtor Bank
+TO01     Mandate Initiation time out not ISO
+U0       Undefined
+
+
+
+
+                                 Page 29 of 30                        Version 3.7
+  5.10. NuPay Error Codes
+Error Code       Description
+500000           Success
+500002           CAPI Exception: Invalid Inputs
+500006           Internal Web Service Error
+500007           Internal Error
+500014           ContractRef needs to be unique
+500015           Invalid amount format.
+500016           Debtor phone number format.
+500017           Debtor email address format.
+500018           Mandate not found.
+500019           Invalid amendment reason
+500020           Invalid cancellation reason
+500021           No records to extract to file
+500022           Invalid log type for batch file logging
+500023           Filename already exists in log
+500024           Filename not found in log
+500025           Invalid file length
+500026           Invalid file type
+500027           MQ Client Unable to connect to server
+500028           MQ Client Timed Out No
+500030           MQ Client I/O Error
+500031           MQ Client Empty/Null String
+500032           No Response Found
+500033           CAPI Internal Server Error
+500034           CAPI Gateway Timeout Error
+500039           Mandate not found
+500040           Change not applied
+500041           Invalid mandate_id format when attempting maintenance
+500042           Change not allowed on First Collection
+500044           Installment added to mandate
+500045           Response file empty
+500046           Invalid amount of records in response file
+500080           Start date cannot be in the past
+500089           Invalid number of instalments. Maximum instalments is 9999
+500205           Adjustment rate format is Incorrect
+
+
+
+
+                               Page 30 of 30                        Version 3.7
+

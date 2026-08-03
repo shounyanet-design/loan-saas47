@@ -1,0 +1,495 @@
+ DebiCheck Strike Date Analysis Webservice
+                 Specifications Document
+                                 DRAFT
+
+
+
+
+Version Number   Date         Modified By        Nature of Amendment
+     V1.0        2022/12/02   Danielle Haylett   Initial Draft
+     V1.1        2024/09/02   Danielle Haylett   Additional fields added to
+                                                 response
+
+
+
+
+                                Page 1 of 11                      Version 1.1
+Contents
+
+1.     Disclaimer ...................................................................................................................... 3
+2.     Introduction .................................................................................................................... 3
+     2.1.    System Overview .................................................................................................... 3
+     2.2.    Security................................................................................................................... 3
+     2.3.    Best Practice for Webservice Consumption ............................................................ 3
+3.     Connection..................................................................................................................... 3
+4.     Strike Date Analysis ....................................................................................................... 3
+     4.1.    Inputs (JSon Layout) ............................................................................................... 3
+     4.2.    Outputs (JSon Layout) ............................................................................................ 4
+     4.3.    Input Fields Description ........................................................................................ 10
+     4.4.    Output Fields Description ...................................................................................... 11
+
+
+
+
+                                                           Page 2 of 11                                               Version 1.1
+    1. Disclaimer
+The DebiCheck payment stream is still under development, thus this document is subject to
+change and it may not be the final draft.
+
+Please note there is a nominal cost associated for this service.
+
+Please obtain consent from the consumer to draw the enquiry.
+
+
+
+    2. Introduction
+Strike Date Analysis ascertains the best dates to debit Customers by determining when funds
+are most likely to be available in their bank accounts.
+
+    2.1.    System Overview
+The merchant will be sending a request type to NuPay via webservices. All requests are
+handled by the below mentioned methods of the webservice.
+
+    2.2.    Security
+Security measures include the use of Secure Sockets Layer (SSL) for the connection.
+
+    2.3.    Best Practice for Webservice Consumption
+The webservices adhere to the Restful standard, which dictates that the input and output is
+Json data. RESTful web services are built to work best on the web.
+Representational State Transfer (REST) is an architectural style that specifies constraints,
+such as the uniform interface, that if applied to a web service induce desirable properties, such
+as performance, scalability, and modifiability, that enable services to work best on the web.
+The suggested method of using this web service is to supply a JSON call with all the input
+parameters.
+
+
+
+    3. Connection
+URL: https://btm.nupay.co.za/wsDebiCheck/strike_date_analysis
+
+
+
+    4. Strike Date Analysis
+    4.1.    Inputs (JSon Layout)
+        {
+            "accessId": "",
+            "accessLvl": "",
+            "debtorId": "",
+            "auth": "
+        }
+
+
+
+
+                                             Page 3 of 11                          Version 1.1
+    4.2.      Outputs (JSon Layout)
+{
+    "accessId": "",
+    "accessLvl": "",
+    "debtorIdNumber": "",
+    "source": "",
+    "dateTimeStamp": "",
+    "strikeDateAnalysisSummary": {
+        "success": "",
+         "cancelled": "",
+         "suspended": "",
+         "failed": "",
+         "disputes": "",
+         "averageInstalmentAmount": ""
+    },
+    "responseDay": [
+        {
+              "responseDay": "",
+              "summary": {
+                  "success": "",
+                  "cancelled": "",
+                  "suspended": "",
+                  "failed": "",
+                  "disputes": "",
+                  "total": ""
+              }
+         },
+         {
+              "responseDay": "",
+              "summary": {
+                  "success": "",
+                  "cancelled": "",
+                  "suspended": "",
+                  "failed": "",
+                  "disputes": "",
+                  "total": ""
+              }
+         },
+         {
+              "responseDay": "",
+              "summary": {
+                  "success": "",
+                  "cancelled": "",
+                  "suspended": "",
+                  "failed": "",
+                  "disputes": "",
+                  "total": ""
+              }
+         },
+         {
+              "responseDay": "",
+
+
+                                         Page 4 of 11   Version 1.1
+     "summary": {
+         "success": "",
+         "cancelled": "",
+         "suspended": "",
+         "failed": "",
+         "disputes": "",
+         "total": ""
+     }
+},
+{
+     "responseDay": "",
+     "summary": {
+         "success": "",
+         "cancelled": "",
+         "suspended": "",
+         "failed": "",
+         "disputes": "",
+         "total": ""
+     }
+},
+{
+     "responseDay": "",
+     "summary": {
+         "success": "",
+         "cancelled": "",
+         "suspended": "",
+         "failed": "",
+         "disputes": "",
+         "total": ""
+     }
+},
+{
+     "responseDay": "",
+     "summary": {
+         "success": "",
+         "cancelled": "",
+         "suspended": "",
+         "failed": "",
+         "disputes": "",
+         "total": ""
+     }
+},
+{
+     "responseDay": "",
+     "summary": {
+         "success": "",
+         "cancelled": "",
+         "suspended": "",
+         "failed": "",
+         "disputes": "",
+         "total": ""
+
+
+                            Page 5 of 11   Version 1.1
+     }
+},
+{
+     "responseDay": "",
+     "summary": {
+         "success": "",
+         "cancelled": "",
+         "suspended": "",
+         "failed": "",
+         "disputes": "",
+         "total": ""
+     }
+},
+{
+     "responseDay": "",
+     "summary": {
+         "success": "",
+         "cancelled": "",
+         "suspended": "",
+         "failed": "",
+         "disputes": "",
+         "total": ""
+     }
+},
+{
+     "responseDay": "",
+     "summary": {
+         "success": "",
+         "cancelled": "",
+         "suspended": "",
+         "failed": "",
+         "disputes": "",
+         "total": ""
+     }
+},
+{
+     "responseDay": "",
+     "summary": {
+         "success": "",
+         "cancelled": "",
+         "suspended": "",
+         "failed": "",
+         "disputes": "",
+         "total": ""
+     }
+},
+{
+     "responseDay": "",
+     "summary": {
+         "success": "",
+         "cancelled": "",
+
+
+                            Page 6 of 11   Version 1.1
+         "suspended": ",
+         "failed": "",
+         "disputes": "",
+         "total": ""
+     }
+},
+{
+     "responseDay": "",
+     "summary": {
+         "success": "",
+         "cancelled": "",
+         "suspended": "",
+         "failed": "",
+         "disputes": "",
+         "total": ""
+     }
+},
+{
+     "responseDay": "",
+     "summary": {
+         "success": "",
+         "cancelled": "",
+         "suspended": "",
+         "failed": "",
+         "disputes": "",
+         "total": ""
+     }
+},
+{
+     "responseDay": "",
+     "summary": {
+         "success": "",
+         "cancelled": "",
+         "suspended": "",
+         "failed": "",
+         "disputes": "",
+         "total": ""
+     }
+},
+{
+     "responseDay": "",
+     "summary": {
+         "success": "",
+         "cancelled": "",
+         "suspended": "",
+         "failed": "",
+         "disputes": "",
+         "total": ""
+     }
+},
+{
+
+
+                            Page 7 of 11   Version 1.1
+          "responseDay": "",
+          "summary": {
+              "success": "",
+              "cancelled": "",
+              "suspended": "",
+              "failed": "",
+              "disputes": "",
+              "total": ""
+          }
+     },
+     {
+          "responseDay": "",
+          "summary": {
+              "success": "",
+              "cancelled": "",
+              "suspended": "",
+              "failed": "",
+              "disputes": "",
+              "total": ""
+          }
+     }
+],
+"multipleAccountAnalysis": [
+    {
+          "accountId": "",
+          "summary": {
+              "success": "",
+              "cancelled": "",
+              "suspended": "",
+              "failed": "",
+              "disputes": "",
+              "total": ""
+          }
+     },
+     {
+          "accountId": "",
+          "summary": {
+              "success": "",
+              "cancelled": "",
+              "suspended": "",
+              "failed": "",
+              "disputes": "",
+              "total": ""
+          }
+     },
+     {
+          "accountId": "",
+          "summary": {
+              "success": "",
+              "cancelled": "",
+              "suspended": "",
+
+
+                                 Page 8 of 11   Version 1.1
+         "failed": "",
+         "disputes": "",
+         "total": ""
+     }
+},
+{
+     "accountId": "",
+     "summary": {
+         "success": "",
+         "cancelled": "",
+         "suspended": "",
+         "failed": "",
+         "disputes": "",
+         "total": ""
+     }
+},
+{
+     "accountId": "",
+     "summary": {
+         "success": "",
+         "cancelled": "",
+         "suspended": "",
+         "failed": "",
+         "disputes": "",
+         "total": ""
+     }
+},
+{
+     "accountId": "",
+     "summary": {
+         "success": "",
+         "cancelled": "",
+         "suspended": "",
+         "failed": "",
+         "disputes": "",
+         "total": ""
+     }
+},
+{
+     "accountId": "",
+     "summary": {
+         "success": "",
+         "cancelled": "",
+         "suspended": "",
+         "failed": "",
+         "disputes": "",
+         "total": ""
+     }
+},
+{
+     "accountId": "",
+
+
+                            Page 9 of 11   Version 1.1
+                "summary": {
+                    "success": "",
+                    "cancelled": ",
+                    "suspended": "",
+                    "failed": "",
+                    "disputes": "",
+                    "bankName": "",
+                    "lastSuccessDate": "",
+                    "total": ""
+                }
+          }
+      ]
+}
+
+
+
+      4.3.     Input Fields Description
+    Data Element                      Data Type           Description
+    auth                              string              Format “username:password” and
+                                                          base64 encoded.
+    accessLvl                         string              M – merchant level
+    accessId                          string              Merchant number.
+                                                          Must be zero padded to 15 digits.
+                                                          Example: 000005500000010
+    debtorId                          string              ID number of Debtor on which report
+                                                          will be generated on
+
+
+
+
+                                               Page 10 of 11                        Version 1.1
+  4.4.   Output Fields Description
+Data Element                Data Type                Description
+accessID                    string                   Merchant number
+accessLvl                   string                   Merchant level
+debtorIdNumber              string                   ID number of Debtor
+source                      string                   WS - webservice
+dateTimeStamp               string                   Date and Time that the analysis
+                                                     report was generated
+strikeDateAnalysisSummary   string                   This is the percentage based on all
+                                                     response days for the specific
+                                                     Debtor.
+
+                                                     Detail consists of an overall
+                                                     summary based on:
+                                                        - Success
+                                                        - Cancelled
+                                                        - Suspended
+                                                        - Failed
+                                                        - Disputes
+                                                        - Average Instalment Amount
+
+responseDay                 string                   Mandate results for that Debtor
+                                                     based on day of the month.
+
+                                                     Within this detail is the summary for
+                                                     that specific day for the following:
+                                                         - Success
+                                                         - Cancelled
+                                                         - Suspended
+                                                         - Failed
+                                                         - Disputes
+                                                         - Total (total count for all the
+                                                             above)
+
+multipleAccountAnalysis     string                   This section displays all accounts
+                                                     linked to that Debtor ID.
+
+                                                     Within this detail is a summary of
+                                                     the following:
+                                                         - Account ID (specific account
+                                                              number linked to debtor ID)
+                                                         - Success
+                                                         - Cancelled
+                                                         - Suspended
+                                                         - Failed
+                                                         - Disputes
+                                                         - Bank Name
+                                                         - Last Success Date
+                                                         - Total (total count for all the
+                                                              above)
+
+
+
+
+                                     Page 11 of 11                            Version 1.1
+

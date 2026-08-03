@@ -96,7 +96,10 @@ if (!corsAllowList.length) {
   if (process.env.NODE_ENV === 'production') {
     console.warn('[CORS] No CORS_ORIGINS set — all origins are allowed. Set CORS_ORIGINS in production.');
   }
-  app.use(cors({ credentials: true }));
+  app.use(cors({ 
+    credentials: true,
+    origin: (origin, callback) => callback(null, true)
+  }));
 } else {
   app.use(cors({
     credentials: true,
@@ -137,6 +140,8 @@ app.use('/api/admin/loan-applications', loanApplicationRoutes);
 app.use('/api/admin/active-loans', activeLoanRoutes);
 app.use('/api/admin/payments', paymentRoutes);
 app.use('/api/admin/due-payments', duePaymentRoutes);
+const nupayRoutesApi = require('./routes/nupayRoutes');
+app.use('/api/v1/nupay', nupayRoutesApi);
 app.use('/api/admin/nupay', nupayRoutes);
 
 app.use('/api/admin/reports', reportRoutes);

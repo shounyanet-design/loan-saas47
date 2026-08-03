@@ -12,7 +12,9 @@
     "validate:backup": "node src/modules/ops/scripts/validateBackupRecovery.js",
     "doctor": "node src/scripts/doctor.js",
     "repair": "node src/scripts/repair.js",
-    "check": "find src -name '*.js' -print0 | xargs -0 -n1 node --check"
+    "check": "find src -name '*.js' -print0 | xargs -0 -n1 node --check",
+    "test": "node --test tests/unit/nupayService.test.js",
+    "test:nupay": "node --test tests/unit/nupayService.test.js"
   },
   "keywords": [],
   "author": "",
@@ -29,6 +31,7 @@
     "express-rate-limit": "^8.5.1",
     "helmet": "^8.1.0",
     "imagekit": "^6.0.0",
+    "joi": "^18.2.3",
     "jsonwebtoken": "^9.0.3",
     "mongoose": "^9.6.2",
     "morgan": "^1.10.1",

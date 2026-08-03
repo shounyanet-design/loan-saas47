@@ -15,7 +15,7 @@ const { encrypt, decrypt, mask } = require('../utils/crypto');
 
 // Maps a provider's logical credential keys to global .env fallbacks.
 const ENV_FALLBACK = {
-  nupay: { username: 'WEBFIN_USERNAME', password: 'WEBFIN_PASSWORD', cardAcceptor: 'NUPAY_CARD_ACCEPTOR', apiEndpoint: 'WEBFIN_BASE_URL' },
+  nupay: { username: 'NUPAY_USERNAME', password: 'NUPAY_PASSWORD', cardAcceptor: 'NUPAY_CARD_ACCEPTOR', baseUrl: 'NUPAY_BASE_URL' },
   webfin: { username: 'WEBFIN_USERNAME', password: 'WEBFIN_PASSWORD', baseUrl: 'WEBFIN_BASE_URL', appName: 'WEBFIN_APP_NAME' },
   bulksms: { token: 'SMS_AUTH_TOKEN', tokenId: 'BULKSMS_TOKEN_ID', tokenSecret: 'BULKSMS_TOKEN_SECRET', baseUrl: 'BULKSMS_BASE_URL' },
   imagekit: { publicKey: 'IMAGEKIT_PUBLIC_KEY', privateKey: 'IMAGEKIT_PRIVATE_KEY', urlEndpoint: 'IMAGEKIT_URL_ENDPOINT' },

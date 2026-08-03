@@ -1,0 +1,229 @@
+            DebiCheck Settlement Report
+                 Specifications Document
+                                 DRAFT
+
+
+
+Version Number   Date         Modified By            Nature of Amendment
+     V1.0        2019/09/12   Brandon Velloo         Initial Draft
+     V1.1        2019/10/14   Brandon Velloo         Addition of Report Fields for
+                                                     Filter Type and Value
+     V1.2        2019/12/04   Brandon Velloo         Addition of Access Level to
+                                                     Input Fields
+     V1.3        2020/03/09   Brandon Velloo         Addition of Service Account
+                                                     ID to Output Fields
+     V1.4        2022/06/20   Nolwazi Mokgobinyane   Addition of Report fields for
+                                                     Dispute Transactions
+
+
+
+
+                                  Page 1 of 7                         Version 1.4
+Contents
+1.     Disclaimer ...................................................................................................................................... 3
+2.     Introduction.................................................................................................................................... 3
+     2.1.     System Overview ................................................................................................................. 3
+     2.2.     Security .................................................................................................................................. 3
+     2.3.     Best Practice for Webservice Consumption ..................................................................... 3
+3.     Connection .................................................................................................................................... 3
+4.     System Inputs ............................................................................................................................... 4
+5.     System Outputs ............................................................................................................................ 4
+     5.1.     Settlement Transactions...................................................................................................... 4
+     5.2.     Dispute/Reversal Transactions .......................................................................................... 5
+6.     Field Descriptions ......................................................................................................................... 6
+7.     Appendix ........................................................................................................................................ 7
+     7.1.     Error Codes ........................................................................................................................... 7
+
+
+
+
+                                                                   Page 2 of 7                                                      Version 1.4
+1. Disclaimer
+The DebiCheck payment stream is still under development, thus this document is subject to
+change and it is not the final draft.
+
+2. Introduction
+This document describes the DebiCheck full function webservices for Settlement reports.
+This an alternate method to obtain the settlement reports as to what is currently available on
+the NuPayments website.
+
+   2.1.    System Overview
+The merchant will be sending a request type to NuPay via webservices. NuPay needs to
+accept the request and authenticate the merchant using the authentication string. Once
+authentication has taken place the data sent through will be processed. All requests are
+handled by the below mentioned methods of the webservice.
+
+   2.2.    Security
+Security measures include the use of Secure Sockets Layer (SSL) for the connection. It is
+required to use https instead of the normal http when connecting to the server.
+
+   2.3.    Best Practice for Webservice Consumption
+The webservices adhere to the Restful standard, which dictates that the input and output is
+Json data. RESTful web services are built to work best on the web.
+Representational State Transfer (REST) is an architectural style that specifies constraints,
+such as the uniform interface, that if applied to a web service induce desirable properties,
+such as performance, scalability, and modifiability, that enable services to work best on the
+web.
+The suggested method of using this web service is to supply a JSON call with all the input
+parameters.
+
+
+
+3. Connection
+URL: https://btm.nupay.co.za/wsDebiCheck/report/settlement_report
+
+
+
+
+                                         Page 3 of 7                             Version 1.4
+4. System Inputs
+The following inputs apply in JSon format:
+{
+            "auth":"",
+                    "merchantNumber":"",
+           "accessLvl",
+                    "dateFrom":"",
+                    "dateTo":"",
+                    “filterType”:””,
+                    “filterValue”:””
+}
+
+5. System Outputs
+    5.1.      Settlement Transactions
+The following outputs will be returned in JSon format
+{
+    “invoiceDetails”: [
+      {
+           “invoiceID”: “”,
+           “description”: “”,
+           “date”: “”,
+           “debitAmount”: “”,
+           “creditAmount”: “”,
+           “runningBalance”: “”,
+           “serviceAccountID”: “”,
+           “transactionDetails”: [
+             {
+                  “mandateID”: “”,
+                  “mandateReference”: “”,
+                  “mandateRequestTranID”: “”,
+                  “contractReference”: “”,
+                  “date”: “”,
+                  “instalmentNumber”: “”,
+                  “amount”: “”
+             },
+
+                                             Page 4 of 7   Version 1.4
+    5.2.       Dispute/Reversal Transactions
+The following outputs will be returned in JSon format
+{
+       "invoiceID": "",
+       "description": "",
+       "date": "",
+       "debitAmount": "",
+       "creditAmount": "",
+       "runningBalance": "",
+       "serviceAccountID": "”,
+       "transactionDetails": [
+
+
+                "mandateID": "",
+                "mandateReference": "",
+                "mandateRequestTranID": "",
+                "contractReference": "",
+                "date": "",
+                "amount": ""
+           },
+           {
+                "mandateID": "",
+                "contractReference": "",
+                "trackingDescription": "",
+                "debtorBank": "",
+                "creditorBank": "",
+                "instalmentAmount": ",
+                "actionDate": "",
+                "clientReference": "",
+                "status": "",
+                "dateCreated": "",
+                "instalment": "",
+                "responseDate": ""
+           }
+
+
+
+                                             Page 5 of 7   Version 1.4
+6. Field Descriptions
+                                                                            Data Type
+ Data Element              Description                                          and
+                                                                             Length
+ Auth                      Username and password in format                  String
+                           “username:password” and Base64Encoded
+                           Card acceptor. Must be zero padded.              String (15)
+ Merchant number           Must be pre-registered at NuPay.
+ Access Level              Access level is as follows:                      String (1)
+                           M = merchant
+                           S = Sub group
+                           G = Group
+ Date from                 Date the report must start from (including       String (8)
+                           specified date).
+                           Format YYYYMMDD
+ Date to                   Date the report must end (including specified    String (8)
+                           date).
+                           Format YYYYMMDD
+ Invoice ID                The id that will appear on the service account   String
+                           statement sent and can be used to see which
+                           transactions make up the settlement.
+ Description               Description of invoice ID                        String
+ Date                      Date of invoice or mandate                       String
+ Debit amount              Amount that is debited                           String
+ Credit amount             Amount that is credited                          String
+ Running balance           Balance on invoice                               String
+ Service Account ID        Service account ID                               String
+ Mandate ID                Mandate ID                                       String
+ Mandate reference         Reference of the mandate                         String
+ Mandate request tran ID   Mandate request transaction identifier           String
+ Filter type               Allowed inputs:                                  String
+                           “MID”: MandateID
+                           “CR”: Contract Reference
+                           “IID”: Invoice ID
+ Filter value              Mandate ID, Contract Reference or Invoice ID     String
+                           depending on the Filter Type.
+ Contract reference        Unique contract reference for the mandate        String
+ Instalment number         Instalment number on the mandate                 String
+ Amount                    Instalment amount                                String
+ Tracking Description      The number of tracking days.                     String
+ Debtor Bank               Banking institution of debtor                    String
+ Creditor Bank             Banking institution of creditor                  String
+ Instalment Amount         Amount of the instalment                         String
+ Action Date               Date when the transaction was presented at the   String
+                           bank
+ Client Reference          User defined field                               String
+ Status                    Instalment status description                    String
+ Date Created              Creation Date                                    String
+
+
+
+
+                                         Page 6 of 7                        Version 1.4
+7. Appendix
+  7.1.    Error Codes
+ Code                   Description
+ 500002 – 13            Authentication Failed: User Currently Blocked.
+ 500002 – 14            Authentication Failed: Too many failed attempts; User Blocked.
+ 500002 – 15            Authentication Failed: No User found or Incorrect Details.
+ 500002 – 20            Authentication Failed: Please insert ":" between username and
+                        password before encoding.
+ 500002 – 21            Authentication Failed.
+ 500002 – 23            Auth cannot be null or empty.
+ 500002                 User Credentials not linked to merchant. Please use different
+                        credentials.
+ 500002                 Generated token is invalid.
+ 500002                 Parse exception in ‘method name’.
+ 500002                 No Data for Disputed Reports.
+ 500075                 Invalid Filter Type.
+ 500080                 No Records Found.
+
+
+
+
+                                     Page 7 of 7                           Version 1.4
+

@@ -485,6 +485,21 @@ const loanApplicationSchema = new mongoose.Schema(
     signedAgreement: { type: String, default: '' },
     debicheckMandateStatus: { type: String, default: '' },
     debicheckMandateReference: { type: String, default: '' },
+    nupayMandate: {
+      outcome: { type: String, enum: ['ACCEPTED', 'PENDING', 'REJECTED', 'UNKNOWN', ''], default: '' },
+      providerStatus: { type: String, default: '' },
+      resultCode: { type: String, default: '' },
+      mandateId: { type: String, default: '' },
+      clientReference: { type: String, default: '' },
+      contractReference: { type: String, default: '' },
+      providerTransactionId: { type: String, default: '' },
+      providerMessageId: { type: String, default: '' },
+      effectiveDate: { type: String, default: '' },
+      statusDescription: { type: String, default: '' },
+      callbackRequestId: { type: String, default: '' },
+      callbackReceivedAt: { type: Date },
+      updatedAt: { type: Date }
+    },
 
     // ── Consumer Credit Report Result (Datanamix — Dynamic Underwriting) ──
     consumerCreditReportRaw: { type: mongoose.Schema.Types.Mixed, default: {} },

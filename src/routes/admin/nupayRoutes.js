@@ -2,21 +2,19 @@ const express = require('express');
 const router = express.Router();
 const {
   initiateDebiCheckMandate,
-  rescheduleNuPayInstalment,
-  maintainNuPayInstalment,
-  cancelNuPayInstalment,
-  recallNuPayInstalment
+  registerTT1Endpoint,
+  getMandateReport,
+  getInstalmentReport
 } = require('../../controllers/admin/nupayController');
 const { protect } = require('../../middlewares/authMiddleware');
 const { authorize } = require('../../middlewares/roleMiddleware');
 
 router.use(protect);
-router.use(authorize('admin'));
+router.use(authorize('admin', 'super_admin'));
 
-router.post('/mandate-initiation', initiateDebiCheckMandate);
-router.post('/instalment-reschedule', rescheduleNuPayInstalment);
-router.post('/instalment-maintenance', maintainNuPayInstalment);
-router.post('/instalment-cancellation', cancelNuPayInstalment);
-router.post('/instalment-recall', recallNuPayInstalment);
+router.post('/mandates/initiate', initiateDebiCheckMandate);
+router.post('/tt1/register-endpoint', registerTT1Endpoint);
+router.post('/reports/mandates', getMandateReport);
+router.post('/reports/instalments', getInstalmentReport);
 
 module.exports = router;

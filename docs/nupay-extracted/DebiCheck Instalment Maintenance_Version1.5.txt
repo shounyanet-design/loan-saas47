@@ -1,0 +1,425 @@
+             DebiCheck Instalment Maintenance
+                 Specifications Document
+                                    DRAFT
+
+
+
+
+Version Number   Date         Modified By            Nature of Amendment
+     V1.0.       2019/09/11   Brandon Velloo         Initial Draft
+     V1.1.       2019/10/01   Brandon Velloo         Update to input field descriptions
+     V1.2.       2021/02/22   Brandon Velloo         Addition of “applytoAll” field
+     V1.3.       2022/05/19   Nolwazi Mokgobinyane   “applytoAll” field changes
+     V1.4.       2023/03/24   Danielle Haylett       Addition of Re-activate instalment
+                                                     method
+     V1.5.       2024/05/16   Danielle Haylett       Addition of Recall instalment
+
+
+
+
+                                Page 1 of 13                         Version 1.5
+Contents
+1.     Disclaimer ..................................................................................................................... 3
+2.     Introduction ................................................................................................................... 3
+     2.1.     System Overview................................................................................................... 3
+     2.2.     Security ................................................................................................................. 3
+     2.3.     Best Practice for Webservice Consumption ........................................................... 3
+3.     Connections .................................................................................................................. 4
+     3.1.     Add Instalment....................................................................................................... 4
+     3.2.     Instalment Maintenance......................................................................................... 4
+     3.3.     Instalment Reschedule .......................................................................................... 4
+     3.4.     Instalment Cancellation ......................................................................................... 4
+     3.5.     Instalment Re-Activate........................................................................................... 4
+     3.6.     Instalment Recall ................................................................................................... 4
+1.     System Inputs ............................................................................................................... 5
+     1.1.     Add Instalment....................................................................................................... 5
+     1.2.     Instalment Maintenance......................................................................................... 5
+     1.3.     Instalment Reschedule .......................................................................................... 6
+     1.4.     Instalment Cancellation ......................................................................................... 6
+     1.5.     Instalment Re-activate ........................................................................................... 7
+     1.6.     Instalment Recall ................................................................................................... 7
+     1.7.     Input Field Descriptions ......................................................................................... 8
+2.     System Outputs ............................................................................................................. 9
+     2.1.     Add instalment ....................................................................................................... 9
+     2.2.     Instalment Maintenance......................................................................................... 9
+     2.3.     Reschedule Instalment ........................................................................................ 10
+     2.4.     Instalment Cancellation ....................................................................................... 10
+     2.5.     Instalment Re-activate ......................................................................................... 11
+     2.6.     Instalment Recall ................................................................................................. 11
+     2.7.     Output Field Descriptions .................................................................................... 12
+3.     Appendix ..................................................................................................................... 13
+     3.1.     Error Codes ......................................................................................................... 13
+
+
+
+
+                                                           Page 2 of 13                                             Version 1.5
+   1. Disclaimer
+The DebiCheck payment stream is still under development, thus this document is subject to
+change and it is not the final draft.
+
+   2. Introduction
+This document describes the DebiCheck full function webservices for instalment
+maintenance:
+
+   •   Add an instalment
+   •   Maintain an instalment
+   •   Reschedule an instalment
+   •   Cancel an instalment
+   •   Re-activate an instalment
+   •   Recall an instalment
+
+   2.1.    System Overview
+The merchant will be sending a request type to NuPay via webservices. NuPay needs to
+accept the request and authenticate the merchant using the authentication string. Once
+authentication has taken place the data sent through will be processed. All requests are
+handled by the below mentioned methods of the webservice.
+
+   2.2.    Security
+Security measures include the use of Secure Sockets Layer (SSL) for the connection. It is
+required to use https instead of the normal http when connecting to the server.
+
+   2.3.    Best Practice for Webservice Consumption
+The webservices adhere to the Restful standard, which dictates that the input and output is
+Json data. RESTful web services are built to work best on the web.
+Representational State Transfer (REST) is an architectural style that specifies constraints,
+such as the uniform interface, that if applied to a web service induce desirable properties,
+such as performance, scalability, and modifiability, that enable services to work best on the
+web.
+The suggested method of using this web service is to supply a JSON call with all the input
+parameters.
+
+
+
+
+                                        Page 3 of 13                            Version 1.5
+    3. Connections
+    3.1.    Add Instalment
+URL: https://btm.nupay.co.za/wsDebiCheck/add_instalment
+
+
+
+    3.2.    Instalment Maintenance
+URL: https://btm.nupay.co.za/wsDebiCheck/instalment_maintenance
+
+
+
+    3.3.    Instalment Reschedule
+URL: https://btm.nupay.co.za/wsDebiCheck/instalment_reschedule
+
+
+
+    3.4.    Instalment Cancellation
+URL: https://btm.nupay.co.za/wsDebiCheck/instalment_cancellation
+
+
+    3.5.    Instalment Re-Activate
+URL: https://btm.nupay.co.za/wsDebiCheck/reactivate_instalment
+
+
+
+    3.6.    Instalment Recall
+URL: https://btm.nupay.co.za/wsDebiCheck/instalment_recall
+
+
+
+
+                                             Page 4 of 13          Version 1.5
+    1. System Inputs
+    1.1.     Add Instalment
+This method adds a new instalment to the existing mandate. All the inputs below are
+required. The submit date must be in line with the original mandate. The mandate must be
+active.
+The following inputs apply in JSon format:
+{
+            "auth":"",
+            "mandateID":"",
+            "cardAcceptor":"",
+            "instalment":"",
+            "amount":"",
+            "trackingIndicator":"",
+            "submitDate":""
+}
+
+    1.2.     Instalment Maintenance
+This method allows maintenance to be done on an instalment. Only the amount, tracking
+indicator and submit date can be maintained on an instalment. Only active future instalments
+can be maintained. The following inputs apply in JSon format:
+{
+            "auth":"",
+            "mandateID":"",
+            "cardAcceptor":"",
+            "instalment":"",
+            "amount":"",
+            "trackingIndicator":"",
+            "submitDate":"",
+           "applyToAll":
+}
+
+
+
+
+                                        Page 5 of 13                         Version 1.5
+    1.3.    Instalment Reschedule
+This method allows an instalment to be rescheduled. Only a failed instalment can be
+rescheduled. All inputs are required. The date and the tracking of the failed instalment can
+also be updated.
+The following inputs apply in JSon format:
+{
+           "auth":"",
+           "mandateID":"",
+           "cardAcceptor":"",
+           "instalment":"",
+           "amount":"",
+           "trackingIndicator":"",
+           "submitDate":""
+}
+
+    1.4.    Instalment Cancellation
+This method allows an instalment to be cancelled. Only active future instalments can be
+cancelled.
+The following inputs apply in JSon format:
+{
+           "auth":"",
+           "mandateID":"",
+           "cardAcceptor":"",
+           "instalment":"",
+           "amount":"",
+           "trackingIndicator":"",
+           "submitDate":""
+}
+
+
+
+
+                                        Page 6 of 13                            Version 1.5
+    1.5.    Instalment Re-activate
+This method allows a cancelled instalment to be re-activated. Only future instalments can be
+reactivated for their original submit date.
+The following inputs apply in JSon format:
+
+
+{
+           "auth":"",
+           "mandateID":"",
+           "accessID":"",
+           "instalment":"",
+           "startDate":""
+}
+
+
+
+    1.6.    Instalment Recall
+This method allows an instalment to be recalled. Only instalments that are in an ‘In Tracking’
+state can be recalled.
+The following inputs apply in JSon format:
+
+
+{
+           "auth":"",
+           "cardAcceptor":"",
+           "mandateID":"",
+           "instalment":""
+}
+
+
+
+
+                                        Page 7 of 13                           Version 1.5
+  1.7.   Input Field Descriptions
+Data Element         Description                                     Data Type and
+                                                                     Length
+Auth                 Username and password in format                 String
+                     “username:password” and
+                     Base64Encoded
+Mandate ID           Mandate ID. For example, 133068                 String
+Card acceptor /      Merchant number. Must be zero padded            String (15)
+Access ID            and pre-registered at NuPay.
+                     For example, 000005500000010
+Instalment           The instalment number in the mandate.           String
+Amount               The amount of the instalment. This value        String
+                     is in cents. For example, 100 for an
+                     instalment amount of R1.00.
+Tracking Indicator   The number of tracking days. Must be            String (2)
+                     01-10 corresponding to 1 – 10 days
+                     respectively.
+Submit date /Start   Instalment submission date.                     String (8)
+date                 Format must be YYYYMMDD.
+Apply to All         Only applies to tracking indicator and          Boolean
+                     submit date.
+
+                     The following inputs are allowed:
+                          • True
+                          • False
+                     If true, will apply the change to all
+                     instalments. If false, will apply to selected
+                     instalment only.
+
+                     The field may be excluded completely
+                     from the request, in which case it will
+                     default to false. If the field is included in
+                     the request, either true or false must be
+                     entered.
+
+
+
+
+                                      Page 8 of 13                                Version 1.5
+     2. System Outputs
+     2.1.    Add instalment
+The following outputs apply in JSon format:
+{
+    "cardAcceptor": "",
+    "mandateID": "",
+    "instalment": "",
+    "instalmentAmount": "",
+    "trackingIndicator": "",
+    "cycleDate": "",
+    "submitDate": "",
+    "disputable": "",
+    "instalmentStatus": "",
+    "responseCode": "",
+    "responseDescription": ""
+}
+
+     2.2.    Instalment Maintenance
+The following outputs apply in JSon format:
+{
+    "cardAcceptor": "",
+    "mandateID": "",
+    "instalment": "",
+    "instalmentAmount": "",
+    "trackingIndicator": "",
+    "cycleDate": "",
+    "submitDate": "",
+    "disputable": "",
+    "instalmentStatus": "",
+    "responseCode": "",
+    "responseDescription": ""
+}
+
+
+
+
+                                       Page 9 of 13   Version 1.5
+     2.3.    Reschedule Instalment
+The following outputs apply in JSon format:
+{
+    "cardAcceptor": "",
+    "mandateID": "",
+    "instalment": "",
+    "instalmentAmount": "",
+    "trackingIndicator": "",
+    "cycleDate": "",
+    "submitDate": "",
+    "disputable": "",
+    "instalmentStatus": "",
+    "responseCode": "",
+    "responseDescription": ""
+}
+
+
+
+     2.4.    Instalment Cancellation
+The following outputs apply in JSon format:
+{
+    "cardAcceptor": "",
+    "mandateID": "",
+    "responseCode": "",
+    "responseDescription": ""
+}
+
+
+
+
+                                       Page 10 of 13   Version 1.5
+     2.5.   Instalment Re-activate
+The following outputs apply in JSon format:
+
+{
+    "trackingIndicator": "",
+    "disputable": "",
+    "instalmentStatus": "",
+    "instalment": "",
+    "responseDescription": "",
+    "mandateID": "",
+    "cardAcceptor": "",
+    "instalmentAmount": "",
+    "submitDate": "",
+    "cycleDate": "",
+    "responseCode": ""
+}
+
+
+
+
+     2.6.   Instalment Recall
+The following outputs apply in JSon format:
+
+{
+    "responseDescription": "",
+    "mandateID": "",
+    "cardAcceptor": "",
+    "responseCode": ""
+}
+
+
+
+
+                                       Page 11 of 13   Version 1.5
+  2.7.   Output Field Descriptions
+Data Element         Description                                       Data Type
+                                                                       and Length
+Card acceptor        Merchant number. Zero padded.                     String (15)
+Mandate ID           Mandate ID                                        String
+Instalment           Instalment number in the mandate.                 String
+Instalment amount    Instalment amount. Returned in cents.             String
+Tracking indicator   01-10 corresponding to 1 – 10 days respectively   String (2)
+Cycle date           Instalment cycle date                             String
+Submit date          Instalment submit date                            String
+Disputable           1 = yes                                           String (1)
+                     0 = no
+Instalment status    X = success                                       String (1)
+                     H = failed
+                     P = future
+                     I = in tracking
+                     C = cancelled
+Response code        Refer to appendix 6.1.                            String
+Response             Refer to appendix 6.1.                            String
+description
+
+
+
+
+                                   Page 12 of 13                        Version 1.5
+  3. Appendix
+  3.1.   Error Codes
+Code          Description
+500000        Success
+500002 – 13   Authentication Failed: User Currently Blocked.
+500002 – 14   Authentication Failed: Too many failed attempts; User Blocked.
+500002 – 15   Authentication Failed: No User found or Incorrect Details.
+500002 – 20   Authentication Failed: Please insert \":\" between username and
+              password before encoding.zzzz
+500002 – 21   Authentication Failed.
+500002 – 23   Auth cannot be null or empty.
+500002        User Credentials not linked to merchant. Please use different
+              credentials.
+500002        Generated token is invalid.
+500002        Parse exception in ‘method name’.
+500002        No Data for Disputed Reports.
+500007        Internal Error
+500039        Mandate not found
+500040        Change not applied
+500041        Invalid mandate_id format when attempting maintenance
+500042        Change not allowed on First Collection
+500043        General error
+500048        Incorrect status on instalment
+500049        Incorrect status on mandate
+901111        Instalment amount is greater than the Maximum Collection Amount
+
+
+
+
+                                 Page 13 of 13                        Version 1.5
+

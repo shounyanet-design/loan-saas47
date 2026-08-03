@@ -1,0 +1,568 @@
+        DebiCheck TT1 Mandate Response
+                 Specifications Document
+                               DRAFT
+
+
+
+
+Version Number   Date         Modified By        Nature of Amendment
+     V1.0        2019/11/27   Brandon Velloo     Initial Draft
+     V1.1        2023/09/11   Danielle Haylett   General update
+
+
+
+
+                                Page 1 of 15                      Version 1.1
+Contents
+1.     Disclaimer ...................................................................................................................... 3
+2.     Introduction .................................................................................................................... 3
+     2.1.    System Overview .................................................................................................... 3
+     2.2.    Security................................................................................................................... 3
+     2.3.    Best Practice for Webservice Consumption ............................................................ 3
+3.     Connections ................................................................................................................... 3
+     3.1.    Register Endpoint Method....................................................................................... 3
+4.     Register Endpoint Inputs ................................................................................................ 4
+5.     Register Endpoint Outputs ............................................................................................. 4
+6.     System Registration Field Descriptions .......................................................................... 4
+7.     Call Back Response Sent to Client’s API ....................................................................... 5
+8.     Call-back Response Field Descriptions .......................................................................... 5
+9.     Appendices .................................................................................................................... 6
+     9.1.    DebiCheck Error Codes .......................................................................................... 6
+     9.2.    NuPay Error Codes ............................................................................................... 15
+
+
+
+
+                                                           Page 2 of 15                                                Version 1.1
+   1. Disclaimer
+The DebiCheck payment stream is still under development, thus this document is subject to
+change and it is not the final draft.
+
+
+
+   2. Introduction
+This document describes the DebiCheck TT1 Mandate Response that is sent following a
+mandate initiation. In order to receive responses, the user must register for the service. The
+registration to receive responses is done via the webservice. Once registered, a real time
+response will be sent when a mandate is accepted. The user will not have to check the
+reporting service or mandate status service to check if there was a change.
+
+   2.1.    System Overview
+The merchant will be sending a request type to NuPay via webservices. NuPay needs to
+accept the request and authenticate the merchant using the authentication string. Once
+authentication has taken place the data sent through will be processed. All requests are
+handled by the below mentioned methods of the webservice.
+
+   2.2.    Security
+Security measures include the use of Secure Sockets Layer (SSL) for the connection. It is
+required to use https instead of the normal http when connecting to the server.
+
+   2.3.    Best Practice for Webservice Consumption
+The webservices adhere to the Restful standard, which dictates that the input and output is
+Json data. RESTful web services are built to work best on the web.
+Representational State Transfer (REST) is an architectural style that specifies constraints,
+such as the uniform interface, that if applied to a web service induce desirable properties,
+such as performance, scalability, and modifiability, that enable services to work best on the
+web.
+The suggested method of using this web service is to supply a JSON call with all the input
+parameters.
+
+
+
+   3. Connections
+   3.1.    Register Endpoint Method
+URL: https://btm.nupay.co.za/wsDebiCheck/register_endpoint
+This URL is used to connect to the webservice to register an endpoint.
+Please note that this is only applicable for TT1 Delayed mandates that are created.
+
+
+
+
+                                         Page 3 of 15                             Version 1.1
+      4. Register Endpoint Inputs
+{
+"auth": "",
+"cardAcceptor": "",
+"endpointUrl": "",
+"registrationStatus": "",
+"cardAcceptorEmail": ""
+}
+
+
+
+      5. Register Endpoint Outputs
+{
+     "responseCode": "",
+     "responseMessage": ""
+}
+
+
+
+      6. System Registration Field Descriptions
+    Field                    Description                         Data Type
+    Auth                     Authentication string in format     String
+                             username:password and base64
+                             encoded.
+    cardAcceptor             Merchant number.                    String
+                             Must be zero padded.
+    endpointUrl              The client’s API address we are     String
+                             sending to.
+    registrationStatus       The following inputs are allowed:   String
+                                 • Register
+                                 • Deregister
+    cardAcceptorEmail        The client’s email address we       String
+                             have on record. Alerts to this
+                             address will be sent when
+                             Callback to client has failed.
+    ResponseCode             NuPay response code.                String
+                             See appendix 9.2
+    responseMessage          Response code description.          String
+                             See appendix 9.2
+
+
+
+
+                                    Page 4 of 15                             Version 1.1
+      7. Call Back Response Sent to Client’s API
+{
+    "requestId":"",
+    "clientEndPointIp":"",
+    "supportMail":"",
+    "mandateId":"",
+    "contractReference":"",
+    "statusCode":"",
+    "statusDescription":""
+}
+
+      8. Call-back Response Field Descriptions
+    Field                     Description                     Data Type
+    Request ID                Unique identifier               String
+    Client end point IP       The client’s registered API     String
+                              address
+    Support mail              The client’s registered email   String
+                              address
+    Mandate ID                DebiCheck mandate ID            String
+    Contract reference        DebiCheck mandate               String
+                              contract reference
+    Status Code               Mandate final result code.      String
+                              See appendix 9.1.
+    Status description        Description of status code      String
+                              See appendix 9.1.
+
+
+
+
+                                      Page 5 of 15                        Version 1.1
+ 9. Appendices
+ 9.1.   DebiCheck Error Codes
+Code               Description
+
+          900000   Transaction Successful - Successful Debit or Mandate Accepted
+          900002   Insufficient Funds - The account does not have sufficient funds available
+                   to process the transaction. ( Unsuccessful Debit)
+          900003   Debits not allowed to this account - The type of account does not allow
+                   debit transactions.
+          900004   Payment stopped by Account Holder - Prior to presentment, the account
+                   holder has instructed the Debtor that this transaction may not be processed
+                   to the account. The issuer may previously have sent an E1 stop
+                   presentment to the acquirer.
+          900005   Dormant Account - The account has been inactive for a period and no
+                   debits are allowed to this account.
+          900006   Account frozen - There is a restriction on the account e.g. card stolen,
+                   potential fraud under investigation etc.
+          900008   Account In Liquidation - The account holder has been placed under
+                   liquidation. No transactions allowed.
+          900010   Account in sequestration - The account holder has been placed under
+                   sequestration. No transactions allowed.
+          900012   Account closed - The account has been closed by the account holder, or
+                   dormant account has been closed after a period. No transactions allowed.
+          900018   Account holder deceased - The account holder has been declared
+                   deceased. No transaction allowed.
+          900022   Account effects not cleared - There are currently insufficient funds
+                   available; however there are uncleared funds on the account that will
+                   become available once cleared. This response may optionally be utilised
+                   instead of 02 after tracking has completed, if applicable. The transaction
+                   needs to be represented, note though that there is no indication of how
+                   long the clearing period is or the amount involved in uncleared effects.
+          900026   No such account - The account number supplied is not found on the
+                   issuer’s system where the collection is taking place.
+          900040   Item Limit Exceeded
+          900044   The Debtor Bank is currently unable to process due to a system problem
+                   and has issued the 44 response as notification of a problem. Creditor Bank
+                   to take no action, transaction is at Issuer.   The Debtor Bank will process
+
+
+
+
+                                         Page 6 of 15                               Version 1.1
+         the transaction and respond with a 99 or other final response once the
+         system problem is resolved.
+900048   Debtor Account Number Fails CDV Routine
+900056   Not FICA compliant - Transactions may not be processed to the account
+         as FICA requirements is outstanding.
+900099   Held for representment - Currently insufficient funds, tracked for tracking
+         period. Acquirer to take no action, transaction is at Issuer.
+901000   Message Identifier MsgId is missing
+901001   Identifier code in Message Identifier invalid
+901002   Generation number in Message Identifier invalid
+901003   Sequence number not 000001
+901004   Sequence number is not continuous
+901005   Message Identifier is not unique
+901006   Creation date missing
+901007   Creation date and time in Group Header invalid
+901008   Number of transactions in header not numeric
+901009   Number of transactions invalid at group level
+901010   Control sum is not numeric
+901011   Control sum is not equal to sum of transactions
+901012   Total interbank settlement amount is not numeric
+901013   Total interbank settlement amount does not equal sum of the transactions
+901015   Interbank settlement date is invalid
+901016   Clearing System identifier invalid
+901017   Instructing agent invalid
+901018   Invalid Payment Identifier Structure
+901019   Identifier code in payment identification is invalid
+901020   Identifier code in payment identification does not match Instructing agent
+901021   Settlement date is not a valid date
+901022   Settlement date invalid for Credit Transfer service
+901023   Payment identifier transaction sequence number invalid
+901024   Duplicate payment transaction identifier
+901025   Payment Type Information, Clearing Channel not equal to RTGS
+901026   Service Level is invalid
+901027   Category Purpose Code is invalid
+901029   Currency code on transactions differ from that on the group header
+901030   Interbank Settlement Date is supplied in Group header and transactions
+901031   The number of fractional digits (or minor unit of currency) must comply with
+         ISO
+901032   Exchange rate is not permitted unless instructed amount is supplied
+
+
+                             Page 7 of 15                                Version 1.1
+901033   Incorrect charge bearer content
+901034   Ultimate debtor name is same as debtor name
+901035   Debtor Name field is spaces
+901036   Debit account is missing
+901037   Debit agent is missing
+901038   Creditor Name field is spaces
+901039   Ultimate creditor name is same as creditor name
+901040   Creditor account is missing
+901041   The country code is invalid in regulatory details
+901042   The regulatory reporting transaction code is invalid
+901043   Creditor agent is missing
+901044   The ACH identifier is incorrect
+901045   Invalid Service Code
+901046   Group Reason Code invalid
+901047   Unable to match group message identifier on payment return
+901048   Return identifier must be unique
+901049   Return transaction sequence number must be contiguous
+901050   Return transaction sequence number must start at one daily
+901051   Invalid Transaction identifier
+901052   Original Payment Identifier not matched
+901053   Returned interbank settlement amount not equal to original amount
+901054   Invalid Transaction Return Reason code
+901055   Settlement method is invalid
+901056   Duplicate credit transfer
+901057   Cancellation did not match original payment at ACH
+901058   Duplicate credit return
+901059   Resolution of investigation not matched to original cancellation request
+901060   Invalid Tracking Code
+901061   Invalid Instalment Sequence
+901062   Invalid Entry Class
+901063   Interbank settlement amount currencies differ
+901064   Incorrect Cycle Date
+901065   The Contact Details for the Creditor are missing
+901066   The Creditor Account Number is invalid
+901067   The Creditor Branch Code or BIC Code is invalid
+901068   The Debtor Account Type is invalid
+901069   The Debtor Branch code is invalid
+901070   Invalid Debit Sequence Type
+901072   The First Collection Date is not in the future
+
+
+                               Page 8 of 15                              Version 1.1
+901073   The Last Collection Date is not in the future
+901075   Payment Original Bic Invalid
+901076   Payment Destination Bic Invalid
+901077   Creditor account is invalid
+901078   Instructing Agent is invalid
+901079   Instructed Agent is invalid
+901080   Original message type invalid
+901081   Invalid Status Group Code
+901082   Invalid Reason Code
+901083   Invalid Creditor Contact Details
+901084   Invalid Debit Value Type
+901085   Initiating party may not be spaces
+901086   Invalid Mandate Reason Code
+901087   Invalid Accept Indicator
+901088   Mandate Request Type is invalid
+901089   Transaction Id not matched to original Transaction id
+901090   Ultimate Creditor Name may not be spaces
+901091   Ultimate Debtor Name may not be spaces
+901092   Mandate Reference Number may not be blank or spaces
+901093   Contract reference not matched to original
+901094   Invalid Instructed Amount on Mandate Suspension
+901100   Tracking code invalid
+901101   Invalid authorisation Code
+901102   Invalid Instalment Occurrence
+901103   Invalid Instalment Frequency
+901104   Invalid Mandate Initiation Date on mandate
+901105   Invalid TO date on mandate
+901106   Invalid First Collection Date on mandate
+901107   Invalid Final Collection Date on mandate
+901108   Invalid Instalment Amount on mandate
+901109   Invalid Initial Amount on mandate
+901110   Invalid Final Collection Amount on mandate
+901111   Instalment amount is greater than the Maximum Collection Amount
+901112   Invalid Maximum Collection Amount on mandate
+901113   Invalid Creditor Agent on mandate
+901114   Invalid Creditor Account Number on mandate
+901115   Invalid Debtor Account Number on mandate
+901116   Invalid Debtor Agent on mandate
+901117   Invalid Authentication Indicator on mandate
+
+
+                             Page 9 of 15                           Version 1.1
+901118   Invalid authentication type indicator on mandate acceptance
+901119   Invalid Debit Value Type on mandate
+901120   Invalid Collection Day on mandate
+901121   Invalid Date Adjustment Rule Indicator on mandate
+901122   Invalid Debtor identifier on mandate
+901123   Debtor Account Number fails CDV
+901124   Mandate Reference Number is blank or spaces
+901125   Invalid Adjustment Category on mandate
+901126   Invalid Adjustment Rate on mandate
+901127   Invalid Adjustment Amount on mandate
+901128   Invalid Creditor Name on mandate
+901129   Invalid Ultimate Creditor on mandate
+901130   Invalid Ultimate Debtor on mandate
+901131   Invalid Contract Reference on mandate
+901132   First Collection Date on mandate may not be amended to an earlier date
+901133   First Collection Date on mandate must be 3 day greater than load date.
+901135   Tracking Cancellation Indicator Invalid
+901134   Invalid Initiating Party
+901136   Mandate Requested Identifier not found
+901137   First Collection Date on mandate may not be amended to an earlier date
+901138   Mandate amendment not matched
+901139   Mandate amendment date invalid
+901140   Mandate is not in a status to be amended
+901141   Mandate amendment date error
+901142   Mandate amendment failed due to collection response outstanding
+901143   Mandate Cancellation Reason Code is invalid
+901144   Original Mandate Request Identification is not matched
+901145   Mandate cancellation not matched using Mandate Reference Number
+901146   The First Collect ion Date must be 4 days greater than load date
+901147   Invalid Debtor Name on mandate
+901148   Interbank Settlement Amount is zero
+901149   Instalment amount may not be greater than Maximum Amount
+901150   First Collection Date must be greater than or equal to From Date
+901152   The Collection Amount may not exceed the Maximum Collection Amount
+901153   The Maximum amount may not change
+901154   The Country on the address fields may not be changed
+901155   The Creditor Scheme may not be changed
+901156   Creation Date and time may not be in the future
+901158   Message is not for this system
+
+
+                             Page 10 of 15                              Version 1.1
+901159   The mandate amendment reason code is invalid
+901160   Institution is not logged onto system
+901161   Mandate not at a state that allows for amendments
+901162   Mandate Reference Number is required
+901163   Mandate Request Transaction Identifier is spaces
+901164   Bank in Mandate Request Transaction Identifier is invalid
+901165   Date in Mandate Request Transaction Identifier is invalid
+901166   Invalid First Collection Amount on Mandate
+901167   Control sum MAC validation failure
+901168   Seven consecutive unsuccessful collections. Mandate suspended
+901169   Amendment not in period of adjust category
+901170   Creditor Abbreviated Short Name may not be spaces
+901171   Interbank Settlement Date is outside the range into the future
+901172   Duplicate direct debit request
+901173   Duplicate debit return
+901174   Duplicate Cancellation request
+901175   Duplicate Mandate Suspension request
+901176   Duplicate Mandate Suspension Confirmation
+901177   Transaction Disputed based on Invalid Date
+901178   Transaction Disputed based on Invalid Amount
+901179   Sequence Number in Mandate Request Transaction Number Invalid
+901184   MAC key does not match
+901185   Mandate Request Transaction Identifier must match original message
+901186   The Debtor Account Type and Account number are required on
+         amendment
+901187   MAC is required if Debtor Authentication Required element = 0228
+901188   Creditor Abbreviated Short Name not matched
+901189   MAC must not be populated if Debtor Authentication Required element is
+         not 0228
+901190   Invalid Adjustment Rate or amount for category on mandate
+901191   The Debtor Bank Branch Number and Account number are required on
+         amendment
+901192   MAC is invalid
+901193   Invalid Adjustment Category for Debit Value Type “FIXED”
+901195   If the First Collection Date is populated, then the First Collection Amount
+         must also be populated
+901196   Invalid Creditor Bank Member ID
+901197   Invalid Debtor Bank Member ID
+901198   Currency Code must be “ZAR” for South Africa
+
+
+                           Page 11 of 15                                  Version 1.1
+901199   Mandate requires re-authentication
+902001   Assignment may not be spaces
+902003   Service ID on Assignment is invalid
+902004   Identifier code in Assignment ID invalid
+902005   Invalid file type
+902006   File number is not in sequence
+902007   Assigner Identifier code invalid
+902008   Assignee Identifier code invalid
+902009   Creation date invalid
+902012   Original interbank settlement amount is zero
+902013   Original interbank settlement date is spaces
+902015   Cancellation code is invalid
+902016   Confirmation status is invalid
+902017   Original transaction ID is spaces
+902018   Original transaction End to End ID is spaces
+902019   Transaction Cancellation Status code is invalid
+902020   Cancellation Status Reason Code is invalid
+902021   Original interbank settlement amount is zero on ROI
+902022   Original interbank settlement date is spaces on ROI
+902023   Cancellation request is out of date
+902024   Mandate Suspension sequence number error
+902025   Mandate Suspension identifier invalid
+902026   Original interbank settlement amount does not match transaction amount
+902027   End to End Id not matched to Mandate Suspension identifier
+902028   Response not matched to request
+902029   Internal system error on real time system
+902100   Debit Amount not equal to Initial Amount
+902101   Debit Amount not equal to Instalment Amount
+902102   Debit amount exceeds Maximum Collection Amount
+902103   Debit amount exceed Final Collection Amount
+902104   Debit date must equal First Collection Date on Mandate
+902105   Debit date must equal Last Collection Date
+902106   Creditor Name must equal Creditor Name on mandate
+902107   Invalid Creditor Abbreviated Short Name on debit
+902108   Debtor name must equal debtor name on mandate
+902109   Debtor account must be equal to debtor account on mandate
+902110   Mandate Id on debit must equal the Mandate Reference Number on
+         mandate
+902111   Contract Reference does not match mandate
+
+
+                             Page 12 of 15                            Version 1.1
+902112   Mandate Authentication Date is invalid
+902113   Unable to validate file number, invalid originating bank identifier
+902114   Invalid country code
+902115   Debit Amount exceeds Instalment Amount on Mandate
+902116   Debit amount may not exceed Maximum Collection Amount on mandate
+902117   First instalment is not equal to First Collection Amount on mandate
+902118   Debtor Account is not open and active
+902119   Unable to reach debtor for authentication
+902120   Duplicate acceptance message identifier
+902121   Invalid file structure
+902122   Amendment cannot be processed while previous amendment not accepted
+902123   Invalid Debtor name of mandate information request
+902124   Bank Identifier on file name must be the same as Instructing Agent Bank
+         Identifier
+902125   Instructing Agent and Instructed Agent cannot have the same Bank
+         Identifier
+902126   Mandate is not in a status to be cancelled
+902127   Invalid Mandate Download Request Type
+902134   Message Id Structure Incorrect
+902135   Invalid Personal Identification type
+902136   Mandates not allowed against this account
+902137   Debit Sequence Type not equal Instalment Occurrence on mandate
+902138   Debit Sequence Type not valid for Instalment Occurrence on mandate
+902139   Collection Amount is greater than Instalment Amount
+902140   Tracking Period not equal to mandate
+902141   Mandate Request Identifier structure error
+902142   Cellphone number is invalid
+902143   An Amend to an Account Number Requires a new Mandate
+902144   Once off instalment is not equal to First Collection Amount on mandate
+902145   Mandate has expired
+902146   Mandate initiation request has expired
+902147   Original message identification is not matched
+902148   Authentication status is invalid
+902151   Request Transmission Number Required
+902152   Request Transaction Identifier must be unique
+902153   Reason Code must be supplied
+902200   Duplicate Request. Account Invalid
+902201   Duplicate Request. Duplicate request, response from debtor still pending.
+902202   Duplicate Request. Previously Authorised
+
+
+                             Page 13 of 15                                 Version 1.1
+902203   File rejected. All transactions invalid. See reasons for rejection on
+         transaction information.
+902204   Duplicate Request. Mandate already exists
+902205   Duplicate Message. Message rejected
+902206   File exceed maximum specified number of records
+902207   Mandate reply already processed
+902208   Duplicate response for mandate request
+902232   Mandate Cancelled due to early settlement
+902233   Contract Expired
+902234   Mandate Cancellation due to Fraud
+902235   Mandate Instalment Amount exceeds industry limit
+902236   Adjustment Amount required for amendments to Adjustment Category
+902237   Collection received from creditor under investigation for DOA
+902317   Debit Sequence Type not equal Instalment Occurrence on mandate
+902318   Debit Sequence Type not valid for Instalment Occurrence on mandate
+902319   Mandate cancelled, collection removed from tracking
+902335   Mandate Instalment Amount exceeds industry limit
+902400   Relationship between Message Identification, Authentication Type and
+         Debtor Authentication Required is incorrect
+         Error Codes to be used by Debtor bank when rejecting a mandate
+         initiation on account number validation
+910001   Account Number is invalid
+910002   Account is not matched to ID number
+910003   Account Number not linked to client’s profile
+910004   Account open and active, incorrect contact details (0229)
+910005   Account open and active, no contact details
+910006   Multiple signatories not allowed on account
+         Generic error messages when a mandatory element is not populated
+910099   Message Element <Message Element Name> must not be zero or spaces
+         ACH real time error messages when bank is not available (only for
+         Interface Specification)
+999901   Bank not available
+999999   Message timed out
+
+
+
+
+                            Page 14 of 15                                  Version 1.1
+  9.2.   NuPay Error Codes
+Error Code       Description
+500000           Success
+500002           CAPI Exception: Invalid Inputs
+500006           Internal Web Service Error
+500007           Internal Error
+500014           ContractRef needs to be unique
+500015           Invalid amount format.
+500016           Debtor phone number format.
+500017           Debtor email address format.
+500018           Mandate not found.
+500019           Invalid amendment reason
+500020           Invalid cancellation reason
+500021           No records to extract to file
+500022           Invalid log type for batch file logging
+500023           Filename already exists in log
+500024           Filename not found in log
+500025           Invalid file length
+500026           Invalid file type
+500027           MQ Client Unable to connect to server
+500028           MQ Client Timed Out No
+500030           MQ Client I/O Error
+500031           MQ Client Empty/Null String
+500032           No Response Found
+500033           CAPI Internal Server Error
+500034           CAPI Gateway Timeout Error
+500039           Mandate not found
+500040           Change not applied
+500041           Invalid mandate_id format when attempting maintenance
+500042           Change not allowed on First Collection
+500044           Installment added to mandate
+500045           Response file empty
+500046           Invalid amount of records in response file
+
+
+
+
+                                Page 15 of 15                            Version 1.1
+
