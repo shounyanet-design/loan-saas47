@@ -207,6 +207,44 @@ test('service treats Pending Auth as pending and No Response as unknown', () => 
   assert.equal(service.normalizeMandateResponse({ ...base, Status: 'No Response' }, 'x').outcome, 'UNKNOWN');
 });
 
+test('TT1 registration responseCode 500000 normalizes to ACCEPTED', () => {
+  const service = new NuPayService({});
+
+  const result = service.normalizeRegistrationResponse(
+    {
+      responseCode: '500000',
+      responseMessage: 'Success'
+    },
+    {
+      endpointUrl:
+        'https://loan-saas47-production.up.railway.app/api/v1/nupay/tt1/callback',
+      registrationStatus: 'Register'
+    }
+  );
+
+  assert.equal(result.outcome, 'ACCEPTED');
+  assert.equal(result.resultCode, '500000');
+  assert.equal(result.message, 'Success');
+});
+
+test('TT1 registration non-500000 code normalizes to REJECTED', () => {
+  const service = new NuPayService({});
+
+  const result = service.normalizeRegistrationResponse(
+    {
+      responseCode: '500002',
+      responseMessage: 'Invalid Inputs'
+    },
+    {
+      endpointUrl:
+        'https://loan-saas47-production.up.railway.app/api/v1/nupay/tt1/callback',
+      registrationStatus: 'Register'
+    }
+  );
+
+  assert.equal(result.outcome, 'REJECTED');
+});
+
 test('TT1 registration sends to exact endpoint with 15-digit cardAcceptor, Base64 auth, and returns ACCEPTED', async () => {
   let captured;
   const fakeClient = {
@@ -215,8 +253,8 @@ test('TT1 registration sends to exact endpoint with 15-digit cardAcceptor, Base6
       return {
         status: 200,
         data: {
-          responseCode: '900000',
-          responseMessage: 'Endpoint registered successfully'
+          responseCode: '500000',
+          responseMessage: 'Success'
         }
       };
     }
@@ -236,7 +274,7 @@ test('TT1 registration sends to exact endpoint with 15-digit cardAcceptor, Base6
   assert.equal(captured.body.registrationStatus, 'Register');
   assert.equal(captured.body.cardAcceptorEmail, 'Info@chanainvestments.co.za');
   assert.equal(result.outcome, 'ACCEPTED');
-  assert.equal(result.resultCode, '900000');
+  assert.equal(result.resultCode, '500000');
   assert.equal(result.endpointUrl, 'https://loan-saas47-production.up.railway.app/api/v1/nupay/tt1/callback');
   assert.equal(result.registrationStatus, 'Register');
 });
@@ -366,8 +404,8 @@ test('TT1 registration accepts Deregister status', async () => {
       return {
         status: 200,
         data: {
-          responseCode: '900000',
-          responseMessage: 'Endpoint deregistered'
+          responseCode: '500000',
+          responseMessage: 'Success'
         }
       };
     }
