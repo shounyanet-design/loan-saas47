@@ -62,9 +62,9 @@ function formatCardAcceptor(value) {
     throw new NuPayConfigurationError('NuPay cardAcceptor must be provided as a string');
   }
 
-  const raw = value.trim();
+  const raw = value.trim().replace(/^["']|["']$/g, '');
 
-  if (!/^\d{1,15}$/.test(raw)) {
+  if (!raw || !/^\d{1,15}$/.test(raw)) {
     throw new NuPayConfigurationError('NuPay cardAcceptor must contain 1 to 15 digits');
   }
 

@@ -3,11 +3,11 @@ const assert = require('node:assert/strict');
 
 process.env.NUPAY_USERNAME = 'user';
 process.env.NUPAY_PASSWORD = 'pass';
-process.env.NUPAY_CARD_ACCEPTOR = '5500000010';
+process.env.NUPAY_CARD_ACCEPTOR = '25500019087';
 process.env.NUPAY_BASE_URL = 'https://btm.nupay.co.za';
 process.env.NUPAY_ENABLED = 'true';
 process.env.NUPAY_TT1_CALLBACK_URL = 'https://loan-saas47-production.up.railway.app/api/v1/nupay/tt1/callback';
-process.env.NUPAY_CARD_ACCEPTOR_EMAIL = 'merchant@example.com';
+process.env.NUPAY_CARD_ACCEPTOR_EMAIL = 'Info@chanainvestments.co.za';
 
 const {
   mandateInitiationSchema,
@@ -17,7 +17,8 @@ const {
 const {
   NuPayInvalidResponseError,
   NuPayTimeoutError,
-  NuPayConfigurationError
+  NuPayConfigurationError,
+  formatCardAcceptor
 } = require('../../src/errors/nupayErrors');
 const serviceExport = require('../../src/services/nupayService');
 const NuPayService = serviceExport.NuPayService;
@@ -62,6 +63,37 @@ function validMandate() {
     insuranceAmount: ''
   };
 }
+
+test('formatCardAcceptor formats 11-digit raw merchant number to 15 digits', () => {
+  assert.equal(formatCardAcceptor('25500019087'), '000025500019087');
+});
+
+test('formatCardAcceptor leaves valid 15-digit number unchanged', () => {
+  assert.equal(formatCardAcceptor('000025500019087'), '000025500019087');
+});
+
+test('formatCardAcceptor rejects 16-digit invalid number', () => {
+  assert.throws(
+    () => formatCardAcceptor('0000025500019087'),
+    NuPayConfigurationError
+  );
+});
+
+test('formatCardAcceptor handles values with leading/trailing spaces', () => {
+  assert.equal(formatCardAcceptor('  25500019087  '), '000025500019087');
+});
+
+test('formatCardAcceptor strips literal quotes around merchant number', () => {
+  assert.equal(formatCardAcceptor('"25500019087"'), '000025500019087');
+  assert.equal(formatCardAcceptor("'25500019087'"), '000025500019087');
+});
+
+test('formatCardAcceptor throws on null, undefined, number input, or letters', () => {
+  assert.throws(() => formatCardAcceptor(null), NuPayConfigurationError);
+  assert.throws(() => formatCardAcceptor(undefined), NuPayConfigurationError);
+  assert.throws(() => formatCardAcceptor(25500019087), NuPayConfigurationError);
+  assert.throws(() => formatCardAcceptor('25500019087A'), NuPayConfigurationError);
+});
 
 test('mandate schema accepts R10 controlled-test payload', () => {
   const { error } = mandateInitiationSchema.validate(validMandate());
@@ -152,7 +184,7 @@ test('service sends official mandate endpoint and normalizes accepted response',
   const result = await service.initiateMandate(validMandate());
 
   assert.equal(captured.url, 'https://btm.nupay.co.za/wsDebiCheck/mandate_initiation');
-  assert.equal(captured.body.cardAcceptor, '000005500000010');
+  assert.equal(captured.body.cardAcceptor, '000025500019087');
   assert.equal(captured.body.auth, Buffer.from('user:pass').toString('base64'));
   assert.equal(result.outcome, 'ACCEPTED');
   assert.equal(result.mandateId, 'MID1');
@@ -194,15 +226,15 @@ test('TT1 registration sends to exact endpoint with 15-digit cardAcceptor, Base6
   const result = await service.registerTT1Endpoint({
     endpointUrl: 'https://loan-saas47-production.up.railway.app/api/v1/nupay/tt1/callback',
     registrationStatus: 'Register',
-    cardAcceptorEmail: 'merchant@example.com'
+    cardAcceptorEmail: 'Info@chanainvestments.co.za'
   });
 
   assert.equal(captured.url, 'https://btm.nupay.co.za/wsDebiCheck/register_endpoint');
   assert.equal(captured.body.auth, Buffer.from('user:pass').toString('base64'));
-  assert.equal(captured.body.cardAcceptor, '000005500000010');
+  assert.equal(captured.body.cardAcceptor, '000025500019087');
   assert.equal(captured.body.endpointUrl, 'https://loan-saas47-production.up.railway.app/api/v1/nupay/tt1/callback');
   assert.equal(captured.body.registrationStatus, 'Register');
-  assert.equal(captured.body.cardAcceptorEmail, 'merchant@example.com');
+  assert.equal(captured.body.cardAcceptorEmail, 'Info@chanainvestments.co.za');
   assert.equal(result.outcome, 'ACCEPTED');
   assert.equal(result.resultCode, '900000');
   assert.equal(result.endpointUrl, 'https://loan-saas47-production.up.railway.app/api/v1/nupay/tt1/callback');
@@ -224,7 +256,7 @@ test('TT1 registration provider rejection normalizes to REJECTED', async () => {
   const result = await service.registerTT1Endpoint({
     endpointUrl: 'https://loan-saas47-production.up.railway.app/api/v1/nupay/tt1/callback',
     registrationStatus: 'Register',
-    cardAcceptorEmail: 'merchant@example.com'
+    cardAcceptorEmail: 'Info@chanainvestments.co.za'
   });
 
   assert.equal(result.outcome, 'REJECTED');
@@ -245,7 +277,7 @@ test('TT1 registration malformed response throws NuPayInvalidResponseError', asy
       await service.registerTT1Endpoint({
         endpointUrl: 'https://loan-saas47-production.up.railway.app/api/v1/nupay/tt1/callback',
         registrationStatus: 'Register',
-        cardAcceptorEmail: 'merchant@example.com'
+        cardAcceptorEmail: 'Info@chanainvestments.co.za'
       });
     },
     NuPayInvalidResponseError
@@ -267,7 +299,7 @@ test('TT1 registration timeout throws NuPayTimeoutError', async () => {
       await service.registerTT1Endpoint({
         endpointUrl: 'https://loan-saas47-production.up.railway.app/api/v1/nupay/tt1/callback',
         registrationStatus: 'Register',
-        cardAcceptorEmail: 'merchant@example.com'
+        cardAcceptorEmail: 'Info@chanainvestments.co.za'
       });
     },
     NuPayTimeoutError
@@ -290,7 +322,7 @@ test('TT1 registration fails before HTTP request if callback URL is missing', as
   await assert.rejects(
     async () => {
       await service.registerTT1Endpoint({
-        cardAcceptorEmail: 'merchant@example.com'
+        cardAcceptorEmail: 'Info@chanainvestments.co.za'
       });
     },
     NuPayConfigurationError
@@ -345,7 +377,7 @@ test('TT1 registration accepts Deregister status', async () => {
   const result = await service.registerTT1Endpoint({
     endpointUrl: 'https://loan-saas47-production.up.railway.app/api/v1/nupay/tt1/callback',
     registrationStatus: 'Deregister',
-    cardAcceptorEmail: 'merchant@example.com'
+    cardAcceptorEmail: 'Info@chanainvestments.co.za'
   });
 
   assert.equal(captured.registrationStatus, 'Deregister');

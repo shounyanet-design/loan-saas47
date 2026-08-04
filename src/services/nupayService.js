@@ -24,16 +24,61 @@ class NuPayService {
 
   async getCredentials(tenantId) {
     const activeTenantId = tenantId || tenantContext.getTenantId();
-    let resolved = { credentials: {}, mode: 'production' };
+    let resolved = { source: 'env', credentials: {}, mode: 'production' };
 
     if (activeTenantId) {
       resolved = await credentialService.resolve(activeTenantId, 'nupay');
     }
 
+    console.log('[NuPay Resolved Credentials]', {
+      source: resolved.source,
+      mode: resolved.mode,
+      credentialKeys: Object.keys(resolved.credentials || {})
+    });
+
     const creds = resolved.credentials || {};
     const username = creds.username || process.env.NUPAY_USERNAME;
     const password = creds.password || process.env.NUPAY_PASSWORD;
-    const rawCardAcceptor = creds.cardAcceptor || process.env.NUPAY_CARD_ACCEPTOR;
+
+    const tenantValue = creds.cardAcceptor;
+    const envValue = process.env.NUPAY_CARD_ACCEPTOR;
+
+    const tenantNormalized = String(tenantValue ?? '').trim().replace(/^["']|["']$/g, '');
+    const envNormalized = String(envValue ?? '').trim().replace(/^["']|["']$/g, '');
+
+    const tenantValid = /^\d{1,15}$/.test(tenantNormalized);
+    const envValid = /^\d{1,15}$/.test(envNormalized);
+
+    let rawCardAcceptor = '';
+    let selectedSource = 'environment';
+
+    if (tenantValid) {
+      rawCardAcceptor = tenantNormalized;
+      selectedSource = 'tenant';
+    } else if (envValid) {
+      rawCardAcceptor = envNormalized;
+      selectedSource = 'environment';
+    }
+
+    const raw = rawCardAcceptor;
+    const normalized = String(raw ?? '').trim().replace(/^["']|["']$/g, '');
+
+    console.log('[NuPay Card Acceptor Diagnostic]', {
+      credentialSource: selectedSource,
+      rawType: typeof raw,
+      normalizedLength: normalized.length,
+      digitsOnly: /^\d+$/.test(normalized),
+      hasLeadingOrTrailingWhitespace: String(raw ?? '') !== normalized,
+      masked:
+        normalized.length >= 4
+          ? `${'*'.repeat(Math.max(0, normalized.length - 4))}${normalized.slice(-4)}`
+          : 'INVALID'
+    });
+
+    if (!rawCardAcceptor) {
+      throw new NuPayConfigurationError('NuPay cardAcceptor must contain 1 to 15 digits');
+    }
+
     const baseUrl = (creds.baseUrl || creds.apiEndpoint || process.env.NUPAY_BASE_URL || DEFAULT_BASE_URL).replace(/\/+$/, '');
 
     if (!username || !String(username).trim()) {
@@ -42,16 +87,13 @@ class NuPayService {
     if (!password || !String(password).trim()) {
       throw new NuPayConfigurationError('NuPay password is missing');
     }
-    if (!rawCardAcceptor) {
-      throw new NuPayConfigurationError('NuPay card acceptor is missing');
-    }
     if (String(process.env.NUPAY_ENABLED || 'true').toLowerCase() === 'false') {
       throw new NuPayConfigurationError('NuPay integration is disabled');
     }
 
     return {
       auth: Buffer.from(`${String(username).trim()}:${String(password).trim()}`).toString('base64'),
-      cardAcceptor: formatCardAcceptor(String(rawCardAcceptor)),
+      cardAcceptor: formatCardAcceptor(rawCardAcceptor),
       baseUrl,
       timeout: Number(process.env.NUPAY_TIMEOUT_MS || 15000),
       mode: resolved.mode || 'production'
