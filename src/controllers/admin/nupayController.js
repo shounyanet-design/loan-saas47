@@ -39,7 +39,110 @@ const initiateDebiCheckMandate = asyncHandler(async (req, res) => {
     const loan = await LoanApplication.findOne({ _id: applicationId, tenantId: req.tenantId });
     if (!loan) return sendError(res, 'Loan application not found', 404);
 
-    const payload = validate(mandateInitiationSchema, mandate || {});
+    let mandatePayload = mandate;
+    if (!mandatePayload || Object.keys(mandatePayload).length === 0) {
+      const BankVerification = require('../../models/BankVerification');
+      const bankRecord = await BankVerification.findOne({ applicationId: loan._id });
+
+      const verifiedAcc = loan.bankVerification?.verifiedBankAccount || bankRecord?.accountNumber || '';
+      const verifiedBranch = loan.bankVerification?.verifiedBranchCode || bankRecord?.branchCode || '051001';
+      const verifiedAccType = loan.bankVerification?.verifiedAccountType || '01';
+      const bankName = bankRecord?.bankName || '';
+
+      const rawPhone = loan.phoneNumber || '';
+      let debtorPhone = rawPhone.replace(/\s+/g, '');
+      if (debtorPhone.startsWith('0')) {
+        debtorPhone = '+27-' + debtorPhone.substring(1);
+      } else if (debtorPhone.startsWith('+27') && !debtorPhone.startsWith('+27-')) {
+        debtorPhone = '+27-' + debtorPhone.substring(3);
+      } else if (!debtorPhone.startsWith('+')) {
+        debtorPhone = '+27-' + debtorPhone;
+      }
+
+      let accType = '01';
+      if (verifiedAccType.toLowerCase().startsWith('sav')) accType = '01';
+      else if (verifiedAccType.toLowerCase().startsWith('trans')) accType = '02';
+      else if (verifiedAccType.toLowerCase().startsWith('che') || verifiedAccType.toLowerCase().startsWith('curr')) accType = '03';
+
+      const mapBankNameToId = (name = '') => {
+        const lower = name.toLowerCase();
+        if (lower.includes('standard') || lower.includes('sbsa')) return '1';
+        if (lower.includes('nedbank') || lower.includes('ned')) return '2';
+        if (lower.includes('fnb') || lower.includes('first national')) return '3';
+        if (lower.includes('grobank') || lower.includes('athens')) return '6';
+        if (lower.includes('african')) return '7';
+        if (lower.includes('mercantile')) return '9';
+        if (lower.includes('capitec')) return '10';
+        if (lower.includes('absa')) return '16';
+        if (lower.includes('ubank')) return '19';
+        if (lower.includes('bidvest')) return '44';
+        if (lower.includes('finbond')) return '55';
+        if (lower.includes('tyme')) return '61';
+        if (lower.includes('discovery')) return '63';
+        if (lower.includes('old mutual')) return '67';
+        return '1';
+      };
+
+      const tomorrow = new Date();
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      const startDateStr = tomorrow.toISOString().split('T')[0];
+
+      let collectionDay = '25';
+      if (loan.repaymentDate) {
+        const day = new Date(loan.repaymentDate).getDate();
+        collectionDay = String(day).padStart(2, '0');
+      } else if (loan.adminDecision?.approvedDate) {
+        const day = new Date(loan.adminDecision.approvedDate).getDate();
+        collectionDay = String(day).padStart(2, '0');
+      }
+      if (collectionDay === '31') {
+        collectionDay = '30';
+      }
+
+      const instAmountVal = Number(loan.estimatedMonthlyEMI || loan.adminDecision?.approvedAmount || 10).toFixed(2);
+      const maxAmountVal = (Number(instAmountVal) * 1.2).toFixed(2);
+
+      mandatePayload = {
+        frequency: 'MNTH',
+        collectionDay,
+        clientReference: loan.applicationId || 'LAPP-UNKNOWN',
+        contractReference: loan.applicationId || 'LAPP-UNKNOWN',
+        debtorName: (loan.fullName || 'Client Name').substring(0, 30),
+        debtorIdType: '2',
+        debtorId: loan.idNumber || '9001015009087',
+        debtorAccountNumber: verifiedAcc.replace(/\D/g, '') || '1234567890',
+        debtorAccountType: accType,
+        debtorBankId: mapBankNameToId(bankName),
+        debtorBranchNumber: verifiedBranch.replace(/\D/g, '').padEnd(6, '0').substring(0, 6) || '051001',
+        debtorIdUltimate: '',
+        debtorPhoneNumber: debtorPhone,
+        debtorEmail: loan.emailAddress || '',
+        debtorAuthenticationRequired: '0230',
+        firstCollectionAmount: '',
+        firstCollectionDate: '',
+        instalmentAmount: instAmountVal,
+        maxCollectionAmount: maxAmountVal,
+        adjustmentCategory: 'N',
+        adjustmentAmount: '',
+        adjustmentRate: '',
+        startDate: startDateStr,
+        dateAdjustmentRule: 'Y',
+        debitValueTypeId: '1',
+        instalments: loan.requestedDuration || 1,
+        trackingIndicator: '00',
+        mac: '',
+        authenticationType: 'REAL TIME',
+        entryClass: '0033',
+        loadType: '1',
+        nonWarehouseMandate: '0',
+        smsOptIn: 'N',
+        employerCode: '',
+        insuranceModelID: '',
+        insuranceAmount: ''
+      };
+    }
+
+    const payload = validate(mandateInitiationSchema, mandatePayload);
     const key = req.headers['idempotency-key']
       || idempotency.buildKey('nupay', String(req.tenantId), 'initiateMandate', applicationId, payload.clientReference);
 
