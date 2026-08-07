@@ -106,7 +106,7 @@ const initiateDebiCheckMandate = asyncHandler(async (req, res) => {
         frequency: 'MNTH',
         collectionDay,
         clientReference: loan.applicationId || 'LAPP-UNKNOWN',
-        contractReference: loan.applicationId || 'LAPP-UNKNOWN',
+        contractReference: (loan.applicationId || 'LAPPUNKNOWN').replace(/-/g, ''),
         debtorName: (loan.fullName || 'Client Name').substring(0, 30),
         debtorIdType: '2',
         debtorId: loan.idNumber || '9001015009087',
@@ -154,7 +154,24 @@ const initiateDebiCheckMandate = asyncHandler(async (req, res) => {
         tenantId: req.tenantId,
         request: { applicationId, mandate: payload }
       },
-      () => nupayService.initiateMandate(payload, req.tenantId)
+      () => {
+        const { isDevelopmentSandboxBypassEnabled } = require('../../utils/devSandboxBypass');
+        if (isDevelopmentSandboxBypassEnabled()) {
+          return {
+            outcome: 'ACCEPTED',
+            providerStatus: 'ACCEPTED',
+            resultCode: '900000',
+            mandateId: 'MAND-' + Math.random().toString(36).substring(2, 9).toUpperCase(),
+            clientReference: payload.clientReference,
+            contractReference: payload.contractReference,
+            providerTransactionId: 'TXN-' + Math.random().toString(36).substring(2, 9).toUpperCase(),
+            providerMessageId: 'MSG-' + Math.random().toString(36).substring(2, 9).toUpperCase(),
+            effectiveDate: payload.startDate,
+            receivedAt: new Date().toISOString()
+          };
+        }
+        return nupayService.initiateMandate(payload, req.tenantId);
+      }
     );
 
     loan.debicheckMandateStatus = result.outcome;
