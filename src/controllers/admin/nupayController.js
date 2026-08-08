@@ -47,7 +47,23 @@ const initiateDebiCheckMandate = asyncHandler(async (req, res) => {
       const verifiedAcc = loan.bankVerification?.verifiedBankAccount || bankRecord?.accountNumber || '';
       const verifiedBranch = loan.bankVerification?.verifiedBranchCode || bankRecord?.branchCode || '051001';
       const verifiedAccType = loan.bankVerification?.verifiedAccountType || '01';
-      const bankName = bankRecord?.bankName || '';
+      let bankName = bankRecord?.bankName || '';
+
+      if (!bankName && verifiedBranch) {
+        const branchStr = String(verifiedBranch).replace(/\D/g, '');
+        if (branchStr === '470010') bankName = 'capitec';
+        else if (branchStr === '250655') bankName = 'fnb';
+        else if (branchStr === '198765') bankName = 'nedbank';
+        else if (branchStr === '632005') bankName = 'absa';
+        else if (branchStr === '051001' || branchStr === '51001') bankName = 'standard';
+        else if (branchStr === '430000') bankName = 'african';
+        else if (branchStr === '462005') bankName = 'bidvest';
+        else if (branchStr === '678910') bankName = 'tyme';
+        else if (branchStr === '679000') bankName = 'discovery';
+        else if (branchStr === '589000') bankName = 'finbond';
+        else if (branchStr === '431010') bankName = 'ubank';
+        else if (branchStr === '450105') bankName = 'mercantile';
+      }
 
       const rawPhone = loan.phoneNumber || '';
       let debtorPhone = rawPhone.replace(/\s+/g, '');
