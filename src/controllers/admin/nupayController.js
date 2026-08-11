@@ -170,14 +170,15 @@ const initiateDebiCheckMandate = asyncHandler(async (req, res) => {
         tenantId: req.tenantId,
         request: { applicationId, mandate: payload }
       },
-      () => {
+      async () => {
         const { isDevelopmentSandboxBypassEnabled } = require('../../utils/devSandboxBypass');
         if (isDevelopmentSandboxBypassEnabled()) {
           return {
+            provider: 'REALPAY',
             outcome: 'ACCEPTED',
             providerStatus: 'ACCEPTED',
             resultCode: '900000',
-            mandateId: 'MAND-' + Math.random().toString(36).substring(2, 9).toUpperCase(),
+            mandateId: 'RPM-' + Math.random().toString(36).substring(2, 9).toUpperCase(),
             clientReference: payload.clientReference,
             contractReference: payload.contractReference,
             providerTransactionId: 'TXN-' + Math.random().toString(36).substring(2, 9).toUpperCase(),
@@ -186,24 +187,41 @@ const initiateDebiCheckMandate = asyncHandler(async (req, res) => {
             receivedAt: new Date().toISOString()
           };
         }
-        return nupayService.initiateMandate(payload, req.tenantId);
+        const debitOrderProvider = require('../../services/payments/debitOrderProvider');
+        return debitOrderProvider.initiateMandate(payload, req.tenantId);
       }
     );
 
     loan.debicheckMandateStatus = result.outcome;
-    loan.debicheckMandateReference = result.mandateId || result.contractReference || '';
-    loan.nupayMandate = {
-      outcome: result.outcome,
-      providerStatus: result.providerStatus,
-      resultCode: result.resultCode,
-      mandateId: result.mandateId,
-      clientReference: result.clientReference,
-      contractReference: result.contractReference,
-      providerTransactionId: result.providerTransactionId,
-      providerMessageId: result.providerMessageId,
-      effectiveDate: result.effectiveDate,
-      updatedAt: new Date()
-    };
+    loan.debicheckMandateReference = result.mandateId || result.providerReference || result.contractReference || '';
+
+    if (result.provider === 'REALPAY') {
+      loan.realPayMandate = {
+        providerReference: result.mandateId || result.providerReference,
+        mandateId: result.mandateId,
+        status: result.outcome,
+        statusCode: result.statusCode || result.resultCode || '00',
+        statusDescription: result.statusDescription || result.providerStatus || 'ACCEPTED',
+        product: result.product || 'ABSADC',
+        clientReference: result.clientReference,
+        contractReference: result.contractReference,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      };
+    } else {
+      loan.nupayMandate = {
+        outcome: result.outcome,
+        providerStatus: result.providerStatus,
+        resultCode: result.resultCode,
+        mandateId: result.mandateId,
+        clientReference: result.clientReference,
+        contractReference: result.contractReference,
+        providerTransactionId: result.providerTransactionId,
+        providerMessageId: result.providerMessageId,
+        effectiveDate: result.effectiveDate,
+        updatedAt: new Date()
+      };
+    }
     await loan.save();
 
     return sendSuccess(

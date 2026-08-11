@@ -500,6 +500,19 @@ const loanApplicationSchema = new mongoose.Schema(
       callbackReceivedAt: { type: Date },
       updatedAt: { type: Date }
     },
+    realPayMandate: {
+      providerReference: { type: String, default: '' },
+      mandateId: { type: String, default: '' },
+      status: { type: String, default: '' },
+      statusCode: { type: String, default: '' },
+      statusDescription: { type: String, default: '' },
+      product: { type: String, default: '' },
+      clientReference: { type: String, default: '' },
+      contractReference: { type: String, default: '' },
+      createdAt: { type: Date },
+      updatedAt: { type: Date },
+      lastWebhookAt: { type: Date }
+    },
 
     // ── Consumer Credit Report Result (Datanamix — Dynamic Underwriting) ──
     consumerCreditReportRaw: { type: mongoose.Schema.Types.Mixed, default: {} },

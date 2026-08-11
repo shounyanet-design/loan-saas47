@@ -13,8 +13,9 @@
     "doctor": "node src/scripts/doctor.js",
     "repair": "node src/scripts/repair.js",
     "check": "find src -name '*.js' -print0 | xargs -0 -n1 node --check",
-    "test": "node --test tests/unit/nupayService.test.js",
-    "test:nupay": "NODE_ENV=test node --test tests/unit/nupayService.test.js"
+    "test": "node --test tests/unit/nupayService.test.js tests/unit/realpayService.test.js tests/integration/realpay.test.js",
+    "test:nupay": "NODE_ENV=test node --test tests/unit/nupayService.test.js",
+    "test:realpay": "NODE_ENV=test node --test tests/unit/realpayService.test.js tests/integration/realpay.test.js"
   },
   "keywords": [],
   "author": "",
