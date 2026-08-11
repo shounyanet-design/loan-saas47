@@ -1,27 +1,45 @@
 const asyncHandler = require('express-async-handler');
 const LoanApplication = require('../models/LoanApplication');
 const tenantContext = require('../tenancy/tenantContext');
-const { audit } = require('../modules/saas/utils/auditAny');
+const { realpayWebhookSchema } = require('../utils/realpayValidation');
 
 /**
  * RealPay Public Webhook Handler
  * Endpoint: POST /api/v1/realpay/webhook
  */
 const handleRealPayWebhook = asyncHandler(async (req, res) => {
-  const payload = req.body || {};
+  const { value, error } = realpayWebhookSchema.validate(req.body || {}, {
+    abortEarly: false,
+    stripUnknown: false
+  });
 
-  if (process.env.NODE_ENV !== 'test') {
-    console.log('[RealPay Webhook Event Received]', {
-      reference: payload.clientReference || payload.mandateId || payload.providerReference,
-      status: payload.status || payload.statusCode,
-      timestamp: new Date().toISOString()
+  if (error) {
+    return res.status(400).json({
+      success: false,
+      code: 'REALPAY_VALIDATION_ERROR',
+      message: 'Invalid RealPay webhook callback payload',
+      errors: error.details.map((item) => ({
+        field: item.path.join('.') || 'payload',
+        message: item.message
+      }))
     });
   }
 
+  const payload = value;
   const mandateId = String(payload.mandateId || payload.providerReference || payload.reference || '').trim();
   const clientRef = String(payload.clientReference || payload.contractReference || '').trim();
   const statusCode = String(payload.statusCode || payload.code || payload.status || '').trim();
   const statusDesc = String(payload.statusDescription || payload.message || payload.description || 'Webhook notification').trim();
+
+  // Sanitized logging (No account/bank numbers or PII logged)
+  if (process.env.NODE_ENV !== 'test') {
+    console.log('[RealPay Webhook Event Received]', {
+      clientReference: clientRef ? `${clientRef.substring(0, 8)}...` : '',
+      mandateId: mandateId ? `${mandateId.substring(0, 10)}...` : '',
+      statusCode,
+      timestamp: new Date().toISOString()
+    });
+  }
 
   let outcome = 'ACCEPTED';
   if (['REJECTED', 'FAILED', 'CANCELLED', '900002'].includes(statusCode.toUpperCase())) {
@@ -30,7 +48,7 @@ const handleRealPayWebhook = asyncHandler(async (req, res) => {
     outcome = 'PENDING';
   }
 
-  const updatedLoan = await tenantContext.runAsSystem(async () => {
+  const result = await tenantContext.runAsSystem(async () => {
     const query = [];
     if (mandateId) {
       query.push({ 'realPayMandate.mandateId': mandateId });
@@ -50,6 +68,12 @@ const handleRealPayWebhook = asyncHandler(async (req, res) => {
 
     const existingRealPay = matchedLoan.realPayMandate?.toObject?.() || matchedLoan.realPayMandate || {};
 
+    // Idempotency check: if status & statusCode match and updated recently (no state change required)
+    const isDuplicate = existingRealPay.status === outcome && existingRealPay.statusCode === statusCode && existingRealPay.lastWebhookAt;
+    if (isDuplicate) {
+      return { matchedLoan, isDuplicate: true };
+    }
+
     matchedLoan.debicheckMandateStatus = outcome;
     matchedLoan.debicheckMandateReference = mandateId || matchedLoan.debicheckMandateReference;
 
@@ -68,14 +92,28 @@ const handleRealPayWebhook = asyncHandler(async (req, res) => {
     };
 
     await matchedLoan.save();
-    return matchedLoan;
+    return { matchedLoan, isDuplicate: false };
   });
 
-  if (!updatedLoan) {
+  if (!result || !result.matchedLoan) {
     return res.status(200).json({
       success: true,
-      message: 'RealPay webhook processed; matching loan application reference not found',
+      message: 'RealPay webhook acknowledged; matching loan application reference not found',
       data: { clientReference: clientRef, mandateId, statusCode }
+    });
+  }
+
+  if (result.isDuplicate) {
+    return res.status(200).json({
+      success: true,
+      message: 'RealPay webhook callback already processed (idempotent)',
+      data: {
+        loanApplicationId: result.matchedLoan._id,
+        applicationId: result.matchedLoan.applicationId,
+        mandateId,
+        status: outcome,
+        replayed: true
+      }
     });
   }
 
@@ -83,8 +121,8 @@ const handleRealPayWebhook = asyncHandler(async (req, res) => {
     success: true,
     message: 'RealPay webhook received and processed successfully',
     data: {
-      loanApplicationId: updatedLoan._id,
-      applicationId: updatedLoan.applicationId,
+      loanApplicationId: result.matchedLoan._id,
+      applicationId: result.matchedLoan.applicationId,
       mandateId,
       status: outcome
     }
