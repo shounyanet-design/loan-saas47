@@ -100,6 +100,18 @@ class RealPayAuthService {
       const authEndpoint = `${origin}${tokenPath}`;
       const basicAuth = Buffer.from(`${credentials.clientId}:${credentials.clientSecret}`).toString('base64');
 
+      if (process.env.NODE_ENV !== 'test') {
+        console.log('[RealPay Auth Runtime Diagnostic]', {
+          source: credentials.source,
+          environment: credentials.environment,
+          baseUrl: credentials.baseUrl,
+          authEndpoint,
+          merchantNumber: credentials.merchantNumber,
+          clientIdConfigured: Boolean(credentials.clientId),
+          clientSecretConfigured: Boolean(credentials.clientSecret)
+        });
+      }
+
       const params = new URLSearchParams();
       params.append('grant_type', 'client_credentials');
 
