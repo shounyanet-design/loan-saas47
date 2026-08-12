@@ -135,6 +135,9 @@ class RealPayAuthService {
       }
       const isTimeout = error.code === 'ECONNABORTED' || error.code === 'ETIMEDOUT' || /timeout/i.test(error.message || '');
       if (isTimeout) throw new RealPayTimeoutError('Auth request timed out');
+      if (error.response?.status === 404) {
+        throw new RealPayAuthError('RealPay authentication endpoint returned HTTP 404');
+      }
       if (error.response?.status === 401 || error.response?.status === 403) {
         throw new RealPayAuthError('Invalid RealPay client credentials');
       }

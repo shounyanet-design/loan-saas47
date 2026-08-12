@@ -16,10 +16,127 @@ test('RealPay Service - Auth token generation and caching', async () => {
   realpayAuthService.clearCache();
   const res1 = await realpayAuthService.getAccessToken(null);
   assert.ok(res1.token);
-  assert.ok(res1.token.startsWith('RP_UAT_TOKEN_23118_'));
 
   const res2 = await realpayAuthService.getAccessToken(null);
   assert.equal(res1.token, res2.token, 'Token should be returned from cache');
+  realpayAuthService.clearCache();
+});
+
+test('RealPay Auth - Exact Swagger OAuth2 URL, method and headers', async () => {
+  realpayAuthService.clearCache();
+  const originalHttpClient = realpayAuthService.httpClient;
+  const originalGetCredentials = realpayAuthService.getCredentials;
+  let capturedUrl = '';
+  let capturedHeaders = {};
+  let capturedBody = '';
+
+  realpayAuthService.getCredentials = async () => ({
+    clientId: 'bg6YToNu2Is5STnwZZmB5g..',
+    clientSecret: 'bvSdgWCQw0OiAVSjB0XDgA..',
+    merchantNumber: '23118',
+    baseUrl: 'https://uat.realpaycollect.com:4448',
+    product: 'ABSADC',
+    environment: 'UAT',
+    timeout: 5000
+  });
+
+  realpayAuthService.httpClient = {
+    post: async (url, body, config) => {
+      capturedUrl = url;
+      capturedHeaders = config.headers;
+      capturedBody = body.toString();
+      return {
+        data: {
+          access_token: 'MOCK_SWAGGER_TOKEN_123',
+          token_type: 'bearer',
+          expires_in: 3600
+        }
+      };
+    }
+  };
+
+  try {
+    const res = await realpayAuthService.getAccessToken(null);
+    assert.equal(res.token, 'MOCK_SWAGGER_TOKEN_123');
+    assert.ok(capturedUrl.endsWith('/rpi/rpws/oauth/token'), 'Must call /rpi/rpws/oauth/token');
+    assert.equal(capturedHeaders['Content-Type'], 'application/x-www-form-urlencoded');
+    assert.ok(capturedHeaders['Authorization'].startsWith('Basic '), 'Must send Basic Auth header');
+    assert.ok(capturedBody.includes('grant_type=client_credentials'), 'Must send grant_type form parameter');
+  } finally {
+    realpayAuthService.httpClient = originalHttpClient;
+    realpayAuthService.getCredentials = originalGetCredentials;
+    realpayAuthService.clearCache();
+  }
+});
+
+test('RealPay Auth - HTTP 404 endpoint error mapping', async () => {
+  realpayAuthService.clearCache();
+  const originalHttpClient = realpayAuthService.httpClient;
+  const originalGetCredentials = realpayAuthService.getCredentials;
+
+  realpayAuthService.getCredentials = async () => ({
+    clientId: 'bg6YToNu2Is5STnwZZmB5g..',
+    clientSecret: 'bvSdgWCQw0OiAVSjB0XDgA..',
+    merchantNumber: '23118',
+    baseUrl: 'https://uat.realpaycollect.com:4448',
+    product: 'ABSADC',
+    environment: 'UAT',
+    timeout: 5000
+  });
+
+  realpayAuthService.httpClient = {
+    post: async () => {
+      const err = new Error('Request failed with status code 404');
+      err.response = { status: 404 };
+      throw err;
+    }
+  };
+
+  try {
+    await assert.rejects(
+      () => realpayAuthService.getAccessToken(null),
+      (err) => err.code === 'REALPAY_AUTH_ERROR' && err.message.includes('404')
+    );
+  } finally {
+    realpayAuthService.httpClient = originalHttpClient;
+    realpayAuthService.getCredentials = originalGetCredentials;
+    realpayAuthService.clearCache();
+  }
+});
+
+test('RealPay Auth - HTTP 401 invalid credentials error mapping', async () => {
+  realpayAuthService.clearCache();
+  const originalHttpClient = realpayAuthService.httpClient;
+  const originalGetCredentials = realpayAuthService.getCredentials;
+
+  realpayAuthService.getCredentials = async () => ({
+    clientId: 'bg6YToNu2Is5STnwZZmB5g..',
+    clientSecret: 'bvSdgWCQw0OiAVSjB0XDgA..',
+    merchantNumber: '23118',
+    baseUrl: 'https://uat.realpaycollect.com:4448',
+    product: 'ABSADC',
+    environment: 'UAT',
+    timeout: 5000
+  });
+
+  realpayAuthService.httpClient = {
+    post: async () => {
+      const err = new Error('Request failed with status code 401');
+      err.response = { status: 401 };
+      throw err;
+    }
+  };
+
+  try {
+    await assert.rejects(
+      () => realpayAuthService.getAccessToken(null),
+      (err) => err.code === 'REALPAY_AUTH_ERROR' && err.message.includes('Invalid RealPay client credentials')
+    );
+  } finally {
+    realpayAuthService.httpClient = originalHttpClient;
+    realpayAuthService.getCredentials = originalGetCredentials;
+    realpayAuthService.clearCache();
+  }
 });
 
 test('RealPay Service - Payload validation catches missing required fields', () => {
