@@ -9,6 +9,17 @@ const {
   RealPayAuthError
 } = require('../../errors/realpayErrors');
 
+function isProductionEnvironment(credentials = {}) {
+  const env = String(credentials.environment || '').trim().toUpperCase();
+  if (env === 'UAT') {
+    return false;
+  }
+  if (env === 'PRODUCTION' || env === 'PROD') {
+    return true;
+  }
+  return String(credentials.mode || '').trim().toLowerCase() === 'production';
+}
+
 function getRealPayOrigin(rawUrl) {
   const clean = (rawUrl || 'https://uat.realpaycollect.com:4448').trim().replace(/\/+$/, '');
   return clean.replace(/\/(rpi|rpp|rpt|api_doc|api).*$/i, '').replace(/\/+$/, '');
@@ -36,7 +47,7 @@ class RealPayClient {
       'X-Product-Code': credentials.product
     };
 
-    const isProd = credentials.environment === 'PRODUCTION' || credentials.mode === 'production';
+    const isProd = isProductionEnvironment(credentials);
     const apiPrefix = isProd ? '/rpp/rpws' : '/rpi/rpws';
     const origin = getRealPayOrigin(credentials.baseUrl);
     const url = `${origin}${apiPrefix}${path}`;

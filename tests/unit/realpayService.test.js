@@ -139,6 +139,247 @@ test('RealPay Auth - HTTP 401 invalid credentials error mapping', async () => {
   }
 });
 
+test('RealPay Auth Gateway Selection - 1. environment=UAT + mode=production -> /rpi/rpws/oauth/token', async () => {
+  realpayAuthService.clearCache();
+  const originalHttpClient = realpayAuthService.httpClient;
+  const originalGetCredentials = realpayAuthService.getCredentials;
+  let capturedUrl = '';
+
+  realpayAuthService.getCredentials = async () => ({
+    clientId: 'test_client_id',
+    clientSecret: 'test_client_secret',
+    merchantNumber: '23118',
+    baseUrl: 'https://uat.realpaycollect.com:4448',
+    product: 'ABSADC',
+    environment: 'UAT',
+    mode: 'production',
+    timeout: 5000
+  });
+
+  realpayAuthService.httpClient = {
+    post: async (url) => {
+      capturedUrl = url;
+      return { data: { access_token: 'MOCK_TOKEN' } };
+    }
+  };
+
+  try {
+    await realpayAuthService.getAccessToken(null);
+    assert.ok(capturedUrl.endsWith('/rpi/rpws/oauth/token'), `Expected /rpi/rpws/oauth/token but got ${capturedUrl}`);
+  } finally {
+    realpayAuthService.httpClient = originalHttpClient;
+    realpayAuthService.getCredentials = originalGetCredentials;
+    realpayAuthService.clearCache();
+  }
+});
+
+test('RealPay Auth Gateway Selection - 2. environment=UAT + mode=uat -> /rpi/rpws/oauth/token', async () => {
+  realpayAuthService.clearCache();
+  const originalHttpClient = realpayAuthService.httpClient;
+  const originalGetCredentials = realpayAuthService.getCredentials;
+  let capturedUrl = '';
+
+  realpayAuthService.getCredentials = async () => ({
+    clientId: 'test_client_id',
+    clientSecret: 'test_client_secret',
+    merchantNumber: '23118',
+    baseUrl: 'https://uat.realpaycollect.com:4448',
+    product: 'ABSADC',
+    environment: 'UAT',
+    mode: 'uat',
+    timeout: 5000
+  });
+
+  realpayAuthService.httpClient = {
+    post: async (url) => {
+      capturedUrl = url;
+      return { data: { access_token: 'MOCK_TOKEN' } };
+    }
+  };
+
+  try {
+    await realpayAuthService.getAccessToken(null);
+    assert.ok(capturedUrl.endsWith('/rpi/rpws/oauth/token'), `Expected /rpi/rpws/oauth/token but got ${capturedUrl}`);
+  } finally {
+    realpayAuthService.httpClient = originalHttpClient;
+    realpayAuthService.getCredentials = originalGetCredentials;
+    realpayAuthService.clearCache();
+  }
+});
+
+test('RealPay Auth Gateway Selection - 3. environment=PRODUCTION + mode=production -> /rpp/rpws/oauth/token', async () => {
+  realpayAuthService.clearCache();
+  const originalHttpClient = realpayAuthService.httpClient;
+  const originalGetCredentials = realpayAuthService.getCredentials;
+  let capturedUrl = '';
+
+  realpayAuthService.getCredentials = async () => ({
+    clientId: 'test_client_id',
+    clientSecret: 'test_client_secret',
+    merchantNumber: '23118',
+    baseUrl: 'https://realpaycollect.com:4448',
+    product: 'ABSADC',
+    environment: 'PRODUCTION',
+    mode: 'production',
+    timeout: 5000
+  });
+
+  realpayAuthService.httpClient = {
+    post: async (url) => {
+      capturedUrl = url;
+      return { data: { access_token: 'MOCK_TOKEN' } };
+    }
+  };
+
+  try {
+    await realpayAuthService.getAccessToken(null);
+    assert.ok(capturedUrl.endsWith('/rpp/rpws/oauth/token'), `Expected /rpp/rpws/oauth/token but got ${capturedUrl}`);
+  } finally {
+    realpayAuthService.httpClient = originalHttpClient;
+    realpayAuthService.getCredentials = originalGetCredentials;
+    realpayAuthService.clearCache();
+  }
+});
+
+test('RealPay Auth Gateway Selection - 4. environment=PRODUCTION + mode=uat -> /rpp/rpws/oauth/token', async () => {
+  realpayAuthService.clearCache();
+  const originalHttpClient = realpayAuthService.httpClient;
+  const originalGetCredentials = realpayAuthService.getCredentials;
+  let capturedUrl = '';
+
+  realpayAuthService.getCredentials = async () => ({
+    clientId: 'test_client_id',
+    clientSecret: 'test_client_secret',
+    merchantNumber: '23118',
+    baseUrl: 'https://realpaycollect.com:4448',
+    product: 'ABSADC',
+    environment: 'PRODUCTION',
+    mode: 'uat',
+    timeout: 5000
+  });
+
+  realpayAuthService.httpClient = {
+    post: async (url) => {
+      capturedUrl = url;
+      return { data: { access_token: 'MOCK_TOKEN' } };
+    }
+  };
+
+  try {
+    await realpayAuthService.getAccessToken(null);
+    assert.ok(capturedUrl.endsWith('/rpp/rpws/oauth/token'), `Expected /rpp/rpws/oauth/token but got ${capturedUrl}`);
+  } finally {
+    realpayAuthService.httpClient = originalHttpClient;
+    realpayAuthService.getCredentials = originalGetCredentials;
+    realpayAuthService.clearCache();
+  }
+});
+
+test('RealPay Auth Gateway Selection - 5. environment missing + mode=production -> /rpp/rpws/oauth/token', async () => {
+  realpayAuthService.clearCache();
+  const originalHttpClient = realpayAuthService.httpClient;
+  const originalGetCredentials = realpayAuthService.getCredentials;
+  let capturedUrl = '';
+
+  realpayAuthService.getCredentials = async () => ({
+    clientId: 'test_client_id',
+    clientSecret: 'test_client_secret',
+    merchantNumber: '23118',
+    baseUrl: 'https://realpaycollect.com:4448',
+    product: 'ABSADC',
+    environment: '',
+    mode: 'production',
+    timeout: 5000
+  });
+
+  realpayAuthService.httpClient = {
+    post: async (url) => {
+      capturedUrl = url;
+      return { data: { access_token: 'MOCK_TOKEN' } };
+    }
+  };
+
+  try {
+    await realpayAuthService.getAccessToken(null);
+    assert.ok(capturedUrl.endsWith('/rpp/rpws/oauth/token'), `Expected /rpp/rpws/oauth/token but got ${capturedUrl}`);
+  } finally {
+    realpayAuthService.httpClient = originalHttpClient;
+    realpayAuthService.getCredentials = originalGetCredentials;
+    realpayAuthService.clearCache();
+  }
+});
+
+test('RealPay Auth Gateway Selection - 6. environment missing + mode=uat -> /rpi/rpws/oauth/token', async () => {
+  realpayAuthService.clearCache();
+  const originalHttpClient = realpayAuthService.httpClient;
+  const originalGetCredentials = realpayAuthService.getCredentials;
+  let capturedUrl = '';
+
+  realpayAuthService.getCredentials = async () => ({
+    clientId: 'test_client_id',
+    clientSecret: 'test_client_secret',
+    merchantNumber: '23118',
+    baseUrl: 'https://uat.realpaycollect.com:4448',
+    product: 'ABSADC',
+    environment: '',
+    mode: 'uat',
+    timeout: 5000
+  });
+
+  realpayAuthService.httpClient = {
+    post: async (url) => {
+      capturedUrl = url;
+      return { data: { access_token: 'MOCK_TOKEN' } };
+    }
+  };
+
+  try {
+    await realpayAuthService.getAccessToken(null);
+    assert.ok(capturedUrl.endsWith('/rpi/rpws/oauth/token'), `Expected /rpi/rpws/oauth/token but got ${capturedUrl}`);
+  } finally {
+    realpayAuthService.httpClient = originalHttpClient;
+    realpayAuthService.getCredentials = originalGetCredentials;
+    realpayAuthService.clearCache();
+  }
+});
+
+test('RealPay Auth Gateway Selection - 7. case-insensitive: uat, Uat, UAT -> /rpi/rpws/oauth/token', async () => {
+  realpayAuthService.clearCache();
+  const originalHttpClient = realpayAuthService.httpClient;
+  const originalGetCredentials = realpayAuthService.getCredentials;
+
+  for (const envVal of ['uat', 'Uat', 'UAT']) {
+    let capturedUrl = '';
+    realpayAuthService.getCredentials = async () => ({
+      clientId: 'test_client_id',
+      clientSecret: 'test_client_secret',
+      merchantNumber: '23118',
+      baseUrl: 'https://uat.realpaycollect.com:4448',
+      product: 'ABSADC',
+      environment: envVal,
+      mode: 'production',
+      timeout: 5000
+    });
+
+    realpayAuthService.httpClient = {
+      post: async (url) => {
+        capturedUrl = url;
+        return { data: { access_token: 'MOCK_TOKEN' } };
+      }
+    };
+
+    try {
+      await realpayAuthService.getAccessToken(null);
+      assert.ok(capturedUrl.endsWith('/rpi/rpws/oauth/token'), `Expected /rpi/rpws/oauth/token for ${envVal} but got ${capturedUrl}`);
+    } finally {
+      realpayAuthService.clearCache();
+    }
+  }
+
+  realpayAuthService.httpClient = originalHttpClient;
+  realpayAuthService.getCredentials = originalGetCredentials;
+});
+
 test('RealPay Service - Payload validation catches missing required fields', () => {
   assert.throws(
     () => realpayService.validatePayload({}),

@@ -6,6 +6,17 @@ const { RealPayAuthError, RealPayConfigurationError, RealPayTimeoutError, RealPa
 const DEFAULT_REALPAY_URL = 'https://uat.realpaycollect.com:4448';
 const tokenCache = new Map(); // tenantKey -> { token, expiresAt }
 
+function isProductionEnvironment(credentials = {}) {
+  const env = String(credentials.environment || '').trim().toUpperCase();
+  if (env === 'UAT') {
+    return false;
+  }
+  if (env === 'PRODUCTION' || env === 'PROD') {
+    return true;
+  }
+  return String(credentials.mode || '').trim().toLowerCase() === 'production';
+}
+
 function getRealPayOrigin(rawUrl) {
   const clean = (rawUrl || DEFAULT_REALPAY_URL).trim().replace(/\/+$/, '');
   return clean.replace(/\/(rpi|rpp|rpt|api_doc|api).*$/i, '').replace(/\/+$/, '');
@@ -94,7 +105,7 @@ class RealPayAuthService {
     }
 
     try {
-      const isProd = credentials.environment === 'PRODUCTION' || credentials.mode === 'production';
+      const isProd = isProductionEnvironment(credentials);
       const tokenPath = isProd ? '/rpp/rpws/oauth/token' : '/rpi/rpws/oauth/token';
       const origin = getRealPayOrigin(credentials.baseUrl);
       const authEndpoint = `${origin}${tokenPath}`;
