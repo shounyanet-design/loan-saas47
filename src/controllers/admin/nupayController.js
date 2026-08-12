@@ -208,6 +208,18 @@ const initiateDebiCheckMandate = asyncHandler(async (req, res) => {
         createdAt: new Date(),
         updatedAt: new Date()
       };
+      if (result.realPayClient) {
+        loan.realPayClient = {
+          clientNumber: result.realPayClient.clientNumber || result.clientReference,
+          registered: Boolean(result.realPayClient.registered),
+          providerReference: result.realPayClient.clientNumber || result.clientReference,
+          status: result.realPayClient.status || 'REGISTERED',
+          statusCode: result.realPayClient.statusCode || '00',
+          statusDescription: result.realPayClient.statusDescription || 'Client registered successfully',
+          registeredAt: new Date(),
+          lastCheckedAt: new Date()
+        };
+      }
     } else {
       loan.nupayMandate = {
         outcome: result.outcome,

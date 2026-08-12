@@ -78,23 +78,95 @@ class RealPayService {
   }
 
   /**
-   * Initiate DebiCheck Mandate (TT1 / TT2).
+   * Normalize RealPay Client maintenance response.
    */
-  async initiateMandate(payload, tenantId = null) {
-    this.validatePayload(payload);
+  normalizeClientResponse(data, clientRef) {
+    const root = data?.ClientPostResponse?.[0] || data?.[0] || data || {};
+    const successful = root.Successful || root.successful || [];
+    const failed = root.Failed || root.failed || [];
+
+    if (successful.length > 0) {
+      return {
+        success: true,
+        usable: true,
+        clientNumber: clientRef,
+        registered: true,
+        status: 'REGISTERED',
+        statusCode: '00',
+        statusDescription: 'Client registered successfully',
+        details: successful[0]
+      };
+    }
+
+    if (failed.length > 0) {
+      const failItem = failed[0];
+      const code = String(failItem.FailureCode || failItem.code || '').trim();
+      const desc = String(failItem.FailureDescription || failItem.description || failItem.message || '').trim();
+
+      const isAlreadyExists = /already exist|duplicate|registered/i.test(desc) || ['ADCMI01', 'ADCMI02', 'ADCMI81'].includes(code);
+
+      if (isAlreadyExists) {
+        return {
+          success: true,
+          usable: true,
+          alreadyExisted: true,
+          clientNumber: clientRef,
+          registered: true,
+          status: 'ALREADY_REGISTERED',
+          statusCode: code || '00',
+          statusDescription: desc || 'Client already registered'
+        };
+      }
+
+      return {
+        success: false,
+        usable: false,
+        alreadyExisted: false,
+        clientNumber: clientRef,
+        registered: false,
+        status: 'FAILED',
+        statusCode: code || '99',
+        statusDescription: desc || 'Client registration failed'
+      };
+    }
+
+    if (data?.APIResponse?.Status === 'SUCCESS' || data?.Status === 'SUCCESS' || data?.status === '00') {
+      return {
+        success: true,
+        usable: true,
+        clientNumber: clientRef,
+        registered: true,
+        status: 'REGISTERED',
+        statusCode: '00',
+        statusDescription: 'Client maintenance succeeded'
+      };
+    }
+
+    return {
+      success: false,
+      usable: false,
+      alreadyExisted: false,
+      clientNumber: clientRef,
+      registered: false,
+      status: 'FAILED',
+      statusCode: 'CLIENT_CREATION_FAILED',
+      statusDescription: 'Unparseable response from RealPay client registration'
+    };
+  }
+
+  /**
+   * Ensure Borrower is registered as a RealPay Client.
+   */
+  async ensureRealPayClient(payload, tenantId = null) {
     const credentials = await realpayAuthService.getCredentials(tenantId);
     const product = credentials.product || 'ABSADC';
     const merchantNumber = credentials.merchantNumber || '23118';
-
     const clientRef = (payload.clientReference || `LAPP-${Date.now()}`).substring(0, 20);
-    const contractRef = (payload.contractReference || clientRef).replace(/[^a-zA-Z0-9]/g, '').substring(0, 20);
 
-    // Map Bank Name / Branch to RealPay BankCode & BranchCode
-    const bankCode = Number(payload.debtorBankId || 6); // Default ABSA (6) or FNB (4) or Standard (5)
+    const bankCode = Number(payload.debtorBankId || 6);
     const branchCode = Number(payload.debtorBranchNumber || 632005);
-    const accountType = String(payload.debtorAccountType) === '02' || String(payload.debtorAccountType) === '2' ? 2 : 1; // 1 = Cheque, 2 = Savings
+    const accountType = String(payload.debtorAccountType) === '02' || String(payload.debtorAccountType) === '2' ? 2 : 1;
 
-    // Step 1: Ensure Client is registered in RealPay
     const clientPayload = {
       ClientPostRequest: [
         {
@@ -113,17 +185,74 @@ class RealPayService {
       ]
     };
 
+    if (process.env.NODE_ENV !== 'test') {
+      console.log('[RealPay Client Register Diagnostic]', {
+        ClientNumber: clientRef,
+        product,
+        merchantNumber,
+        hasIdNumber: Boolean(payload.debtorId),
+        hasAccountNumber: Boolean(payload.debtorAccountNumber)
+      });
+    }
+
     try {
-      await realpayClient.post(
+      const responseData = await realpayClient.post(
         `/maintain/clients/${product}?BeneficiaryUser=${merchantNumber}&Version=v1`,
         clientPayload,
         tenantId
       );
-    } catch (clientErr) {
-      // Ignore if client already exists or proceed to mandate post
+
+      const parsed = this.normalizeClientResponse(responseData, clientRef);
+
       if (process.env.NODE_ENV !== 'test') {
-        console.warn('[RealPay Client Register Warning]', clientErr.message);
+        console.log('[RealPay Client Register Result]', {
+          ClientNumber: clientRef,
+          success: parsed.success,
+          usable: parsed.usable,
+          statusCode: parsed.statusCode,
+          statusDescription: parsed.statusDescription
+        });
       }
+
+      return parsed;
+    } catch (clientErr) {
+      if (process.env.NODE_ENV !== 'test') {
+        console.warn('[RealPay Client Register Error]', clientErr.message);
+      }
+      return {
+        success: false,
+        usable: false,
+        clientNumber: clientRef,
+        registered: false,
+        status: 'FAILED',
+        statusCode: 'CLIENT_REGISTRATION_EXCEPTION',
+        statusDescription: clientErr.message
+      };
+    }
+  }
+
+  /**
+   * Initiate DebiCheck Mandate (TT1 / TT2).
+   */
+  async initiateMandate(payload, tenantId = null) {
+    this.validatePayload(payload);
+    const credentials = await realpayAuthService.getCredentials(tenantId);
+    const product = credentials.product || 'ABSADC';
+    const merchantNumber = credentials.merchantNumber || '23118';
+
+    const clientRef = (payload.clientReference || `LAPP-${Date.now()}`).substring(0, 20);
+    const contractRef = (payload.contractReference || clientRef).replace(/[^a-zA-Z0-9]/g, '').substring(0, 20);
+
+    // Step 1: Ensure Client is registered in RealPay (STOP if creation fails)
+    const clientResult = await this.ensureRealPayClient(payload, tenantId);
+    if (!clientResult || !clientResult.usable) {
+      const code = clientResult?.statusCode || 'CLIENT_CREATION_FAILED';
+      const desc = clientResult?.statusDescription || 'Failed to register client with RealPay';
+      throw new RealPayProviderRejectionError(
+        `RealPay client registration failed: [${code}] ${desc}`,
+        422,
+        clientResult
+      );
     }
 
     // Step 2: Create Mandate Record
@@ -152,12 +281,17 @@ class RealPayService {
       ]
     };
 
-    return realpayClient.post(
+    const mandateResult = await realpayClient.post(
       `/maintain/mandates/${product}?BeneficiaryUser=${merchantNumber}&Version=v2`,
       mandatePayload,
       tenantId,
       (data) => this.normalizeMandateResponse(data, 'initiateMandate', clientRef, contractRef)
     );
+
+    return {
+      ...mandateResult,
+      realPayClient: clientResult
+    };
   }
 
   /**

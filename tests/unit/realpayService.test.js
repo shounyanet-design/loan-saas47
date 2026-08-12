@@ -408,15 +408,18 @@ test('RealPay Service - Mandate Initiation mapping', async () => {
     flowType: 'TT1'
   };
 
-  // Mock client HTTP post
   const realpayClient = require('../../src/services/realpay/realpayClient');
   const originalPost = realpayClient.post;
+  let clientNumberUsedInClient = '';
+  let clientNumberUsedInMandate = '';
+
   realpayClient.post = async (path, payload, tenantId, parser) => {
     if (path.includes('/maintain/clients')) {
-      return { ClientPostResponse: [{ Successful: [{ RecordNumber: 1 }], Failed: [] }] };
+      clientNumberUsedInClient = payload.ClientPostRequest?.[0]?.ClientNumber;
+      return { ClientPostResponse: [{ Successful: [{ RecordNumber: 1, ClientNumber: clientNumberUsedInClient }], Failed: [] }] };
     }
     const mandateItem = payload.MandatePostRequest?.[0] || {};
-    assert.equal(mandateItem.ClientNumber, 'LAPP-TEST-001');
+    clientNumberUsedInMandate = mandateItem.ClientNumber;
     assert.equal(mandateItem.MandateProduct, 'ABSADC');
     assert.equal(mandateItem.InstalmentAmount, 1200);
     const mockData = {
@@ -432,6 +435,109 @@ test('RealPay Service - Mandate Initiation mapping', async () => {
     const response = await realpayService.initiateMandate(samplePayload, null);
     assert.equal(response.outcome, 'ACCEPTED');
     assert.equal(response.mandateId, 'RPM-TEST-999');
+    assert.equal(clientNumberUsedInClient, 'LAPP-TEST-001');
+    assert.equal(clientNumberUsedInMandate, 'LAPP-TEST-001');
+  } finally {
+    realpayClient.post = originalPost;
+  }
+});
+
+test('RealPay Service - Client Registration Failure STOPS Mandate Creation', async () => {
+  const samplePayload = {
+    clientReference: 'LAPP-1038',
+    debtorName: 'Test Debtor',
+    debtorId: '9001015009087',
+    debtorAccountNumber: '1234567890',
+    debtorBranchNumber: '051001',
+    instalmentAmount: 1200
+  };
+
+  const realpayClient = require('../../src/services/realpay/realpayClient');
+  const originalPost = realpayClient.post;
+  let mandateCalled = false;
+
+  realpayClient.post = async (path, payload, tenantId, parser) => {
+    if (path.includes('/maintain/clients')) {
+      return {
+        ClientPostResponse: [
+          {
+            Successful: [],
+            Failed: [
+              {
+                RecordNumber: 1,
+                FailureCode: 'ADCMI05',
+                FailureDescription: 'Invalid ID Number format'
+              }
+            ]
+          }
+        ]
+      };
+    }
+    if (path.includes('/maintain/mandates')) {
+      mandateCalled = true;
+      return {};
+    }
+  };
+
+  try {
+    await assert.rejects(
+      () => realpayService.initiateMandate(samplePayload, null),
+      (err) => err.code === 'REALPAY_PROVIDER_REJECTION' && err.message.includes('ADCMI05')
+    );
+    assert.equal(mandateCalled, false, 'Mandate creation MUST NOT be called if client registration fails!');
+  } finally {
+    realpayClient.post = originalPost;
+  }
+});
+
+test('RealPay Service - Client Already Exists (ADCMI01) allows Mandate Creation to proceed safely', async () => {
+  const samplePayload = {
+    clientReference: 'LAPP-1038',
+    debtorName: 'Test Debtor',
+    debtorId: '9001015009087',
+    debtorAccountNumber: '1234567890',
+    debtorBranchNumber: '051001',
+    instalmentAmount: 1200
+  };
+
+  const realpayClient = require('../../src/services/realpay/realpayClient');
+  const originalPost = realpayClient.post;
+  let mandateCalled = false;
+
+  realpayClient.post = async (path, payload, tenantId, parser) => {
+    if (path.includes('/maintain/clients')) {
+      return {
+        ClientPostResponse: [
+          {
+            Successful: [],
+            Failed: [
+              {
+                RecordNumber: 1,
+                FailureCode: 'ADCMI01',
+                FailureDescription: 'Client already exists'
+              }
+            ]
+          }
+        ]
+      };
+    }
+    if (path.includes('/maintain/mandates')) {
+      mandateCalled = true;
+      const mockData = {
+        statusCode: '00',
+        statusDescription: 'Mandate Registered Successfully',
+        mandateId: 'RPM-EXISTING-CLIENT-01',
+        clientReference: 'LAPP-1038'
+      };
+      return parser ? parser(mockData) : mockData;
+    }
+  };
+
+  try {
+    const res = await realpayService.initiateMandate(samplePayload, null);
+    assert.equal(mandateCalled, true, 'Mandate creation MUST proceed if client already exists');
+    assert.equal(res.mandateId, 'RPM-EXISTING-CLIENT-01');
+    assert.equal(res.realPayClient.alreadyExisted, true);
   } finally {
     realpayClient.post = originalPost;
   }
