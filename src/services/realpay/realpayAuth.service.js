@@ -103,17 +103,35 @@ class RealPayAuthService {
       const params = new URLSearchParams();
       params.append('grant_type', 'client_credentials');
 
-      const response = await this.httpClient.post(
-        authEndpoint,
-        params,
-        {
-          headers: {
-            'Authorization': `Basic ${basicAuth}`,
-            'Content-Type': 'application/x-www-form-urlencoded'
-          },
-          timeout: credentials.timeout
+      let response;
+      let lastErr;
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        try {
+          response = await this.httpClient.post(
+            authEndpoint,
+            params,
+            {
+              headers: {
+                'Authorization': `Basic ${basicAuth}`,
+                'Content-Type': 'application/x-www-form-urlencoded'
+              },
+              timeout: credentials.timeout
+            }
+          );
+          break;
+        } catch (err) {
+          lastErr = err;
+          const isDnsOrNetwork = ['EAI_AGAIN', 'ENOTFOUND', 'ECONNRESET', 'ETIMEDOUT', 'ECONNABORTED'].includes(err.code);
+          if (isDnsOrNetwork && attempt < 3) {
+            if (process.env.NODE_ENV !== 'test') {
+              console.warn(`[RealPay Auth Retry] Attempt ${attempt} failed with ${err.code || err.message}, retrying in ${attempt}s...`);
+            }
+            await new Promise((r) => setTimeout(r, 1000 * attempt));
+            continue;
+          }
+          throw err;
         }
-      );
+      }
 
       const data = response.data || {};
       const token = data.access_token || data.token || data.jwt;

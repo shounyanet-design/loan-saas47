@@ -51,10 +51,26 @@ class RealPayClient {
     }
 
     try {
-      const response = await this.httpClient.post(url, payload, {
-        headers,
-        timeout: credentials.timeout
-      });
+      let response;
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        try {
+          response = await this.httpClient.post(url, payload, {
+            headers,
+            timeout: credentials.timeout
+          });
+          break;
+        } catch (err) {
+          const isDnsOrNetwork = ['EAI_AGAIN', 'ENOTFOUND', 'ECONNRESET', 'ETIMEDOUT', 'ECONNABORTED'].includes(err.code);
+          if (isDnsOrNetwork && attempt < 3) {
+            if (process.env.NODE_ENV !== 'test') {
+              console.warn(`[RealPay API Retry] Attempt ${attempt} failed with ${err.code || err.message}, retrying in ${attempt}s...`);
+            }
+            await new Promise((r) => setTimeout(r, 1000 * attempt));
+            continue;
+          }
+          throw err;
+        }
+      }
 
       if (parser) {
         return parser(response.data);
