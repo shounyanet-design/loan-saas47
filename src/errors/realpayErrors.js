@@ -21,7 +21,7 @@ class RealPayConfigurationError extends RealPayError {
 
 class RealPayAuthError extends RealPayError {
   constructor(message = 'RealPay authentication failed') {
-    super(message, 'REALPAY_AUTH_ERROR', 401);
+    super(message, 'REALPAY_AUTH_ERROR', 502);
   }
 }
 
