@@ -81,16 +81,22 @@ class RealPayAuthService {
     }
 
     try {
-      const authEndpoint = `${credentials.baseUrl}/api/v1/auth/token`;
+      const isProd = credentials.environment === 'PRODUCTION' || credentials.mode === 'production';
+      const tokenPath = isProd ? '/rpp/rpws/oauth/token' : '/rpi/rpws/oauth/token';
+      const authEndpoint = `${credentials.baseUrl.replace(/\/+$/, '')}${tokenPath}`;
+      const basicAuth = Buffer.from(`${credentials.clientId}:${credentials.clientSecret}`).toString('base64');
+
+      const params = new URLSearchParams();
+      params.append('grant_type', 'client_credentials');
+
       const response = await this.httpClient.post(
         authEndpoint,
+        params,
         {
-          client_id: credentials.clientId,
-          client_secret: credentials.clientSecret,
-          grant_type: 'client_credentials'
-        },
-        {
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Authorization': `Basic ${basicAuth}`,
+            'Content-Type': 'application/x-www-form-urlencoded'
+          },
           timeout: credentials.timeout
         }
       );

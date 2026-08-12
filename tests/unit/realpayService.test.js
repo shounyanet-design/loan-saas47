@@ -54,14 +54,18 @@ test('RealPay Service - Mandate Initiation mapping', async () => {
   const realpayClient = require('../../src/services/realpay/realpayClient');
   const originalPost = realpayClient.post;
   realpayClient.post = async (path, payload, tenantId, parser) => {
-    assert.equal(payload.merchantNumber, '23118');
-    assert.equal(payload.product, 'ABSADC');
-    assert.equal(payload.instalmentAmount, '1200.00');
+    if (path.includes('/maintain/clients')) {
+      return { ClientPostResponse: [{ Successful: [{ RecordNumber: 1 }], Failed: [] }] };
+    }
+    const mandateItem = payload.MandatePostRequest?.[0] || {};
+    assert.equal(mandateItem.ClientNumber, 'LAPP-TEST-001');
+    assert.equal(mandateItem.MandateProduct, 'ABSADC');
+    assert.equal(mandateItem.InstalmentAmount, 1200);
     const mockData = {
       statusCode: '00',
       statusDescription: 'Mandate Registered Successfully',
       mandateId: 'RPM-TEST-999',
-      clientReference: payload.clientReference
+      clientReference: 'LAPP-TEST-001'
     };
     return parser ? parser(mockData) : mockData;
   };

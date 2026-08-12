@@ -38,18 +38,22 @@ class RealPayService {
   /**
    * Normalize RealPay mandate initiation response.
    */
-  normalizeMandateResponse(data, operation = 'initiateMandate') {
+  normalizeMandateResponse(data, operation = 'initiateMandate', fallbackClientRef = '', fallbackContractRef = '') {
     if (!data || typeof data !== 'object') {
       throw new RealPayInvalidResponseError('RealPay returned malformed response data');
     }
 
-    const statusCode = String(data.statusCode || data.code || data.resultCode || data.status || '').trim();
-    const statusDesc = String(data.statusDescription || data.message || data.description || '').trim();
-    const mandateId = String(data.mandateId || data.providerReference || data.reference || '').trim();
-    const contractRef = String(data.contractReference || data.clientReference || '').trim();
+    const postResp = data.MandatePostResponse?.[0];
+    const isSuccess = data.APIResponse?.Status === 'SUCCESS' && (postResp?.Successful?.length > 0 || data.accepted === true);
+    const failedItem = postResp?.Failed?.[0];
+
+    const statusCode = String(data.statusCode || data.code || data.resultCode || data.status || (isSuccess ? '00' : (failedItem ? 'REJECTED' : ''))).trim();
+    const statusDesc = String(data.statusDescription || data.message || failedItem?.Failures?.[0]?.FailureDescription || '').trim();
+    const mandateId = String(data.mandateId || postResp?.Successful?.[0]?.MandateSequence || data.providerReference || data.reference || '').trim();
+    const contractRef = String(data.contractReference || postResp?.Successful?.[0]?.ContractNumber || fallbackContractRef).trim();
 
     let outcome = 'REJECTED';
-    if (REALPAY_SUCCESS_CODES.has(statusCode.toUpperCase()) || data.accepted === true) {
+    if (isSuccess || REALPAY_SUCCESS_CODES.has(statusCode.toUpperCase()) || data.accepted === true) {
       outcome = 'ACCEPTED';
     } else if (REALPAY_PENDING_CODES.has(statusCode.toUpperCase()) || data.pending === true) {
       outcome = 'PENDING';
@@ -61,11 +65,11 @@ class RealPayService {
       outcome,
       operation,
       providerStatus: outcome,
-      statusCode: statusCode || '00',
-      statusDescription: statusDesc || (outcome === 'ACCEPTED' ? 'Mandate accepted' : 'Mandate pending/processed'),
+      statusCode: statusCode || (outcome === 'ACCEPTED' ? '00' : '99'),
+      statusDescription: statusDesc || (outcome === 'ACCEPTED' ? 'Mandate accepted' : 'Mandate creation failed'),
       mandateId: mandateId || `RPM-${Date.now()}`,
       providerReference: mandateId || `RPM-${Date.now()}`,
-      clientReference: payloadReference(data),
+      clientReference: data.clientReference || postResp?.Successful?.[0]?.ClientNumber || fallbackClientRef,
       contractReference: contractRef,
       effectiveDate: data.startDate || new Date().toISOString().split('T')[0],
       receivedAt: new Date().toISOString(),
@@ -79,36 +83,80 @@ class RealPayService {
   async initiateMandate(payload, tenantId = null) {
     this.validatePayload(payload);
     const credentials = await realpayAuthService.getCredentials(tenantId);
+    const product = credentials.product || 'ABSADC';
+    const merchantNumber = credentials.merchantNumber || '23118';
 
-    const realPayPayload = {
-      merchantNumber: credentials.merchantNumber,
-      product: credentials.product || 'ABSADC',
-      flowType: payload.flowType || 'TT1', // TT1 or TT2
-      clientReference: payload.clientReference,
-      contractReference: payload.contractReference || payload.clientReference,
-      debtorName: payload.debtorName,
-      debtorIdType: payload.debtorIdType || '2', // SA ID
-      debtorId: payload.debtorId,
-      debtorAccountNumber: payload.debtorAccountNumber,
-      debtorAccountType: payload.debtorAccountType || '01',
-      debtorBankId: payload.debtorBankId || '1',
-      debtorBranchNumber: payload.debtorBranchNumber,
-      debtorPhoneNumber: payload.debtorPhoneNumber,
-      debtorEmail: payload.debtorEmail || '',
-      instalmentAmount: Number(payload.instalmentAmount).toFixed(2),
-      maxCollectionAmount: Number(payload.maxCollectionAmount || payload.instalmentAmount * 1.2).toFixed(2),
-      frequency: payload.frequency || 'MNTH',
-      collectionDay: payload.collectionDay || '25',
-      startDate: payload.startDate || new Date().toISOString().split('T')[0],
-      instalments: payload.instalments || 1,
-      webhookUrl: credentials.webhookUrl
+    const clientRef = (payload.clientReference || `LAPP-${Date.now()}`).substring(0, 20);
+    const contractRef = (payload.contractReference || clientRef).replace(/[^a-zA-Z0-9]/g, '').substring(0, 20);
+
+    // Map Bank Name / Branch to RealPay BankCode & BranchCode
+    const bankCode = Number(payload.debtorBankId || 6); // Default ABSA (6) or FNB (4) or Standard (5)
+    const branchCode = Number(payload.debtorBranchNumber || 632005);
+    const accountType = String(payload.debtorAccountType) === '02' || String(payload.debtorAccountType) === '2' ? 2 : 1; // 1 = Cheque, 2 = Savings
+
+    // Step 1: Ensure Client is registered in RealPay
+    const clientPayload = {
+      ClientPostRequest: [
+        {
+          ClientNumber: clientRef,
+          ClientName: (payload.debtorName || 'Debtor').substring(0, 50),
+          IDType: payload.debtorIdType === 'P' ? 'P' : 'I',
+          IDNumber: (payload.debtorId || '').substring(0, 33),
+          BankCode: bankCode,
+          BranchCode: branchCode,
+          AccountType: accountType,
+          AccountNumber: String(payload.debtorAccountNumber || '').substring(0, 13),
+          AccountHolderName: (payload.debtorName || 'Debtor').substring(0, 50),
+          CellphoneNumber: payload.debtorPhoneNumber || '+27820000000',
+          EMail: payload.debtorEmail || ''
+        }
+      ]
+    };
+
+    try {
+      await realpayClient.post(
+        `/maintain/clients/${product}?BeneficiaryUser=${merchantNumber}&Version=v1`,
+        clientPayload,
+        tenantId
+      );
+    } catch (clientErr) {
+      // Ignore if client already exists or proceed to mandate post
+      if (process.env.NODE_ENV !== 'test') {
+        console.warn('[RealPay Client Register Warning]', clientErr.message);
+      }
+    }
+
+    // Step 2: Create Mandate Record
+    const mandateActionDate = formatRealPayDate(new Date());
+    const instalmentStartDate = formatRealPayDate(payload.startDate ? new Date(payload.startDate) : new Date());
+
+    const mandatePayload = {
+      MandatePostRequest: [
+        {
+          MandateProduct: product,
+          MandateType: 'F',
+          TransactionType: payload.flowType || 'TT1',
+          DebitSequenceType: payload.debitSequenceType || 'RCUR',
+          MandateActionDate: mandateActionDate,
+          InstalmentStartDate: instalmentStartDate,
+          FrequencyCode: payload.frequency || 'MNTH',
+          CollectionDay: Number(payload.collectionDay || 25),
+          AdjustmentCategory: 'N',
+          TrackingYN: 'N',
+          ClientNumber: clientRef,
+          ContractNumber: contractRef,
+          InstalmentAmount: Number(payload.instalmentAmount),
+          MaximumAmount: Number(payload.maxCollectionAmount || Number(payload.instalmentAmount) * 1.2),
+          NumberOfInstalments: Number(payload.instalments || 1)
+        }
+      ]
     };
 
     return realpayClient.post(
-      '/api/v1/mandates/initiate',
-      realPayPayload,
+      `/maintain/mandates/${product}?BeneficiaryUser=${merchantNumber}&Version=v2`,
+      mandatePayload,
       tenantId,
-      (data) => this.normalizeMandateResponse(data, 'initiateMandate')
+      (data) => this.normalizeMandateResponse(data, 'initiateMandate', clientRef, contractRef)
     );
   }
 
@@ -192,6 +240,16 @@ class RealPayService {
 
 function payloadReference(data) {
   return data.clientReference || data.reference || data.requestId || '';
+}
+
+function formatRealPayDate(d) {
+  const dateObj = new Date(d);
+  const year = dateObj.getFullYear();
+  const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+  const day = String(dateObj.getDate()).padStart(2, '0');
+  const hours = String(dateObj.getHours()).padStart(2, '0');
+  const mins = String(dateObj.getMinutes()).padStart(2, '0');
+  return `${year}-${month}-${day} ${hours}:${mins}`;
 }
 
 module.exports = new RealPayService();

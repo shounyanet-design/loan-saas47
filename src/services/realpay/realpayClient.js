@@ -31,7 +31,11 @@ class RealPayClient {
       'X-Product-Code': credentials.product
     };
 
-    const url = `${credentials.baseUrl}${path}`;
+    const isProd = credentials.environment === 'PRODUCTION' || credentials.mode === 'production';
+    const apiPrefix = isProd ? '/rpp/rpws' : '/rpi/rpws';
+    const base = credentials.baseUrl.replace(/\/+$/, '');
+    const fullBase = (base.includes('/rpi/rpws') || base.includes('/rpp/rpws')) ? base : `${base}${apiPrefix}`;
+    const url = `${fullBase}${path}`;
 
     if (process.env.NODE_ENV !== 'test') {
       console.log('[RealPay Request]', {
@@ -103,7 +107,11 @@ class RealPayClient {
       'X-Merchant-Number': credentials.merchantNumber
     };
 
-    const url = `${credentials.baseUrl}${path}`;
+    const isProd = credentials.environment === 'PRODUCTION' || credentials.mode === 'production';
+    const apiPrefix = isProd ? '/rpp/rpws' : '/rpi/rpws';
+    const base = credentials.baseUrl.replace(/\/+$/, '');
+    const fullBase = (base.includes('/rpi/rpws') || base.includes('/rpp/rpws')) ? base : `${base}${apiPrefix}`;
+    const url = `${fullBase}${path}`;
 
     try {
       const response = await this.httpClient.get(url, {
