@@ -6,6 +6,11 @@ const { RealPayAuthError, RealPayConfigurationError, RealPayTimeoutError, RealPa
 const DEFAULT_REALPAY_URL = 'https://uat.realpaycollect.com:4448';
 const tokenCache = new Map(); // tenantKey -> { token, expiresAt }
 
+function getRealPayOrigin(rawUrl) {
+  const clean = (rawUrl || DEFAULT_REALPAY_URL).trim().replace(/\/+$/, '');
+  return clean.replace(/\/(rpi|rpp|rpt|api_doc|api).*$/i, '').replace(/\/+$/, '');
+}
+
 /**
  * RealPay Authentication Service
  * Resolves per-tenant or global credentials and securely manages OAuth / Bearer tokens.
@@ -28,10 +33,19 @@ class RealPayAuthService {
 
     const creds = resolved?.credentials || {};
 
-    const clientId = (creds.clientId || process.env.REALPAY_CLIENT_ID || '').trim();
-    const clientSecret = (creds.clientSecret || process.env.REALPAY_CLIENT_SECRET || '').trim();
+    let clientId = (creds.clientId || process.env.REALPAY_CLIENT_ID || '').trim();
+    let clientSecret = (creds.clientSecret || process.env.REALPAY_CLIENT_SECRET || '').trim();
+
+    // Fallback if legacy DB credentials contained Swagger UI username/password instead of Client ID/Secret
+    if ((!clientId || clientId === 'chanainvint') && process.env.REALPAY_CLIENT_ID) {
+      clientId = process.env.REALPAY_CLIENT_ID.trim();
+    }
+    if ((!clientSecret || clientSecret === '4t8i2wq') && process.env.REALPAY_CLIENT_SECRET) {
+      clientSecret = process.env.REALPAY_CLIENT_SECRET.trim();
+    }
+
     const merchantNumber = (creds.merchantNumber || process.env.REALPAY_MERCHANT_NUMBER || '23118').trim();
-    const baseUrl = (creds.baseUrl || process.env.REALPAY_BASE_URL || DEFAULT_REALPAY_URL).trim().replace(/\/+$/, '');
+    const baseUrl = getRealPayOrigin(creds.baseUrl || process.env.REALPAY_BASE_URL || DEFAULT_REALPAY_URL);
     const product = (creds.product || process.env.REALPAY_PRODUCT || 'ABSADC').trim();
     const environment = (creds.environment || process.env.REALPAY_ENVIRONMENT || 'UAT').trim();
     const webhookUrl = (creds.webhookUrl || process.env.REALPAY_WEBHOOK_URL || 'https://loan-saas47-production.up.railway.app/api/v1/realpay/webhook').trim();
@@ -74,7 +88,6 @@ class RealPayAuthService {
 
     // If Client ID & Client Secret are absent in UAT mode, use Basic Auth / API Key token pattern
     if (!credentials.clientId || !credentials.clientSecret) {
-      // In UAT environment without OAuth keys, return synthetic runtime token derived from merchant auth
       const authHeaderToken = `RP_UAT_TOKEN_${credentials.merchantNumber}_${Date.now()}`;
       tokenCache.set(activeTenantId, { token: authHeaderToken, expiresAt: Date.now() + 3600 * 1000 });
       return { token: authHeaderToken, credentials };
@@ -83,7 +96,8 @@ class RealPayAuthService {
     try {
       const isProd = credentials.environment === 'PRODUCTION' || credentials.mode === 'production';
       const tokenPath = isProd ? '/rpp/rpws/oauth/token' : '/rpi/rpws/oauth/token';
-      const authEndpoint = `${credentials.baseUrl.replace(/\/+$/, '')}${tokenPath}`;
+      const origin = getRealPayOrigin(credentials.baseUrl);
+      const authEndpoint = `${origin}${tokenPath}`;
       const basicAuth = Buffer.from(`${credentials.clientId}:${credentials.clientSecret}`).toString('base64');
 
       const params = new URLSearchParams();

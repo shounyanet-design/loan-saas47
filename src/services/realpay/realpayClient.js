@@ -9,6 +9,11 @@ const {
   RealPayAuthError
 } = require('../../errors/realpayErrors');
 
+function getRealPayOrigin(rawUrl) {
+  const clean = (rawUrl || 'https://uat.realpaycollect.com:4448').trim().replace(/\/+$/, '');
+  return clean.replace(/\/(rpi|rpp|rpt|api_doc|api).*$/i, '').replace(/\/+$/, '');
+}
+
 /**
  * RealPay Client
  * Low-level HTTP client handling auth header injection, error mapping, and sanitized response normalization.
@@ -33,9 +38,8 @@ class RealPayClient {
 
     const isProd = credentials.environment === 'PRODUCTION' || credentials.mode === 'production';
     const apiPrefix = isProd ? '/rpp/rpws' : '/rpi/rpws';
-    const base = credentials.baseUrl.replace(/\/+$/, '');
-    const fullBase = (base.includes('/rpi/rpws') || base.includes('/rpp/rpws')) ? base : `${base}${apiPrefix}`;
-    const url = `${fullBase}${path}`;
+    const origin = getRealPayOrigin(credentials.baseUrl);
+    const url = `${origin}${apiPrefix}${path}`;
 
     if (process.env.NODE_ENV !== 'test') {
       console.log('[RealPay Request]', {
@@ -109,9 +113,8 @@ class RealPayClient {
 
     const isProd = credentials.environment === 'PRODUCTION' || credentials.mode === 'production';
     const apiPrefix = isProd ? '/rpp/rpws' : '/rpi/rpws';
-    const base = credentials.baseUrl.replace(/\/+$/, '');
-    const fullBase = (base.includes('/rpi/rpws') || base.includes('/rpp/rpws')) ? base : `${base}${apiPrefix}`;
-    const url = `${fullBase}${path}`;
+    const origin = getRealPayOrigin(credentials.baseUrl);
+    const url = `${origin}${apiPrefix}${path}`;
 
     try {
       const response = await this.httpClient.get(url, {
