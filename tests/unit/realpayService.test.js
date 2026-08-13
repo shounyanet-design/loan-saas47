@@ -607,6 +607,37 @@ test('RealPay Service - Bank code mapping resolves Capitec (8), FNB (4), Standar
   assert.equal(realpayService.mapBankNameToRealPayCode('', 10), 8); // NuPay Capitec 10 -> RealPay 8
 });
 
+test('RealPay Service - Preserves all provider Failures[] in normalizeMandateResponse (ADCMI45, ADCMI1, ADCMIT17, ADCMI29)', () => {
+  const mockMultiFailureResponse = {
+    MandatePostResponse: [
+      {
+        Successful: [],
+        Failed: [
+          {
+            RecordNumber: 1,
+            Failures: [
+              { FailureCode: 'ADCMI45', FailureDescription: 'Mandate Authentication Type must be valid for Mandate Product' },
+              { FailureCode: 'ADCMI1', FailureDescription: 'Mandate Authorization Product is Required' },
+              { FailureCode: 'ADCMIT17', FailureDescription: 'Mandate Authorization Product not linked to Beneficiary' },
+              { FailureCode: 'ADCMI29', FailureDescription: 'Benefeciary User Cellphone or Telephone Number Required' }
+            ]
+          }
+        ]
+      }
+    ],
+    APIResponse: { Status: 'SUCCESS' }
+  };
+
+  const parsed = realpayService.normalizeMandateResponse(mockMultiFailureResponse, 'initiateMandate', 'LAPP-1038', 'LAPP1038');
+  assert.equal(parsed.outcome, 'REJECTED');
+  assert.equal(parsed.statusCode, 'ADCMI45');
+  assert.equal(parsed.providerFailures.length, 4);
+  assert.equal(parsed.providerFailures[0].code, 'ADCMI45');
+  assert.equal(parsed.providerFailures[1].code, 'ADCMI1');
+  assert.equal(parsed.providerFailures[2].code, 'ADCMIT17');
+  assert.equal(parsed.providerFailures[3].code, 'ADCMI29');
+});
+
 test('Debit Order Provider - Provider resolution', async () => {
   const provider = await debitOrderProvider.resolveProviderName(null);
   assert.equal(provider, 'realpay');

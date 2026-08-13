@@ -45,10 +45,23 @@ class RealPayService {
 
     const postResp = data.MandatePostResponse?.[0];
     const isSuccess = data.APIResponse?.Status === 'SUCCESS' && (postResp?.Successful?.length > 0 || data.accepted === true);
-    const failedItem = postResp?.Failed?.[0];
 
-    const statusCode = String(data.statusCode || data.code || data.resultCode || data.status || (isSuccess ? '00' : (failedItem ? 'REJECTED' : ''))).trim();
-    const statusDesc = String(data.statusDescription || data.message || failedItem?.Failures?.[0]?.FailureDescription || '').trim();
+    const providerFailures = [];
+    if (postResp?.Failed?.length > 0) {
+      for (const item of postResp.Failed) {
+        const failuresList = item.Failures || item.failures || [item];
+        for (const f of failuresList) {
+          providerFailures.push({
+            code: String(f.FailureCode || f.code || item.FailureCode || 'FAILED').trim(),
+            description: String(f.FailureDescription || f.description || f.message || item.FailureDescription || '').trim()
+          });
+        }
+      }
+    }
+
+    const firstFailure = providerFailures[0];
+    const statusCode = String(data.statusCode || data.code || data.resultCode || data.status || firstFailure?.code || (isSuccess ? '00' : 'REJECTED')).trim();
+    const statusDesc = String(data.statusDescription || data.message || firstFailure?.description || (isSuccess ? 'Mandate accepted' : 'Mandate creation failed')).trim();
     const mandateId = String(data.mandateId || postResp?.Successful?.[0]?.MandateSequence || data.providerReference || data.reference || '').trim();
     const contractRef = String(data.contractReference || postResp?.Successful?.[0]?.ContractNumber || fallbackContractRef).trim();
 
@@ -66,7 +79,8 @@ class RealPayService {
       operation,
       providerStatus: outcome,
       statusCode: statusCode || (outcome === 'ACCEPTED' ? '00' : '99'),
-      statusDescription: statusDesc || (outcome === 'ACCEPTED' ? 'Mandate accepted' : 'Mandate creation failed'),
+      statusDescription: statusDesc,
+      providerFailures,
       mandateId: mandateId || `RPM-${Date.now()}`,
       providerReference: mandateId || `RPM-${Date.now()}`,
       clientReference: data.clientReference || postResp?.Successful?.[0]?.ClientNumber || fallbackClientRef,
