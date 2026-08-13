@@ -571,6 +571,42 @@ test('RealPay Idempotency - REJECTED mandate + explicit reinitiate starts a NEW 
   assert.equal(newAttemptDecision.type, 'run');
 });
 
+test('RealPay Service - Parses nested Failures array (DUPLICATE RECORD IN TAJLND) as usable ALREADY_REGISTERED', () => {
+  const mockResponse = {
+    ClientPostResponse: [
+      {
+        Successful: [],
+        Failed: [
+          {
+            RecordNumber: 1,
+            ClientNumber: "LAPP-1038",
+            Failures: [
+              {
+                FailureDescription: "DUPLICATE RECORD ALREADY EXISTS IN TAJLND"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  };
+
+  const parsed = realpayService.normalizeClientResponse(mockResponse, 'LAPP-1038');
+  assert.equal(parsed.success, true);
+  assert.equal(parsed.usable, true);
+  assert.equal(parsed.alreadyExisted, true);
+  assert.equal(parsed.status, 'ALREADY_REGISTERED');
+  assert.ok(parsed.statusDescription.includes('TAJLND'));
+});
+
+test('RealPay Service - Bank code mapping resolves Capitec (8), FNB (4), Standard (5), ABSA (6)', () => {
+  assert.equal(realpayService.mapBankNameToRealPayCode('Capitec'), 8);
+  assert.equal(realpayService.mapBankNameToRealPayCode('FNB'), 4);
+  assert.equal(realpayService.mapBankNameToRealPayCode('Standard Bank'), 5);
+  assert.equal(realpayService.mapBankNameToRealPayCode('ABSA'), 6);
+  assert.equal(realpayService.mapBankNameToRealPayCode('', 10), 8); // NuPay Capitec 10 -> RealPay 8
+});
+
 test('Debit Order Provider - Provider resolution', async () => {
   const provider = await debitOrderProvider.resolveProviderName(null);
   assert.equal(provider, 'realpay');

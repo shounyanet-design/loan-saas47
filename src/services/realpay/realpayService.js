@@ -78,6 +78,29 @@ class RealPayService {
   }
 
   /**
+   * Map bank name or NuPay ID to RealPay Bank Code.
+   */
+  mapBankNameToRealPayCode(bankName = '', defaultCode = 6) {
+    const lower = String(bankName || '').toLowerCase();
+    if (lower.includes('fnb') || lower.includes('first national')) return 4;
+    if (lower.includes('standard') || lower.includes('sbsa')) return 5;
+    if (lower.includes('absa')) return 6;
+    if (lower.includes('african')) return 7;
+    if (lower.includes('capitec')) return 8;
+    if (lower.includes('nedbank') || lower.includes('ned')) return 2;
+    if (lower.includes('tyme')) return 61;
+    if (lower.includes('discovery')) return 63;
+
+    const num = Number(defaultCode);
+    if (num === 10) return 8; // NuPay Capitec (10) -> RealPay Capitec (8)
+    if (num === 16) return 6; // NuPay ABSA (16) -> RealPay ABSA (6)
+    if (num === 3) return 4;  // NuPay FNB (3) -> RealPay FNB (4)
+    if (num === 1) return 5;  // NuPay Standard Bank (1) -> RealPay Standard Bank (5)
+    if (num === 2) return 2;  // Nedbank -> 2
+    return num || 6;
+  }
+
+  /**
    * Normalize RealPay Client maintenance response.
    */
   normalizeClientResponse(data, clientRef) {
@@ -100,10 +123,12 @@ class RealPayService {
 
     if (failed.length > 0) {
       const failItem = failed[0];
-      const code = String(failItem.FailureCode || failItem.code || '').trim();
-      const desc = String(failItem.FailureDescription || failItem.description || failItem.message || '').trim();
+      const failureObj = failItem.Failures?.[0] || failItem.failures?.[0] || failItem;
 
-      const isAlreadyExists = /already exist|duplicate|registered/i.test(desc) || ['ADCMI01', 'ADCMI02', 'ADCMI81'].includes(code);
+      const code = String(failItem.FailureCode || failureObj.FailureCode || failureObj.code || failItem.code || '').trim();
+      const desc = String(failureObj.FailureDescription || failItem.FailureDescription || failureObj.description || failureObj.message || failItem.message || '').trim();
+
+      const isAlreadyExists = /already exist|duplicate|registered|TAJLND/i.test(desc) || ['ADCMI01', 'ADCMI02', 'ADCMI81'].includes(code);
 
       if (isAlreadyExists) {
         return {
@@ -113,8 +138,8 @@ class RealPayService {
           clientNumber: clientRef,
           registered: true,
           status: 'ALREADY_REGISTERED',
-          statusCode: code || '00',
-          statusDescription: desc || 'Client already registered'
+          statusCode: code || 'DUPLICATE_CLIENT',
+          statusDescription: desc || 'Client already registered in RealPay'
         };
       }
 
@@ -125,8 +150,8 @@ class RealPayService {
         clientNumber: clientRef,
         registered: false,
         status: 'FAILED',
-        statusCode: code || '99',
-        statusDescription: desc || 'Client registration failed'
+        statusCode: code || 'REALPAY_CLIENT_REJECTED',
+        statusDescription: desc || 'Client registration rejected by RealPay'
       };
     }
 
@@ -163,8 +188,8 @@ class RealPayService {
     const merchantNumber = credentials.merchantNumber || '23118';
     const clientRef = (payload.clientReference || `LAPP-${Date.now()}`).substring(0, 20);
 
-    const bankCode = Number(payload.debtorBankId || 6);
-    const branchCode = Number(payload.debtorBranchNumber || 632005);
+    const bankCode = this.mapBankNameToRealPayCode(payload.bankName || payload.debtorBankName, payload.debtorBankId);
+    const branchCode = Number(payload.debtorBranchNumber || (bankCode === 8 ? 470010 : (bankCode === 4 ? 250655 : (bankCode === 5 ? 51001 : 632005))));
     const accountType = String(payload.debtorAccountType) === '02' || String(payload.debtorAccountType) === '2' ? 2 : 1;
 
     const clientPayload = {
@@ -186,12 +211,17 @@ class RealPayService {
     };
 
     if (process.env.NODE_ENV !== 'test') {
-      console.log('[RealPay Client Register Diagnostic]', {
+      console.log('[RealPay Client Outbound Payload Shape]', {
         ClientNumber: clientRef,
-        product,
-        merchantNumber,
-        hasIdNumber: Boolean(payload.debtorId),
-        hasAccountNumber: Boolean(payload.debtorAccountNumber)
+        ClientNamePresent: Boolean(payload.debtorName),
+        IdNumberPresent: Boolean(payload.debtorId),
+        IdType: payload.debtorIdType === 'P' ? 'P' : 'I',
+        AccountNumberPresent: Boolean(payload.debtorAccountNumber),
+        BranchNumber: branchCode,
+        BankCode: bankCode,
+        AccountType: accountType,
+        MobilePresent: Boolean(payload.debtorPhoneNumber),
+        EmailPresent: Boolean(payload.debtorEmail)
       });
     }
 
