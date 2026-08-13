@@ -142,9 +142,11 @@ app.use('/api/admin/payments', paymentRoutes);
 app.use('/api/admin/due-payments', duePaymentRoutes);
 const nupayRoutesApi = require('./routes/nupayRoutes');
 const realpayRoutesApi = require('./routes/realpayRoutes');
+const realpayAdminRoutes = require('./routes/admin/realpayRoutes');
 app.use('/api/v1/nupay', nupayRoutesApi);
 app.use('/api/v1/realpay', realpayRoutesApi);
 app.use('/api/admin/nupay', nupayRoutes);
+app.use('/api/admin/realpay', realpayAdminRoutes);
 
 app.use('/api/admin/reports', reportRoutes);
 app.use('/api/admin/communications', communicationRoutes);

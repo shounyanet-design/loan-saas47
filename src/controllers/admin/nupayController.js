@@ -281,13 +281,14 @@ const {
       loan.realPayMandate = {
         providerReference: result.mandateId || result.providerReference,
         mandateId: result.mandateId,
+        contractSequence: result.contractSequence || loan.realPayMandate?.contractSequence || '',
         status: result.outcome,
         statusCode: result.statusCode || result.resultCode || '00',
         statusDescription: result.statusDescription || result.providerStatus || 'ACCEPTED',
         product: result.product || 'ABSADC',
         clientReference: result.clientReference,
         contractReference: result.contractReference,
-        createdAt: new Date(),
+        createdAt: loan.realPayMandate?.createdAt || new Date(),
         updatedAt: new Date()
       };
       if (result.realPayClient) {

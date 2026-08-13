@@ -503,6 +503,7 @@ const loanApplicationSchema = new mongoose.Schema(
     realPayMandate: {
       providerReference: { type: String, default: '' },
       mandateId: { type: String, default: '' },
+      contractSequence: { type: String, default: '' },
       status: { type: String, default: '' },
       statusCode: { type: String, default: '' },
       statusDescription: { type: String, default: '' },
@@ -522,6 +523,27 @@ const loanApplicationSchema = new mongoose.Schema(
       statusDescription: { type: String, default: '' },
       registeredAt: { type: Date },
       lastCheckedAt: { type: Date }
+    },
+    realPaySimulation: {
+      environment: { type: String, default: 'UAT' },
+      mandate: {
+        requestedAt: { type: Date },
+        contractSequence: { type: String, default: '' },
+        statusCode: { type: String, default: '' },
+        result: { type: String, default: '' },
+        providerStatus: { type: String, default: '' },
+        providerMessage: { type: String, default: '' },
+        completedAt: { type: Date }
+      },
+      instalment: {
+        requestedAt: { type: Date },
+        contractSequence: { type: String, default: '' },
+        statusCode: { type: String, default: '' },
+        result: { type: String, default: '' },
+        providerStatus: { type: String, default: '' },
+        providerMessage: { type: String, default: '' },
+        completedAt: { type: Date }
+      }
     },
 
     // ── Consumer Credit Report Result (Datanamix — Dynamic Underwriting) ──

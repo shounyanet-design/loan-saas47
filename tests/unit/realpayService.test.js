@@ -638,6 +638,117 @@ test('RealPay Service - Preserves all provider Failures[] in normalizeMandateRes
   assert.equal(parsed.providerFailures[3].code, 'ADCMI29');
 });
 
+test('RealPay Simulation Service - Mandate Simulation Request Schema & PUT Method', async () => {
+  const realpaySimulationService = require('../../src/services/realpay/realpaySimulation.service');
+  const realpayClient = require('../../src/services/realpay/realpayClient');
+  const originalPut = realpayClient.put;
+
+  let capturedPath = '';
+  let capturedPayload = null;
+
+  realpayClient.put = async (path, payload) => {
+    capturedPath = path;
+    capturedPayload = payload;
+    return {
+      MandateSimulatePutResponse: [
+        {
+          Successful: [{ MandateSequence: 'SEQ-1001' }],
+          Failed: []
+        }
+      ],
+      APIResponse: { Status: 'SUCCESS' }
+    };
+  };
+
+  try {
+    const res = await realpaySimulationService.simulateMandate({
+      contractSequence: 'SEQ-1001',
+      statusCode: 'S',
+      result: 'AAUT'
+    }, null);
+
+    assert.equal(capturedPath, '/maintain/simulate/mandate/ABSADC?BeneficiaryUser=23118&Version=v1');
+    assert.ok(capturedPayload.MandateSimulatePutRequest);
+    assert.equal(capturedPayload.MandateSimulatePutRequest[0].ContractSequence, 'SEQ-1001');
+    assert.equal(capturedPayload.MandateSimulatePutRequest[0].MandateInitiateStatusCode, 'S');
+    assert.equal(capturedPayload.MandateSimulatePutRequest[0].MandateInitiateResult, 'AAUT');
+    assert.equal(res.outcome, 'ACCEPTED');
+    assert.equal(res.operation, 'simulateMandate');
+  } finally {
+    realpayClient.put = originalPut;
+  }
+});
+
+test('RealPay Simulation Service - Instalment Simulation Request Schema', async () => {
+  const realpaySimulationService = require('../../src/services/realpay/realpaySimulation.service');
+  const realpayClient = require('../../src/services/realpay/realpayClient');
+  const originalPut = realpayClient.put;
+
+  let capturedPath = '';
+  let capturedPayload = null;
+
+  realpayClient.put = async (path, payload) => {
+    capturedPath = path;
+    capturedPayload = payload;
+    return {
+      InstalmentSimulatePutResponse: [
+        {
+          Successful: [{ ContractSequence: 'SEQ-1001' }],
+          Failed: []
+        }
+      ],
+      APIResponse: { Status: 'SUCCESS' }
+    };
+  };
+
+  try {
+    const res = await realpaySimulationService.simulateInstalment({
+      contractSequence: 'SEQ-1001',
+      statusCode: 'S',
+      result: 'SUCC'
+    }, null);
+
+    assert.equal(capturedPath, '/maintain/simulate/instalment/ABSADC?BeneficiaryUser=23118&Version=v1');
+    assert.ok(capturedPayload.InstalmentSimulatePutRequest);
+    assert.equal(capturedPayload.InstalmentSimulatePutRequest[0].ContractSequence, 'SEQ-1001');
+    assert.equal(capturedPayload.InstalmentSimulatePutRequest[0].InstalmentStatusCode, 'S');
+    assert.equal(capturedPayload.InstalmentSimulatePutRequest[0].InstalmentResult, 'SUCC');
+    assert.equal(res.outcome, 'ACCEPTED');
+    assert.equal(res.operation, 'simulateInstalment');
+  } finally {
+    realpayClient.put = originalPut;
+  }
+});
+
+test('RealPay Simulation Service - Rejects missing ContractSequence', async () => {
+  const realpaySimulationService = require('../../src/services/realpay/realpaySimulation.service');
+  await assert.rejects(
+    () => realpaySimulationService.simulateMandate({ contractSequence: '' }, null),
+    (err) => err.code === 'REALPAY_CONFIG_ERROR' && err.message.includes('ContractSequence is missing')
+  );
+});
+
+test('RealPay Simulation Service - Blocks simulation in PRODUCTION environment', async () => {
+  const realpaySimulationService = require('../../src/services/realpay/realpaySimulation.service');
+  const realpayAuthService = require('../../src/services/realpay/realpayAuth.service');
+  const originalGetCreds = realpayAuthService.getCredentials;
+
+  realpayAuthService.getCredentials = async () => ({
+    environment: 'PRODUCTION',
+    product: 'ABSADC',
+    merchantNumber: '23118'
+  });
+
+  try {
+    await assert.rejects(
+      () => realpaySimulationService.simulateMandate({ contractSequence: 'SEQ-1001' }, null),
+      (err) => err.code === 'REALPAY_SIMULATION_NOT_ALLOWED' && err.statusCode === 403
+    );
+  } finally {
+    realpayAuthService.getCredentials = originalGetCreds;
+  }
+});
+
 test('Debit Order Provider - Provider resolution', async () => {
   const provider = await debitOrderProvider.resolveProviderName(null);
   assert.equal(provider, 'realpay');

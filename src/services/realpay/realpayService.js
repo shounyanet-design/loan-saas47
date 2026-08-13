@@ -64,6 +64,7 @@ class RealPayService {
     const statusDesc = String(data.statusDescription || data.message || firstFailure?.description || (isSuccess ? 'Mandate accepted' : 'Mandate creation failed')).trim();
     const mandateId = String(data.mandateId || postResp?.Successful?.[0]?.MandateSequence || data.providerReference || data.reference || '').trim();
     const contractRef = String(data.contractReference || postResp?.Successful?.[0]?.ContractNumber || fallbackContractRef).trim();
+    const contractSeq = String(data.contractSequence || postResp?.Successful?.[0]?.ContractSequence || postResp?.Successful?.[0]?.MandateSequence || '').trim();
 
     let outcome = 'REJECTED';
     if (isSuccess || REALPAY_SUCCESS_CODES.has(statusCode.toUpperCase()) || data.accepted === true) {
@@ -83,6 +84,7 @@ class RealPayService {
       providerFailures,
       mandateId: mandateId || `RPM-${Date.now()}`,
       providerReference: mandateId || `RPM-${Date.now()}`,
+      contractSequence: contractSeq,
       clientReference: data.clientReference || postResp?.Successful?.[0]?.ClientNumber || fallbackClientRef,
       contractReference: contractRef,
       effectiveDate: data.startDate || new Date().toISOString().split('T')[0],

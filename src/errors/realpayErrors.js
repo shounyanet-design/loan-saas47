@@ -62,6 +62,12 @@ class RealPayLocalPersistenceFailedError extends RealPayError {
   }
 }
 
+class RealPaySimulationNotAllowedError extends RealPayError {
+  constructor(message = 'RealPay simulation is strictly disabled in PRODUCTION environment') {
+    super(message, 'REALPAY_SIMULATION_NOT_ALLOWED', 403);
+  }
+}
+
 module.exports = {
   RealPayError,
   RealPayConfigurationError,
@@ -71,5 +77,6 @@ module.exports = {
   RealPayConnectionError,
   RealPayInvalidResponseError,
   RealPayResultUnknownError,
-  RealPayLocalPersistenceFailedError
+  RealPayLocalPersistenceFailedError,
+  RealPaySimulationNotAllowedError
 };

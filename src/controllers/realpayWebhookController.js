@@ -1,13 +1,55 @@
+const crypto = require('crypto');
 const asyncHandler = require('express-async-handler');
 const LoanApplication = require('../models/LoanApplication');
 const tenantContext = require('../tenancy/tenantContext');
 const { realpayWebhookSchema } = require('../utils/realpayValidation');
+
+function verifyHmacSignature(req, hmacSecret) {
+  if (!hmacSecret) return true;
+
+  const headerSig = req.headers['x-realpay-hmac']
+    || req.headers['x-signature']
+    || req.headers['x-hmac-sha256']
+    || req.headers['x-hub-signature-256'];
+
+  if (!headerSig) return false;
+
+  const rawBody = req.rawBody || JSON.stringify(req.body || {});
+  const computedHex = crypto.createHmac('sha256', hmacSecret).update(rawBody).digest('hex');
+  const computedBase64 = crypto.createHmac('sha256', hmacSecret).update(rawBody).digest('base64');
+
+  const cleanHeader = String(headerSig).replace(/^sha256=/i, '').trim();
+
+  const bufHeader = Buffer.from(cleanHeader);
+  const bufHex = Buffer.from(computedHex);
+  const bufBase64 = Buffer.from(computedBase64);
+
+  let matchHex = false;
+  if (bufHeader.length === bufHex.length) {
+    matchHex = crypto.timingSafeEqual(bufHeader, bufHex);
+  }
+  let matchBase64 = false;
+  if (bufHeader.length === bufBase64.length) {
+    matchBase64 = crypto.timingSafeEqual(bufHeader, bufBase64);
+  }
+
+  return matchHex || matchBase64;
+}
 
 /**
  * RealPay Public Webhook Handler
  * Endpoint: POST /api/v1/realpay/webhook
  */
 const handleRealPayWebhook = asyncHandler(async (req, res) => {
+  const hmacSecret = process.env.REALPAY_CALLBACK_HMAC;
+  if (hmacSecret && !verifyHmacSignature(req, hmacSecret)) {
+    return res.status(401).json({
+      success: false,
+      code: 'REALPAY_HMAC_INVALID',
+      message: 'Invalid or missing RealPay callback HMAC signature'
+    });
+  }
+
   const { value, error } = realpayWebhookSchema.validate(req.body || {}, {
     abortEarly: false,
     stripUnknown: false
