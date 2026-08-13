@@ -158,9 +158,44 @@ const initiateDebiCheckMandate = asyncHandler(async (req, res) => {
       };
     }
 
+const {
+  RealPayLocalPersistenceFailedError,
+  RealPayProviderRejectionError,
+  RealPayConfigurationError
+} = require('../../errors/realpayErrors');
+
     const payload = validate(mandateInitiationSchema, mandatePayload);
+
+    const currentStatus = String(loan.debicheckMandateStatus || loan.realPayMandate?.status || loan.nupayMandate?.outcome || '').toUpperCase();
+    const isAccepted = currentStatus === 'ACCEPTED';
+    const isPending = currentStatus === 'PENDING';
+    const isTerminalFailure = ['REJECTED', 'FAILED', 'EXPIRED'].includes(currentStatus);
+    const isExplicitReinitiate = Boolean(req.body?.reinitiate) || isTerminalFailure;
+
+    if (isAccepted) {
+      throw new RealPayConfigurationError('DebiCheck mandate is already ACCEPTED for this application.');
+    }
+
+    if (process.env.NODE_ENV !== 'test') {
+      console.log('[RealPay Reinitiate]', {
+        applicationId: loan.applicationId,
+        previousOutcome: currentStatus,
+        previousProviderReferenceConfigured: Boolean(loan.realPayMandate?.providerReference || loan.nupayMandate?.mandateId),
+        newAttempt: isExplicitReinitiate,
+        clientRegisteredLocally: Boolean(loan.realPayClient?.registered)
+      });
+    }
+
+    let attemptId = 'init';
+    if (isExplicitReinitiate) {
+      const lastUpdated = loan.realPayMandate?.updatedAt
+        ? new Date(loan.realPayMandate.updatedAt).getTime()
+        : (loan.updatedAt ? new Date(loan.updatedAt).getTime() : Date.now());
+      attemptId = `attempt_${lastUpdated}`;
+    }
+
     const key = req.headers['idempotency-key']
-      || idempotency.buildKey('nupay', String(req.tenantId), 'initiateMandate', applicationId, payload.clientReference);
+      || idempotency.buildKey('nupay', String(req.tenantId), 'initiateMandate', applicationId, payload.clientReference, attemptId);
 
     const { response: result, replayed } = await idempotency.runOnce(
       {
@@ -187,7 +222,54 @@ const initiateDebiCheckMandate = asyncHandler(async (req, res) => {
             receivedAt: new Date().toISOString()
           };
         }
+
         const debitOrderProvider = require('../../services/payments/debitOrderProvider');
+        const activeProvider = await debitOrderProvider.resolveProviderName(req.tenantId);
+
+        if (activeProvider === 'realpay') {
+          if (!loan.realPayClient?.registered) {
+            const realpayService = require('../../services/realpay/realpayService');
+            const clientResult = await realpayService.ensureRealPayClient(payload, req.tenantId);
+
+            if (!clientResult || !clientResult.usable) {
+              const code = clientResult?.statusCode || 'CLIENT_CREATION_FAILED';
+              const desc = clientResult?.statusDescription || 'Failed to register client with RealPay';
+              throw new RealPayProviderRejectionError(
+                `RealPay client registration failed: [${code}] ${desc}`,
+                422,
+                clientResult
+              );
+            }
+
+            loan.realPayClient = {
+              clientNumber: clientResult.clientNumber || payload.clientReference,
+              registered: Boolean(clientResult.registered),
+              providerReference: clientResult.clientNumber || payload.clientReference,
+              status: clientResult.status || 'REGISTERED',
+              statusCode: clientResult.statusCode || '00',
+              statusDescription: clientResult.statusDescription || 'Client registered successfully',
+              registeredAt: new Date(),
+              lastCheckedAt: new Date()
+            };
+
+            try {
+              await loan.save();
+            } catch (dbErr) {
+              throw new RealPayLocalPersistenceFailedError(
+                `Failed to persist RealPay client state locally: ${dbErr.message}`
+              );
+            }
+
+            if (process.env.NODE_ENV !== 'test') {
+              console.log('[RealPay Client Result]', {
+                clientNumber: payload.clientReference,
+                usable: true,
+                persisted: true
+              });
+            }
+          }
+        }
+
         return debitOrderProvider.initiateMandate(payload, req.tenantId);
       }
     );

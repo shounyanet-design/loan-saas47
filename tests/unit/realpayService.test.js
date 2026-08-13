@@ -543,6 +543,34 @@ test('RealPay Service - Client Already Exists (ADCMI01) allows Mandate Creation 
   }
 });
 
+test('RealPay Idempotency - REJECTED mandate + explicit reinitiate starts a NEW attempt', () => {
+  const idempotencyService = require('../../src/services/idempotencyService');
+  const tenantId = 'tenant_test_1001';
+  const appId = '6a733c0a7b48bd2352138cef';
+  const clientRef = 'LAPP-1038';
+
+  // Build attempt 1 key
+  const attempt1Key = idempotencyService.buildKey('nupay', tenantId, 'initiateMandate', appId, clientRef, 'attempt_1000');
+  assert.ok(attempt1Key.includes('attempt_1000'));
+
+  // Build attempt 2 key after explicit reinitiate
+  const attempt2Key = idempotencyService.buildKey('nupay', tenantId, 'initiateMandate', appId, clientRef, 'attempt_2000');
+  assert.ok(attempt2Key.includes('attempt_2000'));
+  assert.notEqual(attempt1Key, attempt2Key, 'Re-initiation MUST produce a new attempt key');
+
+  // Test pure decision logic
+  const reqHash = idempotencyService.hashRequest({ appId });
+  const completedRecord = { status: 'completed', requestHash: reqHash, response: { outcome: 'REJECTED' } };
+
+  // Same key + same hash -> replay
+  const replayDecision = idempotencyService.decide(completedRecord, reqHash);
+  assert.equal(replayDecision.type, 'replay');
+
+  // New key (null existing) -> run new attempt
+  const newAttemptDecision = idempotencyService.decide(null, reqHash);
+  assert.equal(newAttemptDecision.type, 'run');
+});
+
 test('Debit Order Provider - Provider resolution', async () => {
   const provider = await debitOrderProvider.resolveProviderName(null);
   assert.equal(provider, 'realpay');
