@@ -753,3 +753,79 @@ test('Debit Order Provider - Provider resolution', async () => {
   const provider = await debitOrderProvider.resolveProviderName(null);
   assert.equal(provider, 'realpay');
 });
+
+test('RealPay Service - TransactionType Mapping (TT1R default, TT1D, TT2)', () => {
+  assert.equal(realpayService.resolveTransactionType('TT1'), 'TT1R');
+  assert.equal(realpayService.resolveTransactionType('TT1R'), 'TT1R');
+  assert.equal(realpayService.resolveTransactionType('realtime'), 'TT1R');
+  assert.equal(realpayService.resolveTransactionType('TT1D'), 'TT1D');
+  assert.equal(realpayService.resolveTransactionType('delayed'), 'TT1D');
+  assert.equal(realpayService.resolveTransactionType('TT2'), 'TT2');
+  assert.equal(realpayService.resolveTransactionType(''), 'TT1R');
+});
+
+test('RealPay Service - MandateType Validation (F, V, U allowed; invalid throws)', () => {
+  assert.equal(realpayService.resolveMandateType('F'), 'F');
+  assert.equal(realpayService.resolveMandateType('V'), 'V');
+  assert.equal(realpayService.resolveMandateType('U'), 'U');
+  assert.equal(realpayService.resolveMandateType('f'), 'F');
+
+  assert.throws(
+    () => realpayService.resolveMandateType('0230'),
+    (err) => err.code === 'REALPAY_CONFIG_ERROR' && err.message.includes('Invalid MandateType "0230"')
+  );
+  assert.throws(
+    () => realpayService.resolveMandateType('INVALID'),
+    (err) => err.code === 'REALPAY_CONFIG_ERROR'
+  );
+});
+
+test('RealPay Service - Provider-confirmed Mandate Post Payload Mapping (No ADCTT1, FDCTT2, or 0230 assumptions)', async () => {
+  const samplePayload = {
+    clientReference: 'LAPP-1038',
+    debtorName: 'Test Debtor',
+    debtorId: '9001015009087',
+    debtorAccountNumber: '1234567890',
+    debtorBranchNumber: '051001',
+    instalmentAmount: 1200,
+    flowType: 'TT1' // Default flowType
+  };
+
+  const realpayClient = require('../../src/services/realpay/realpayClient');
+  const originalPost = realpayClient.post;
+  let capturedMandatePayload = null;
+
+  realpayClient.post = async (path, payload, tenantId, parser) => {
+    if (path.includes('/maintain/clients')) {
+      return { ClientPostResponse: [{ Successful: [{ RecordNumber: 1, ClientNumber: 'LAPP-1038' }], Failed: [] }] };
+    }
+    if (path.includes('/maintain/mandates')) {
+      capturedMandatePayload = payload;
+      const mockData = {
+        statusCode: '00',
+        statusDescription: 'Mandate Registered Successfully',
+        mandateId: 'RPM-1038-TEST',
+        clientReference: 'LAPP-1038',
+        contractSequence: '9011154048'
+      };
+      return parser ? parser(mockData) : mockData;
+    }
+  };
+
+  try {
+    const res = await realpayService.initiateMandate(samplePayload, null);
+    const item = capturedMandatePayload.MandatePostRequest[0];
+
+    assert.equal(item.MandateProduct, 'ABSADC');
+    assert.equal(item.MandateType, 'F', 'MandateType must be F (Fixed Mandate)');
+    assert.equal(item.TransactionType, 'TT1R', 'Default TT1 flow MUST map to TT1R');
+    assert.notEqual(item.TransactionType, 'ADCTT1', 'Payload MUST NOT use ADCTT1');
+    assert.notEqual(item.TransactionType, 'FDCTT2', 'Payload MUST NOT use FDCTT2');
+    assert.notEqual(item.MandateType, '0230', 'Payload MUST NOT use 0230 for MandateType');
+    assert.equal(item.ClientNumber, 'LAPP-1038');
+    assert.equal(res.contractSequence, '9011154048');
+  } finally {
+    realpayClient.post = originalPost;
+  }
+});
+

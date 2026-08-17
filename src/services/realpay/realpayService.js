@@ -117,6 +117,31 @@ class RealPayService {
   }
 
   /**
+   * Resolve RealPay TransactionType (TT1R, TT1D, TT2).
+   */
+  resolveTransactionType(flowType = 'TT1R') {
+    const raw = String(flowType || 'TT1R').trim().toUpperCase();
+    if (raw === 'TT1' || raw === 'TT1R' || raw === 'REALTIME') return 'TT1R';
+    if (raw === 'TT1D' || raw === 'DELAYED') return 'TT1D';
+    if (raw === 'TT2') return 'TT2';
+    return 'TT1R';
+  }
+
+  /**
+   * Resolve and validate RealPay MandateType (F = Fixed, V = Variable, U = Usage-based).
+   */
+  resolveMandateType(mandateType = 'F') {
+    const raw = String(mandateType || 'F').trim().toUpperCase();
+    const validTypes = new Set(['F', 'V', 'U']);
+    if (!validTypes.has(raw)) {
+      throw new RealPayConfigurationError(
+        `Invalid MandateType "${mandateType}". Allowed values: F (Fixed), V (Variable), U (Usage-based)`
+      );
+    }
+    return raw;
+  }
+
+  /**
    * Normalize RealPay Client maintenance response.
    */
   normalizeClientResponse(data, clientRef) {
@@ -305,12 +330,15 @@ class RealPayService {
     const mandateActionDate = formatRealPayDate(new Date());
     const instalmentStartDate = formatRealPayDate(payload.startDate ? new Date(payload.startDate) : new Date());
 
+    const transactionType = this.resolveTransactionType(payload.flowType || payload.transactionType || 'TT1R');
+    const mandateType = this.resolveMandateType(payload.mandateType || 'F');
+
     const mandatePayload = {
       MandatePostRequest: [
         {
           MandateProduct: product,
-          MandateType: 'F',
-          TransactionType: payload.flowType || 'TT1',
+          MandateType: mandateType,
+          TransactionType: transactionType,
           DebitSequenceType: payload.debitSequenceType || 'RCUR',
           MandateActionDate: mandateActionDate,
           InstalmentStartDate: instalmentStartDate,
