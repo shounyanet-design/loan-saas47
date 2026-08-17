@@ -504,6 +504,7 @@ const loanApplicationSchema = new mongoose.Schema(
       providerReference: { type: String, default: '' },
       mandateId: { type: String, default: '' },
       contractSequence: { type: String, default: '' },
+      instalmentSequence: { type: String, default: '' },
       status: { type: String, default: '' },
       statusCode: { type: String, default: '' },
       statusDescription: { type: String, default: '' },
@@ -538,6 +539,7 @@ const loanApplicationSchema = new mongoose.Schema(
       instalment: {
         requestedAt: { type: Date },
         contractSequence: { type: String, default: '' },
+        instalmentSequence: { type: String, default: '' },
         statusCode: { type: String, default: '' },
         result: { type: String, default: '' },
         providerStatus: { type: String, default: '' },

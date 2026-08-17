@@ -4,39 +4,77 @@ const Joi = require('joi');
  * Helper to extract reference, status, and description from raw RealPay callback body
  */
 function extractRealPayCallbackFields(body = {}) {
+  let callbackType = 'UNKNOWN';
   let payload = body;
+
   if (Array.isArray(body)) {
     payload = body[0] || {};
-  } else if (body.MandateSimulatePutResponse?.[0]) {
-    payload = body.MandateSimulatePutResponse[0];
-  } else if (body.InstalmentSimulatePutResponse?.[0]) {
-    payload = body.InstalmentSimulatePutResponse[0];
-  } else if (body.MandatePostResponse?.[0]) {
-    payload = body.MandatePostResponse[0];
   }
 
-  if (payload.Successful?.[0]) {
-    payload = { ...payload, ...payload.Successful[0] };
-  } else if (payload.Failed?.[0]) {
-    payload = { ...payload, ...payload.Failed[0] };
+  // 1. Unwrap top-level provider wrappers (MandateGetResponse, InstalmentGetResponse, etc.)
+  if (payload.MandateGetResponse) {
+    callbackType = 'MANDATE';
+    payload = Array.isArray(payload.MandateGetResponse) ? (payload.MandateGetResponse[0] || {}) : payload.MandateGetResponse;
+  } else if (payload.InstalmentGetResponse) {
+    callbackType = 'INSTALMENT';
+    payload = Array.isArray(payload.InstalmentGetResponse) ? (payload.InstalmentGetResponse[0] || {}) : payload.InstalmentGetResponse;
+  } else if (payload.MandateSimulatePutResponse) {
+    callbackType = 'MANDATE';
+    payload = Array.isArray(payload.MandateSimulatePutResponse) ? (payload.MandateSimulatePutResponse[0] || {}) : payload.MandateSimulatePutResponse;
+  } else if (payload.InstalmentSimulatePutResponse) {
+    callbackType = 'INSTALMENT';
+    payload = Array.isArray(payload.InstalmentSimulatePutResponse) ? (payload.InstalmentSimulatePutResponse[0] || {}) : payload.InstalmentSimulatePutResponse;
+  } else if (payload.MandatePostResponse) {
+    callbackType = 'MANDATE';
+    payload = Array.isArray(payload.MandatePostResponse) ? (payload.MandatePostResponse[0] || {}) : payload.MandatePostResponse;
+  } else if (payload.InstalmentPostResponse) {
+    callbackType = 'INSTALMENT';
+    payload = Array.isArray(payload.InstalmentPostResponse) ? (payload.InstalmentPostResponse[0] || {}) : payload.InstalmentPostResponse;
   }
 
-  const contractSeq = payload.ContractSequence ?? payload.contractSequence;
+  // 2. Unwrap Successful / Failed nested wrappers if present
+  if (payload.Successful) {
+    const succ = Array.isArray(payload.Successful) ? payload.Successful[0] : payload.Successful;
+    if (succ) payload = { ...payload, ...succ };
+  } else if (payload.Failed) {
+    const fail = Array.isArray(payload.Failed) ? payload.Failed[0] : payload.Failed;
+    if (fail) payload = { ...payload, ...fail };
+  }
+
+  // 3. Extract ContractSequence & InstalmentSequence
+  const rawContractSeq = payload.ContractSequence ?? payload.contractSequence;
+  const rawInstalmentSeq = payload.InstalmentSequence ?? payload.instalmentSequence;
   const clientRef = payload.ClientNumber ?? payload.clientNumber ?? payload.ClientReference ?? payload.clientReference ?? payload.applicationId;
   const mandateId = payload.MandateId ?? payload.mandateId ?? payload.ProviderReference ?? payload.providerReference ?? payload.ContractNumber ?? payload.contractNumber;
   const contractRef = payload.ContractReference ?? payload.contractReference;
 
-  const ref = contractSeq ?? clientRef ?? mandateId ?? contractRef;
+  const contractSeq = rawContractSeq != null ? String(rawContractSeq).trim() : '';
+  const instalmentSeq = rawInstalmentSeq != null ? String(rawInstalmentSeq).trim() : '';
 
-  const status = payload.MandateInitiateStatusCode ?? payload.mandateInitiateStatusCode ??
-                 payload.MandateInitiateResult ?? payload.mandateInitiateResult ??
-                 payload.InstalmentStatusCode ?? payload.instalmentStatusCode ??
-                 payload.InstalmentResult ?? payload.instalmentResult ??
-                 payload.StatusCode ?? payload.statusCode ??
-                 payload.Status ?? payload.status ??
-                 payload.Code ?? payload.code ??
-                 payload.ResultCode ?? payload.resultCode ??
-                 payload.Result ?? payload.result;
+  if (callbackType === 'UNKNOWN') {
+    if (instalmentSeq || payload.InstalmentStatus || payload.InstalmentStatusCode || payload.InstalmentResult) {
+      callbackType = 'INSTALMENT';
+    } else if (contractSeq || payload.MandateInitiateStatusCode || payload.MandateRegisterStatusCode || payload.MandateStatus) {
+      callbackType = 'MANDATE';
+    }
+  }
+
+  const ref = contractSeq || clientRef || mandateId || contractRef;
+
+  const rawStatus = payload.MandateInitiateStatusCode ?? payload.mandateInitiateStatusCode ??
+                    payload.MandateRegisterStatusCode ?? payload.mandateRegisterStatusCode ??
+                    payload.InstalmentStatusCode ?? payload.instalmentStatusCode ??
+                    payload.MandateStatus ?? payload.mandateStatus ??
+                    payload.InstalmentStatus ?? payload.instalmentStatus ??
+                    payload.StatusCode ?? payload.statusCode ??
+                    payload.Status ?? payload.status ??
+                    payload.Code ?? payload.code ??
+                    payload.ResultCode ?? payload.resultCode ??
+                    payload.Result ?? payload.result;
+
+  const rawResult = payload.MandateInitiateResult ?? payload.mandateInitiateResult ??
+                    payload.InstalmentResult ?? payload.instalmentResult ??
+                    payload.Result ?? payload.result ?? '';
 
   const description = payload.StatusDescription ?? payload.statusDescription ??
                       payload.FailureDescription ?? payload.failureDescription ??
@@ -45,13 +83,16 @@ function extractRealPayCallbackFields(body = {}) {
                       'RealPay webhook notification';
 
   return {
+    callbackType,
     payload,
-    contractSeq: contractSeq != null ? String(contractSeq).trim() : '',
+    contractSeq,
+    instalmentSeq,
     clientRef: clientRef != null ? String(clientRef).trim() : '',
     mandateId: mandateId != null ? String(mandateId).trim() : '',
     contractRef: contractRef != null ? String(contractRef).trim() : '',
     ref: ref != null ? String(ref).trim() : '',
-    status: status != null ? String(status).trim() : '',
+    status: rawStatus != null ? String(rawStatus).trim() : '',
+    result: rawResult != null ? String(rawResult).trim() : '',
     description: String(description).trim()
   };
 }

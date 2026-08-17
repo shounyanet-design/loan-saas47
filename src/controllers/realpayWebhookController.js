@@ -42,20 +42,25 @@ function verifyHmacSignature(req, hmacSecret) {
  * Endpoint: POST /api/v1/realpay/webhook
  */
 const handleRealPayWebhook = asyncHandler(async (req, res) => {
+  const extracted = extractRealPayCallbackFields(req.body || {});
+  const { callbackType, contractSeq, instalmentSeq, clientRef, mandateId, contractRef, status: rawStatusCode, description: statusDesc } = extracted;
+
   if (process.env.NODE_ENV !== 'test') {
     const receivedTopLevelKeys = Object.keys(req.body || {});
     const signatureHeaderName = ['x-realpay-hmac', 'x-signature', 'x-hmac-sha256', 'x-hub-signature-256', 'x-realpay-signature']
       .find(h => req.headers[h]);
 
     console.log('[RealPay Webhook Diagnostic]', {
+      callbackType,
       contentType: req.headers['content-type'] || '',
       bodyType: Array.isArray(req.body) ? 'array' : typeof req.body,
       bodyKeys: receivedTopLevelKeys,
       hasBody: Boolean(req.body && Object.keys(req.body).length > 0),
+      hasContractSequence: Boolean(contractSeq),
+      hasInstalmentSequence: Boolean(instalmentSeq),
+      hasStatus: Boolean(rawStatusCode),
       hasSignatureHeader: Boolean(signatureHeaderName),
-      signatureHeaderName: signatureHeaderName || 'none',
-      referenceFieldNamesPresent: receivedTopLevelKeys.filter(k => /contract|client|mandate|ref/i.test(k)),
-      statusFieldNamesPresent: receivedTopLevelKeys.filter(k => /status|code|result/i.test(k))
+      signatureHeaderName: signatureHeaderName || 'none'
     });
   }
 
@@ -92,12 +97,11 @@ const handleRealPayWebhook = asyncHandler(async (req, res) => {
     });
   }
 
-  const extracted = extractRealPayCallbackFields(req.body || {});
-  const { contractSeq, clientRef, mandateId, contractRef, status: rawStatusCode, description: statusDesc } = extracted;
-
   if (process.env.NODE_ENV !== 'test') {
     console.log('[RealPay Webhook Event Received]', {
+      callbackType,
       contractSequence: contractSeq ? `${contractSeq.substring(0, 8)}...` : '',
+      instalmentSequence: instalmentSeq || '',
       clientReference: clientRef ? `${clientRef.substring(0, 8)}...` : '',
       mandateId: mandateId ? `${mandateId.substring(0, 10)}...` : '',
       rawStatusCode,
@@ -143,7 +147,42 @@ const handleRealPayWebhook = asyncHandler(async (req, res) => {
     if (!matchedLoan) return null;
 
     const existingRealPay = matchedLoan.realPayMandate?.toObject?.() || matchedLoan.realPayMandate || {};
+    matchedLoan.realPaySimulation = matchedLoan.realPaySimulation || {};
+    matchedLoan.realPaySimulation.environment = 'UAT';
 
+    if (callbackType === 'INSTALMENT') {
+      const existingInst = matchedLoan.realPaySimulation.instalment || {};
+      const isDuplicate = existingInst.statusCode === rawStatusCode &&
+                          existingInst.instalmentSequence === instalmentSeq &&
+                          existingInst.completedAt;
+
+      if (isDuplicate) {
+        return { matchedLoan, isDuplicate: true };
+      }
+
+      matchedLoan.realPaySimulation.instalment = {
+        requestedAt: existingInst.requestedAt || new Date(),
+        contractSequence: contractSeq || existingRealPay.contractSequence || '',
+        instalmentSequence: instalmentSeq || existingRealPay.instalmentSequence || '',
+        statusCode: rawStatusCode,
+        result: outcome,
+        providerStatus: rawStatusCode,
+        providerMessage: statusDesc,
+        completedAt: new Date()
+      };
+
+      matchedLoan.realPayMandate = {
+        ...existingRealPay,
+        instalmentSequence: instalmentSeq || existingRealPay.instalmentSequence || '',
+        updatedAt: new Date(),
+        lastWebhookAt: new Date()
+      };
+
+      await matchedLoan.save();
+      return { matchedLoan, isDuplicate: false };
+    }
+
+    // Default / MANDATE callback processing
     const isDuplicate = existingRealPay.status === outcome &&
                         existingRealPay.statusCode === rawStatusCode &&
                         existingRealPay.lastWebhookAt;
@@ -156,8 +195,6 @@ const handleRealPayWebhook = asyncHandler(async (req, res) => {
       matchedLoan.debicheckMandateReference = mandateId;
     }
 
-    matchedLoan.realPaySimulation = matchedLoan.realPaySimulation || {};
-    matchedLoan.realPaySimulation.environment = 'UAT';
     matchedLoan.realPaySimulation.mandate = {
       contractSequence: contractSeq || existingRealPay.contractSequence || '',
       requestedAt: matchedLoan.realPaySimulation?.mandate?.requestedAt || new Date(),
@@ -191,7 +228,7 @@ const handleRealPayWebhook = asyncHandler(async (req, res) => {
     return res.status(200).json({
       success: true,
       message: 'RealPay webhook acknowledged; matching loan application reference not found',
-      data: { contractSequence: contractSeq, clientReference: clientRef, mandateId, statusCode: rawStatusCode }
+      data: { callbackType, contractSequence: contractSeq, instalmentSequence: instalmentSeq, clientReference: clientRef, mandateId, statusCode: rawStatusCode }
     });
   }
 
@@ -202,7 +239,9 @@ const handleRealPayWebhook = asyncHandler(async (req, res) => {
       data: {
         loanApplicationId: result.matchedLoan._id,
         applicationId: result.matchedLoan.applicationId,
+        callbackType,
         contractSequence: result.matchedLoan.realPayMandate?.contractSequence,
+        instalmentSequence: result.matchedLoan.realPayMandate?.instalmentSequence,
         mandateId,
         status: outcome,
         replayed: true
@@ -216,7 +255,9 @@ const handleRealPayWebhook = asyncHandler(async (req, res) => {
     data: {
       loanApplicationId: result.matchedLoan._id,
       applicationId: result.matchedLoan.applicationId,
+      callbackType,
       contractSequence: result.matchedLoan.realPayMandate?.contractSequence,
+      instalmentSequence: result.matchedLoan.realPayMandate?.instalmentSequence,
       mandateId,
       status: outcome
     }

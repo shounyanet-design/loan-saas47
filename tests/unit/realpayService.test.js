@@ -1005,5 +1005,62 @@ test('RealPay Simulation Controller Contract - sendSuccess orders (res, messageS
   assert.deepStrictEqual(mockRes.jsonBody.data, simResult, 'data must contain the structured simResult object');
 });
 
+test('RealPay Webhook Fix - 3. MandateGetResponse wrapper payload passes validation and extracts ContractSequence', () => {
+  const { realpayWebhookSchema, extractRealPayCallbackFields } = require('../../src/utils/realpayValidation');
+
+  const mandateGetPayload = {
+    MandateGetResponse: [
+      {
+        ContractSequence: 1011268615,
+        ClientNumber: 'LAPP-1038',
+        ContractNumber: 'LAPP1038',
+        MandateProduct: 'ABSADC',
+        MandateInitiateStatusCode: 'S',
+        MandateInitiateResult: 'AAUT'
+      }
+    ],
+    APIResponse: { Status: 'SUCCESS' }
+  };
+
+  const { error } = realpayWebhookSchema.validate(mandateGetPayload);
+  assert.equal(error, undefined, 'MandateGetResponse wrapper payload must pass Joi validation');
+
+  const extracted = extractRealPayCallbackFields(mandateGetPayload);
+  assert.equal(extracted.callbackType, 'MANDATE');
+  assert.equal(extracted.contractSeq, '1011268615');
+  assert.equal(extracted.clientRef, 'LAPP-1038');
+  assert.equal(extracted.status, 'S');
+});
+
+test('RealPay Webhook Fix - 4. InstalmentGetResponse wrapper payload passes validation and extracts InstalmentSequence', () => {
+  const { realpayWebhookSchema, extractRealPayCallbackFields } = require('../../src/utils/realpayValidation');
+
+  const instalmentGetPayload = {
+    InstalmentGetResponse: [
+      {
+        ContractSequence: 1011268615,
+        InstalmentSequence: 1,
+        ClientNumber: 'LAPP-1038',
+        ContractNumber: 'LAPP1038',
+        InstalmentStatusCode: 'S',
+        InstalmentResult: 'SUCC',
+        InstalmentAmount: 1500.00
+      }
+    ],
+    APIResponse: { Status: 'SUCCESS' }
+  };
+
+  const { error } = realpayWebhookSchema.validate(instalmentGetPayload);
+  assert.equal(error, undefined, 'InstalmentGetResponse wrapper payload must pass Joi validation');
+
+  const extracted = extractRealPayCallbackFields(instalmentGetPayload);
+  assert.equal(extracted.callbackType, 'INSTALMENT');
+  assert.equal(extracted.contractSeq, '1011268615');
+  assert.equal(extracted.instalmentSeq, '1');
+  assert.equal(extracted.clientRef, 'LAPP-1038');
+  assert.equal(extracted.status, 'S');
+});
+
+
 
 
