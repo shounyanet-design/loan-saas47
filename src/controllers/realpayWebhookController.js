@@ -5,7 +5,9 @@ const tenantContext = require('../tenancy/tenantContext');
 const { realpayWebhookSchema, extractRealPayCallbackFields } = require('../utils/realpayValidation');
 
 function verifyHmacSignature(req, hmacSecret) {
-  if (!hmacSecret) return true;
+  const isRequired = Boolean(hmacSecret) || process.env.REALPAY_CALLBACK_HMAC_REQUIRED === 'true' || process.env.NODE_ENV === 'production';
+  if (!isRequired) return true;
+  if (!hmacSecret) return false;
 
   const headerSig = req.headers['x-realpay-hmac']
     || req.headers['x-signature']
@@ -15,7 +17,7 @@ function verifyHmacSignature(req, hmacSecret) {
 
   if (!headerSig) return false;
 
-  const rawBody = req.rawBody || JSON.stringify(req.body || {});
+  const rawBody = req.rawBody || (typeof req.body === 'string' ? req.body : JSON.stringify(req.body || {}));
   const computedHex = crypto.createHmac('sha256', hmacSecret).update(rawBody).digest('hex');
   const computedBase64 = crypto.createHmac('sha256', hmacSecret).update(rawBody).digest('base64');
 
@@ -65,7 +67,13 @@ const handleRealPayWebhook = asyncHandler(async (req, res) => {
   }
 
   const hmacSecret = process.env.REALPAY_CALLBACK_HMAC;
-  if (hmacSecret && !verifyHmacSignature(req, hmacSecret)) {
+  if (!verifyHmacSignature(req, hmacSecret)) {
+    if (process.env.NODE_ENV !== 'test') {
+      console.warn('[RealPay Webhook Security Rejection]', {
+        reason: 'HMAC signature verification failed or signature header missing',
+        hasSecret: Boolean(hmacSecret)
+      });
+    }
     return res.status(401).json({
       success: false,
       code: 'REALPAY_HMAC_INVALID',

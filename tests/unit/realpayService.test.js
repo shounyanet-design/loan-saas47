@@ -1061,6 +1061,60 @@ test('RealPay Webhook Fix - 4. InstalmentGetResponse wrapper payload passes vali
   assert.equal(extracted.status, 'S');
 });
 
+test('RealPay Repeat Simulation Prevention - Completed mandate simulation returns HTTP 400', async () => {
+  const { simulateMandateEndpoint } = require('../../src/controllers/admin/realpaySimulationController');
+  const LoanApplication = require('../../src/models/LoanApplication');
+
+  const originalFindOne = LoanApplication.findOne;
+  LoanApplication.findOne = async () => ({
+    applicationId: 'LAPP-1038',
+    realPayMandate: { contractSequence: '1011268615', status: 'ACCEPTED' },
+    realPaySimulation: { mandate: { completedAt: new Date(), result: 'ACCEPTED' } }
+  });
+
+  const mockRes = {
+    statusCode: 0,
+    jsonBody: null,
+    status(code) { this.statusCode = code; return this; },
+    json(body) { this.jsonBody = body; return this; }
+  };
+
+  try {
+    await simulateMandateEndpoint({ body: { applicationId: 'LAPP-1038' } }, mockRes);
+    assert.equal(mockRes.statusCode, 400);
+    assert.equal(mockRes.jsonBody.code, 'REALPAY_SIMULATION_ALREADY_COMPLETED');
+  } finally {
+    LoanApplication.findOne = originalFindOne;
+  }
+});
+
+test('RealPay Callback Security - Missing HMAC signature rejected when REALPAY_CALLBACK_HMAC_REQUIRED is set', async () => {
+  const { handleRealPayWebhook } = require('../../src/controllers/realpayWebhookController');
+  const originalHmacReq = process.env.REALPAY_CALLBACK_HMAC_REQUIRED;
+  process.env.REALPAY_CALLBACK_HMAC_REQUIRED = 'true';
+
+  const mockReq = {
+    body: { ContractSequence: 1011268615, MandateInitiateStatusCode: 'S' },
+    headers: {}
+  };
+  const mockRes = {
+    statusCode: 0,
+    jsonBody: null,
+    status(code) { this.statusCode = code; return this; },
+    json(body) { this.jsonBody = body; return this; }
+  };
+
+  try {
+    await handleRealPayWebhook(mockReq, mockRes);
+    assert.equal(mockRes.statusCode, 401);
+    assert.equal(mockRes.jsonBody.code, 'REALPAY_HMAC_INVALID');
+  } finally {
+    if (originalHmacReq === undefined) delete process.env.REALPAY_CALLBACK_HMAC_REQUIRED;
+    else process.env.REALPAY_CALLBACK_HMAC_REQUIRED = originalHmacReq;
+  }
+});
+
+
 
 
 

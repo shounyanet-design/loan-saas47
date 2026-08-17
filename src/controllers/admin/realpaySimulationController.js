@@ -10,7 +10,7 @@ const { RealPayConfigurationError } = require('../../errors/realpayErrors');
  * Body: { applicationId: "..." }
  */
 const simulateMandateEndpoint = asyncHandler(async (req, res) => {
-  const { applicationId, statusCode, result } = req.body || {};
+  const { applicationId, statusCode, result, force } = req.body || {};
   if (!applicationId) {
     throw new RealPayConfigurationError('applicationId is required');
   }
@@ -33,6 +33,15 @@ const simulateMandateEndpoint = asyncHandler(async (req, res) => {
     throw new RealPayConfigurationError(
       'SIMULATION REQUIRES SUCCESSFUL MANDATE CREATION: ContractSequence is missing from realPayMandate'
     );
+  }
+
+  const isCompleted = loan.realPaySimulation?.mandate?.completedAt || loan.realPayMandate?.status === 'ACCEPTED';
+  if (isCompleted && !force) {
+    return res.status(400).json({
+      success: false,
+      code: 'REALPAY_SIMULATION_ALREADY_COMPLETED',
+      message: `RealPay mandate simulation is already completed for contract ${contractSeq} (${loan.realPayMandate?.status || 'ACCEPTED'})`
+    });
   }
 
   const simResult = await realpaySimulationService.simulateMandate(
@@ -67,7 +76,7 @@ const simulateMandateEndpoint = asyncHandler(async (req, res) => {
  * Body: { applicationId: "..." }
  */
 const simulateInstalmentEndpoint = asyncHandler(async (req, res) => {
-  const { applicationId, statusCode, result } = req.body || {};
+  const { applicationId, statusCode, result, force } = req.body || {};
   if (!applicationId) {
     throw new RealPayConfigurationError('applicationId is required');
   }
@@ -85,6 +94,7 @@ const simulateInstalmentEndpoint = asyncHandler(async (req, res) => {
   }
 
   const contractSeq = String(loan.realPayMandate?.contractSequence || '').trim();
+  const instalmentSeq = String(loan.realPayMandate?.instalmentSequence || loan.realPaySimulation?.instalment?.instalmentSequence || '').trim();
 
   if (!contractSeq || contractSeq.startsWith('RPM-') || contractSeq.includes('LOCAL')) {
     throw new RealPayConfigurationError(
@@ -92,9 +102,16 @@ const simulateInstalmentEndpoint = asyncHandler(async (req, res) => {
     );
   }
 
+  if (!instalmentSeq && !force) {
+    throw new RealPayConfigurationError(
+      'INSTALMENT_SIMULATION_BLOCKED_NO_SEQUENCE: Genuine InstalmentSequence is required from RealPay callback before simulation'
+    );
+  }
+
   const simResult = await realpaySimulationService.simulateInstalment(
     {
       contractSequence: contractSeq,
+      instalmentSequence: instalmentSeq || '1',
       statusCode: statusCode || 'S',
       result: result || 'SUCC'
     },
@@ -106,6 +123,7 @@ const simulateInstalmentEndpoint = asyncHandler(async (req, res) => {
   loan.realPaySimulation.instalment = {
     requestedAt: new Date(),
     contractSequence: contractSeq,
+    instalmentSequence: instalmentSeq || '1',
     statusCode: simResult.statusCode,
     result: simResult.outcome,
     providerStatus: simResult.providerStatus,
