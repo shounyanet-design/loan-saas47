@@ -27,7 +27,7 @@ const simulateMandateEndpoint = asyncHandler(async (req, res) => {
     });
   }
 
-  const contractSeq = loan.realPayMandate?.contractSequence || loan.realPayMandate?.mandateId || '';
+  const contractSeq = String(loan.realPayMandate?.contractSequence || '').trim();
 
   if (!contractSeq || contractSeq.startsWith('RPM-') || contractSeq.includes('LOCAL')) {
     throw new RealPayConfigurationError(
@@ -84,7 +84,7 @@ const simulateInstalmentEndpoint = asyncHandler(async (req, res) => {
     });
   }
 
-  const contractSeq = loan.realPayMandate?.contractSequence || loan.realPayMandate?.mandateId || '';
+  const contractSeq = String(loan.realPayMandate?.contractSequence || '').trim();
 
   if (!contractSeq || contractSeq.startsWith('RPM-') || contractSeq.includes('LOCAL')) {
     throw new RealPayConfigurationError(

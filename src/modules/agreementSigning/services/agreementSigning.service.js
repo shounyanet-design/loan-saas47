@@ -446,8 +446,17 @@ const markReadyForDisbursement = async (loanApplicationId, adminId) => {
     throw new Error('Loan application not found');
   }
 
-  if (application.status !== 'Agreement Signed') {
+  const signedStatuses = ['Agreement Signed', 'AGREEMENT_SIGNED', 'OTP_VERIFIED'];
+  if (!signedStatuses.includes(application.status)) {
     throw new Error('Only signed agreements can be marked ready for disbursement.');
+  }
+
+  const mandateAccepted = application.debicheckMandateStatus === 'ACCEPTED'
+    || application.realPayMandate?.status === 'ACCEPTED'
+    || application.nupayMandate?.outcome === 'ACCEPTED';
+
+  if (!mandateAccepted) {
+    throw new Error('Cannot mark loan ready for disbursement: DebiCheck mandate status is not ACCEPTED.');
   }
 
   const staffUser = await User.findById(adminId);
