@@ -932,4 +932,78 @@ test('RealPay Client PUT Support - 3. Instalment simulation uses PUT with exact 
   }
 });
 
+test('RealPay Webhook Fix - 1. PascalCase ContractSequence & MandateInitiateStatusCode pass Joi validation', () => {
+  const { realpayWebhookSchema, extractRealPayCallbackFields } = require('../../src/utils/realpayValidation');
+
+  const realPayCallbackPayload = {
+    ContractSequence: 1011268615,
+    MandateInitiateStatusCode: 'S',
+    MandateInitiateResult: 'AAUT'
+  };
+
+  const { error } = realpayWebhookSchema.validate(realPayCallbackPayload);
+  assert.equal(error, undefined, 'PascalCase ContractSequence & MandateInitiateStatusCode must pass validation');
+
+  const extracted = extractRealPayCallbackFields(realPayCallbackPayload);
+  assert.equal(extracted.contractSeq, '1011268615');
+  assert.equal(extracted.status, 'S');
+  assert.equal(extracted.ref, '1011268615');
+});
+
+test('RealPay Webhook Fix - 2. Wrapped MandateSimulatePutResponse payload passes validation', () => {
+  const { realpayWebhookSchema, extractRealPayCallbackFields } = require('../../src/utils/realpayValidation');
+
+  const wrappedPayload = {
+    MandateSimulatePutResponse: [
+      {
+        Successful: [
+          {
+            ContractSequence: 1011268615,
+            MandateInitiateStatusCode: 'S',
+            MandateInitiateResult: 'AAUT'
+          }
+        ]
+      }
+    ]
+  };
+
+  const { error } = realpayWebhookSchema.validate(wrappedPayload);
+  assert.equal(error, undefined, 'Wrapped MandateSimulatePutResponse must pass validation');
+
+  const extracted = extractRealPayCallbackFields(wrappedPayload);
+  assert.equal(extracted.contractSeq, '1011268615');
+  assert.equal(extracted.status, 'S');
+});
+
+test('RealPay Simulation Controller Contract - sendSuccess orders (res, messageString, dataObject)', () => {
+  const { sendSuccess } = require('../../src/utils/responseHandler');
+
+  const mockRes = {
+    statusCode: 0,
+    jsonBody: null,
+    status(code) {
+      this.statusCode = code;
+      return this;
+    },
+    json(body) {
+      this.jsonBody = body;
+      return this;
+    }
+  };
+
+  const simResult = {
+    provider: 'REALPAY',
+    outcome: 'ACCEPTED',
+    contractSequence: '1011268615'
+  };
+
+  sendSuccess(mockRes, 'RealPay mandate simulation request sent successfully', simResult);
+
+  assert.equal(mockRes.statusCode, 200);
+  assert.equal(typeof mockRes.jsonBody.message, 'string', 'message must be a string to avoid React render crash');
+  assert.equal(mockRes.jsonBody.message, 'RealPay mandate simulation request sent successfully');
+  assert.deepStrictEqual(mockRes.jsonBody.data, simResult, 'data must contain the structured simResult object');
+});
+
+
 

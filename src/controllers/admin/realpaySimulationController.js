@@ -58,7 +58,7 @@ const simulateMandateEndpoint = asyncHandler(async (req, res) => {
 
   await loan.save();
 
-  return sendSuccess(res, simResult, 'RealPay mandate simulation request sent successfully');
+  return sendSuccess(res, 'RealPay mandate simulation request sent successfully', simResult);
 });
 
 /**
@@ -115,7 +115,7 @@ const simulateInstalmentEndpoint = asyncHandler(async (req, res) => {
 
   await loan.save();
 
-  return sendSuccess(res, simResult, 'RealPay instalment simulation request sent successfully');
+  return sendSuccess(res, 'RealPay instalment simulation request sent successfully', simResult);
 });
 
 module.exports = {
