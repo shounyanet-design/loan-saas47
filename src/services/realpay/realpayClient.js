@@ -29,15 +29,20 @@ function getRealPayOrigin(rawUrl) {
  * RealPay Client
  * Low-level HTTP client handling auth header injection, error mapping, and sanitized response normalization.
  */
+/**
+ * RealPay Client
+ * Low-level HTTP client handling auth header injection, error mapping, and sanitized response normalization.
+ */
 class RealPayClient {
   constructor(httpClient = axios) {
     this.httpClient = httpClient;
   }
 
   /**
-   * Execute an HTTP POST request to RealPay API with injected tenant auth token.
+   * Execute an authenticated HTTP request to RealPay API.
    */
-  async post(path, payload, tenantId = null, parser = null) {
+  async request(method, path, payloadOrParams = null, tenantId = null, parser = null) {
+    const httpMethod = String(method || 'POST').toUpperCase();
     const { token, credentials } = await realpayAuthService.getAccessToken(tenantId);
 
     const headers = {
@@ -54,6 +59,7 @@ class RealPayClient {
 
     if (process.env.NODE_ENV !== 'test') {
       console.log('[RealPay Request]', {
+        method: httpMethod,
         path,
         merchantNumber: credentials.merchantNumber,
         product: credentials.product,
@@ -65,13 +71,23 @@ class RealPayClient {
       let response;
       for (let attempt = 1; attempt <= 3; attempt++) {
         try {
-          response = await this.httpClient.post(url, payload, {
+          const config = {
+            method: httpMethod,
+            url,
             headers,
             timeout: credentials.timeout
-          });
+          };
+
+          if (httpMethod === 'GET' && payloadOrParams) {
+            config.params = payloadOrParams;
+          } else if (payloadOrParams) {
+            config.data = payloadOrParams;
+          }
+
+          response = await this.httpClient(config);
           break;
         } catch (err) {
-          const isDnsOrNetwork = ['EAI_AGAIN', 'ENOTFOUND', 'ECONNRESET', 'ETIMEDOUT', 'ECONNABORTED'].includes(err.code);
+          const isDnsOrNetwork = ['EAI_AGAIN', 'ENOTFOUND', 'ECONNRESET', 'ETIMEDOUT', 'ECONNABORTED'].includes(err?.code);
           if (isDnsOrNetwork && attempt < 3) {
             if (process.env.NODE_ENV !== 'test') {
               console.warn(`[RealPay API Retry] Attempt ${attempt} failed with ${err.code || err.message}, retrying in ${attempt}s...`);
@@ -105,7 +121,7 @@ class RealPayClient {
         /timeout/i.test(error.message || '');
 
       if (isTimeout) {
-        throw new RealPayTimeoutError('RealPay API request timed out');
+        throw new RealPayTimeoutError(`RealPay ${httpMethod} request timed out`);
       }
 
       if (error.response?.data) {
@@ -117,48 +133,35 @@ class RealPayClient {
           }
         }
         throw new RealPayProviderRejectionError(
-          error.response.data.message || error.response.data.statusDescription || 'RealPay request rejected',
+          error.response.data.message || error.response.data.statusDescription || `RealPay ${httpMethod} request rejected`,
           error.response.status,
           error.response.data
         );
       }
 
-      throw new RealPayConnectionError(`Failed to communicate with RealPay: ${error.message}`);
+      throw new RealPayConnectionError(`Failed to communicate with RealPay via ${httpMethod}: ${error.message}`);
     }
+  }
+
+  /**
+   * Execute an HTTP POST request to RealPay API with injected tenant auth token.
+   */
+  async post(path, payload, tenantId = null, parser = null) {
+    return this.request('POST', path, payload, tenantId, parser);
+  }
+
+  /**
+   * Execute an HTTP PUT request to RealPay API with injected tenant auth token.
+   */
+  async put(path, payload, tenantId = null, parser = null) {
+    return this.request('PUT', path, payload, tenantId, parser);
   }
 
   /**
    * Execute an HTTP GET request to RealPay API.
    */
   async get(path, params = {}, tenantId = null, parser = null) {
-    const { token, credentials } = await realpayAuthService.getAccessToken(tenantId);
-
-    const headers = {
-      'Authorization': `Bearer ${token}`,
-      'X-Merchant-Number': credentials.merchantNumber
-    };
-
-    const isProd = credentials.environment === 'PRODUCTION' || credentials.mode === 'production';
-    const apiPrefix = isProd ? '/rpp/rpws' : '/rpi/rpws';
-    const origin = getRealPayOrigin(credentials.baseUrl);
-    const url = `${origin}${apiPrefix}${path}`;
-
-    try {
-      const response = await this.httpClient.get(url, {
-        headers,
-        params,
-        timeout: credentials.timeout
-      });
-
-      if (parser) {
-        return parser(response.data);
-      }
-      return response.data;
-    } catch (error) {
-      const isTimeout = error.code === 'ECONNABORTED' || error.code === 'ETIMEDOUT' || /timeout/i.test(error.message || '');
-      if (isTimeout) throw new RealPayTimeoutError('RealPay enquiry request timed out');
-      throw new RealPayConnectionError(`Failed to query RealPay: ${error.message}`);
-    }
+    return this.request('GET', path, params, tenantId, parser);
   }
 }
 

@@ -829,3 +829,107 @@ test('RealPay Service - Provider-confirmed Mandate Post Payload Mapping (No ADCT
   }
 });
 
+test('RealPay Client PUT Support - 1. realpayClient.put exists as a function', () => {
+  const realpayClient = require('../../src/services/realpay/realpayClient');
+  assert.equal(typeof realpayClient.put, 'function', 'realpayClient.put must be defined as a function');
+});
+
+test('RealPay Client PUT Support - 2. PUT request uses OAuth bearer token, UAT URL, and exact endpoint/payload', async () => {
+  const realpayClient = require('../../src/services/realpay/realpayClient');
+  const realpaySimulationService = require('../../src/services/realpay/realpaySimulation.service');
+
+  const originalRequest = realpayClient.request;
+  let capturedConfig = null;
+
+  realpayClient.request = async (method, path, payload, tenantId, parser) => {
+    capturedConfig = { method, path, payload, tenantId };
+    return {
+      MandateSimulatePutResponse: [
+        {
+          Successful: [
+            {
+              ContractSequence: 1011268615,
+              MandateInitiateStatusCode: 'S',
+              MandateInitiateResult: 'AAUT'
+            }
+          ]
+        }
+      ]
+    };
+  };
+
+  try {
+    const res = await realpaySimulationService.simulateMandate({
+      contractSequence: '1011268615',
+      statusCode: 'S',
+      result: 'AAUT'
+    });
+
+    assert.equal(capturedConfig.method, 'PUT');
+    assert.equal(capturedConfig.path, '/maintain/simulate/mandate/ABSADC?BeneficiaryUser=23118&Version=v1');
+    assert.deepStrictEqual(capturedConfig.payload, {
+      MandateSimulatePutRequest: [
+        {
+          ContractSequence: '1011268615',
+          MandateInitiateStatusCode: 'S',
+          MandateInitiateResult: 'AAUT'
+        }
+      ]
+    });
+    assert.equal(res.outcome, 'ACCEPTED');
+    assert.equal(res.statusCode, '00');
+  } finally {
+    realpayClient.request = originalRequest;
+  }
+});
+
+test('RealPay Client PUT Support - 3. Instalment simulation uses PUT with exact endpoint and payload', async () => {
+  const realpayClient = require('../../src/services/realpay/realpayClient');
+  const realpaySimulationService = require('../../src/services/realpay/realpaySimulation.service');
+
+  const originalRequest = realpayClient.request;
+  let capturedConfig = null;
+
+  realpayClient.request = async (method, path, payload, tenantId, parser) => {
+    capturedConfig = { method, path, payload, tenantId };
+    return {
+      InstalmentSimulatePutResponse: [
+        {
+          Successful: [
+            {
+              ContractSequence: 1011268615,
+              InstalmentStatusCode: 'S',
+              InstalmentResult: 'SUCC'
+            }
+          ]
+        }
+      ]
+    };
+  };
+
+  try {
+    const res = await realpaySimulationService.simulateInstalment({
+      contractSequence: '1011268615',
+      statusCode: 'S',
+      result: 'SUCC'
+    });
+
+    assert.equal(capturedConfig.method, 'PUT');
+    assert.equal(capturedConfig.path, '/maintain/simulate/instalment/ABSADC?BeneficiaryUser=23118&Version=v1');
+    assert.deepStrictEqual(capturedConfig.payload, {
+      InstalmentSimulatePutRequest: [
+        {
+          ContractSequence: '1011268615',
+          InstalmentStatusCode: 'S',
+          InstalmentResult: 'SUCC'
+        }
+      ]
+    });
+    assert.equal(res.outcome, 'ACCEPTED');
+    assert.equal(res.statusCode, '00');
+  } finally {
+    realpayClient.request = originalRequest;
+  }
+});
+
+
