@@ -1114,6 +1114,58 @@ test('RealPay Callback Security - Missing HMAC signature rejected when REALPAY_C
   }
 });
 
+test('RealPay Atomic Callback Update - Mandate callback never overwrites existing instalmentSequence with empty value', async () => {
+  const { handleRealPayWebhook } = require('../../src/controllers/realpayWebhookController');
+  const LoanApplication = require('../../src/models/LoanApplication');
+
+  const mockApp = {
+    _id: '507f1f77bcf86cd799439011',
+    applicationId: 'LAPP-1038',
+    realPayMandate: { contractSequence: '1011268615', status: 'ACCEPTED', instalmentSequence: '1' },
+    realPaySimulation: {
+      mandate: { contractSequence: '1011268615', result: 'ACCEPTED' },
+      instalment: { contractSequence: '1011268615', instalmentSequence: '1', result: 'ACCEPTED' }
+    }
+  };
+
+  const originalFindOne = LoanApplication.findOne;
+  const originalFindOneAndUpdate = LoanApplication.findOneAndUpdate;
+
+  let updateSetPassed = null;
+  LoanApplication.findOne = async () => mockApp;
+  LoanApplication.findOneAndUpdate = async (filter, update) => {
+    updateSetPassed = update.$set;
+    return { ...mockApp, ...update.$set };
+  };
+
+  const mandatePayload = {
+    MandateGetResponse: [
+      {
+        ContractSequence: 1011268615,
+        MandateInitiateStatusCode: 'S',
+        MandateInitiateResult: 'AAUT'
+      }
+    ]
+  };
+
+  const mockRes = {
+    statusCode: 0,
+    jsonBody: null,
+    status(code) { this.statusCode = code; return this; },
+    json(body) { this.jsonBody = body; return this; }
+  };
+
+  try {
+    await handleRealPayWebhook({ body: mandatePayload, headers: {} }, mockRes);
+    assert.equal(mockRes.statusCode, 200);
+    assert.equal(updateSetPassed['realPayMandate.instalmentSequence'], undefined, 'Mandate callback without sequence must NEVER set or overwrite instalmentSequence with empty value');
+  } finally {
+    LoanApplication.findOne = originalFindOne;
+    LoanApplication.findOneAndUpdate = originalFindOneAndUpdate;
+  }
+});
+
+
 
 
 

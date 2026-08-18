@@ -53,6 +53,7 @@ test('RealPay Webhook Hardening - 3. Missing status code returns 400 error', asy
 
 test('RealPay Webhook Hardening - 4. Valid success callback updates mandate status', async () => {
   const originalFindOne = LoanApplication.findOne;
+  const originalFindOneAndUpdate = LoanApplication.findOneAndUpdate;
   let savedData = null;
 
   const mockLoan = {
@@ -60,11 +61,22 @@ test('RealPay Webhook Hardening - 4. Valid success callback updates mandate stat
     applicationId: 'LAPP-1001',
     debicheckMandateStatus: '',
     debicheckMandateReference: '',
-    realPayMandate: {},
-    async save() { savedData = this; return this; }
+    realPayMandate: {}
   };
 
   LoanApplication.findOne = async () => mockLoan;
+  LoanApplication.findOneAndUpdate = async (filter, update) => {
+    savedData = {
+      _id: mockLoan._id,
+      applicationId: mockLoan.applicationId,
+      debicheckMandateStatus: update.$set.debicheckMandateStatus,
+      realPayMandate: {
+        mandateId: update.$set['realPayMandate.mandateId'],
+        status: update.$set['realPayMandate.status']
+      }
+    };
+    return savedData;
+  };
 
   const req = {
     body: {
@@ -85,22 +97,34 @@ test('RealPay Webhook Hardening - 4. Valid success callback updates mandate stat
     assert.equal(savedData.realPayMandate.mandateId, 'RPM-1001');
   } finally {
     LoanApplication.findOne = originalFindOne;
+    LoanApplication.findOneAndUpdate = originalFindOneAndUpdate;
   }
 });
 
 test('RealPay Webhook Hardening - 5. Valid rejected callback updates status to REJECTED', async () => {
   const originalFindOne = LoanApplication.findOne;
+  const originalFindOneAndUpdate = LoanApplication.findOneAndUpdate;
   let savedData = null;
 
   const mockLoan = {
     _id: '507f1f77bcf86cd799439011',
     applicationId: 'LAPP-1002',
     debicheckMandateStatus: '',
-    realPayMandate: {},
-    async save() { savedData = this; return this; }
+    realPayMandate: {}
   };
 
   LoanApplication.findOne = async () => mockLoan;
+  LoanApplication.findOneAndUpdate = async (filter, update) => {
+    savedData = {
+      _id: mockLoan._id,
+      applicationId: mockLoan.applicationId,
+      debicheckMandateStatus: update.$set.debicheckMandateStatus,
+      realPayMandate: {
+        status: update.$set['realPayMandate.status']
+      }
+    };
+    return savedData;
+  };
 
   const req = {
     body: {
@@ -121,6 +145,7 @@ test('RealPay Webhook Hardening - 5. Valid rejected callback updates status to R
     assert.equal(savedData.realPayMandate.status, 'REJECTED');
   } finally {
     LoanApplication.findOne = originalFindOne;
+    LoanApplication.findOneAndUpdate = originalFindOneAndUpdate;
   }
 });
 

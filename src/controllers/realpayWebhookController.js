@@ -159,35 +159,45 @@ const handleRealPayWebhook = asyncHandler(async (req, res) => {
     matchedLoan.realPaySimulation.environment = 'UAT';
 
     if (callbackType === 'INSTALMENT') {
-      const existingInst = matchedLoan.realPaySimulation.instalment || {};
+      const existingInst = matchedLoan.realPaySimulation?.instalment || {};
       const isDuplicate = existingInst.statusCode === rawStatusCode &&
-                          existingInst.instalmentSequence === instalmentSeq &&
+                          String(existingInst.instalmentSequence || '') === String(instalmentSeq || '') &&
                           existingInst.completedAt;
 
       if (isDuplicate) {
         return { matchedLoan, isDuplicate: true };
       }
 
-      matchedLoan.realPaySimulation.instalment = {
-        requestedAt: existingInst.requestedAt || new Date(),
-        contractSequence: contractSeq || existingRealPay.contractSequence || '',
-        instalmentSequence: instalmentSeq || existingRealPay.instalmentSequence || '',
-        statusCode: rawStatusCode,
-        result: outcome,
-        providerStatus: rawStatusCode,
-        providerMessage: statusDesc,
-        completedAt: new Date()
+      const $setObj = {
+        'realPaySimulation.environment': 'UAT',
+        'realPaySimulation.instalment.requestedAt': existingInst.requestedAt || new Date(),
+        'realPaySimulation.instalment.completedAt': new Date(),
+        'realPaySimulation.instalment.statusCode': rawStatusCode,
+        'realPaySimulation.instalment.result': outcome,
+        'realPaySimulation.instalment.providerStatus': rawStatusCode,
+        'realPaySimulation.instalment.providerMessage': statusDesc,
+        'realPayMandate.updatedAt': new Date(),
+        'realPayMandate.lastWebhookAt': new Date()
       };
 
-      matchedLoan.realPayMandate = {
-        ...existingRealPay,
-        instalmentSequence: instalmentSeq || existingRealPay.instalmentSequence || '',
-        updatedAt: new Date(),
-        lastWebhookAt: new Date()
-      };
+      if (contractSeq) {
+        $setObj['realPaySimulation.instalment.contractSequence'] = contractSeq;
+        $setObj['realPayMandate.contractSequence'] = contractSeq;
+      }
 
-      await matchedLoan.save();
-      return { matchedLoan, isDuplicate: false };
+      // CRITICAL RULE: Never overwrite existing sequence with empty string/null
+      if (instalmentSeq) {
+        $setObj['realPaySimulation.instalment.instalmentSequence'] = instalmentSeq;
+        $setObj['realPayMandate.instalmentSequence'] = instalmentSeq;
+      }
+
+      const updatedLoan = await LoanApplication.findOneAndUpdate(
+        { _id: matchedLoan._id },
+        { $set: $setObj },
+        { returnDocument: 'after' }
+      );
+
+      return { matchedLoan: updatedLoan, isDuplicate: false };
     }
 
     // Default / MANDATE callback processing
@@ -198,38 +208,51 @@ const handleRealPayWebhook = asyncHandler(async (req, res) => {
       return { matchedLoan, isDuplicate: true };
     }
 
-    matchedLoan.debicheckMandateStatus = outcome;
+    const $setObj = {
+      debicheckMandateStatus: outcome,
+      'realPaySimulation.environment': 'UAT',
+      'realPaySimulation.mandate.requestedAt': matchedLoan.realPaySimulation?.mandate?.requestedAt || new Date(),
+      'realPaySimulation.mandate.completedAt': new Date(),
+      'realPaySimulation.mandate.statusCode': rawStatusCode,
+      'realPaySimulation.mandate.result': outcome,
+      'realPaySimulation.mandate.providerStatus': rawStatusCode,
+      'realPaySimulation.mandate.providerMessage': statusDesc,
+
+      'realPayMandate.status': outcome,
+      'realPayMandate.statusCode': rawStatusCode,
+      'realPayMandate.statusDescription': statusDesc,
+      'realPayMandate.product': extracted.payload.product || extracted.payload.Product || existingRealPay.product || 'ABSADC',
+      'realPayMandate.updatedAt': new Date(),
+      'realPayMandate.lastWebhookAt': new Date()
+    };
+
     if (mandateId) {
-      matchedLoan.debicheckMandateReference = mandateId;
+      $setObj.debicheckMandateReference = mandateId;
+      $setObj['realPayMandate.providerReference'] = mandateId;
+      $setObj['realPayMandate.mandateId'] = mandateId;
+    }
+    if (contractSeq) {
+      $setObj['realPaySimulation.mandate.contractSequence'] = contractSeq;
+      $setObj['realPayMandate.contractSequence'] = contractSeq;
+    }
+    if (clientRef) {
+      $setObj['realPayMandate.clientReference'] = clientRef;
+    }
+    if (contractRef) {
+      $setObj['realPayMandate.contractReference'] = contractRef;
+    }
+    // CRITICAL RULE: Only set instalmentSequence if non-empty!
+    if (instalmentSeq) {
+      $setObj['realPayMandate.instalmentSequence'] = instalmentSeq;
     }
 
-    matchedLoan.realPaySimulation.mandate = {
-      contractSequence: contractSeq || existingRealPay.contractSequence || '',
-      requestedAt: matchedLoan.realPaySimulation?.mandate?.requestedAt || new Date(),
-      completedAt: new Date(),
-      statusCode: rawStatusCode,
-      result: outcome,
-      providerStatus: rawStatusCode,
-      providerMessage: statusDesc
-    };
+    const updatedLoan = await LoanApplication.findOneAndUpdate(
+      { _id: matchedLoan._id },
+      { $set: $setObj },
+      { new: true }
+    );
 
-    matchedLoan.realPayMandate = {
-      ...existingRealPay,
-      providerReference: mandateId || existingRealPay.providerReference,
-      mandateId: mandateId || existingRealPay.mandateId,
-      contractSequence: contractSeq || existingRealPay.contractSequence,
-      status: outcome,
-      statusCode: rawStatusCode,
-      statusDescription: statusDesc,
-      product: extracted.payload.product || extracted.payload.Product || existingRealPay.product || 'ABSADC',
-      clientReference: clientRef || existingRealPay.clientReference,
-      contractReference: contractRef || existingRealPay.contractReference,
-      updatedAt: new Date(),
-      lastWebhookAt: new Date()
-    };
-
-    await matchedLoan.save();
-    return { matchedLoan, isDuplicate: false };
+    return { matchedLoan: updatedLoan, isDuplicate: false };
   });
 
   if (!result || !result.matchedLoan) {

@@ -345,7 +345,6 @@ const getApplicationDetails = asyncHandler(async (req, res) => {
 
   const activeLoanExists = await ActiveLoan.exists({ loanApplicationId: application._id, isDeleted: false });
 
-  // Calculate safe server-side UAT simulation availability
   const realpayEnv = String(process.env.REALPAY_ENVIRONMENT || '').toUpperCase();
   const realpaySimEnabled = String(process.env.REALPAY_SIMULATION_ENABLED || '').toLowerCase() === 'true';
   const hasGenuineContractSeq = Boolean(
@@ -355,12 +354,22 @@ const getApplicationDetails = asyncHandler(async (req, res) => {
   );
   const realPaySimulationAvailable = realpayEnv === 'UAT' && realpaySimEnabled && hasGenuineContractSeq;
 
+  const hasGenuineInstalmentSeq = Boolean(
+    (application.realPayMandate?.instalmentSequence || application.realPaySimulation?.instalment?.instalmentSequence) &&
+    String(application.realPayMandate?.instalmentSequence || application.realPaySimulation?.instalment?.instalmentSequence).trim() !== ''
+  );
+  const isMandateSimCompleted = Boolean(
+    application.realPaySimulation?.mandate?.result === 'ACCEPTED' || application.realPayMandate?.status === 'ACCEPTED'
+  );
+  const instalmentSimulationAvailable = realPaySimulationAvailable && isMandateSimCompleted && hasGenuineInstalmentSeq;
+
   // Combine data and fix field name mismatches for frontend
   const fullApplication = {
     ...employment,
     ...banking,
     ...application, // Spread application last to preserve its _id, createdAt, etc.
     realPaySimulationAvailable,
+    instalmentSimulationAvailable,
     yearsOfService: employment?.employmentDuration,
     accountHolder: banking?.accountHolderName,
     documents: formattedDocs,
