@@ -1,6 +1,7 @@
 const { Server } = require('socket.io');
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
+const tenantContext = require('../tenancy/tenantContext');
 
 let io;
 
@@ -15,17 +16,22 @@ const initSocket = (server) => {
   // Socket authentication middleware
   io.use(async (socket, next) => {
     try {
-      const token = socket.handshake.auth.token || socket.handshake.headers.authorization;
-      if (!token) return next(new Error('Authentication error'));
+      const rawToken = socket.handshake.auth?.token || socket.handshake.headers?.authorization || socket.handshake.query?.token;
+      if (!rawToken) return next(new Error('Authentication error: No token provided'));
 
-      const decoded = jwt.verify(token.replace('Bearer ', ''), process.env.JWT_SECRET);
-      const user = await User.findById(decoded.id).select('-password');
+      const cleanToken = String(rawToken).replace(/^Bearer\s+/i, '').trim();
+      const decoded = jwt.verify(cleanToken, process.env.JWT_SECRET);
+      const user = await tenantContext.runAsSystem(() =>
+        User.findById(decoded.id).select('-password')
+      );
 
-      if (!user) return next(new Error('User not found'));
+      if (!user) return next(new Error('Authentication error: User not found'));
 
       socket.user = user;
+      socket.tenantId = user.tenantId ? String(user.tenantId) : null;
       next();
     } catch (error) {
+      console.error('[Socket Auth Error]:', error.message);
       next(new Error('Authentication error'));
     }
   });

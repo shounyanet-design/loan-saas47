@@ -13,27 +13,39 @@ const tenantContext = require('../tenancy/tenantContext');
 /**
  * Initialize all cron jobs
  *
- * MILESTONE 1 SCOPE: this background job runs inside the DEFAULT tenant's
- * context so its reads are correctly scoped and the records it creates
- * (notifications / alerts / activities) are stamped with the right tenantId.
- * When multiple tenants exist (later milestone), this should iterate over all
- * active tenants and run the checks once per tenant.
+ * Runs across ALL active and trialing tenants so each tenant's loans and borrowers
+ * are processed inside their respective isolated tenantContext.
  */
 const initCronJobs = () => {
   // Run every day at 00:00 (Midnight)
   cron.schedule('0 0 * * *', async () => {
-    console.log('Running EMI Reminder Cron Job...');
-    const defaultTenant = await tenantContext.runAsSystem(() =>
-      Tenant.findOne({ isDefault: true })
-    );
-    if (!defaultTenant) {
-      console.error('[Cron] No default tenant found — skipping EMI reminder job.');
-      return;
+    console.log('Running Multi-Tenant EMI Reminder Cron Job...');
+    try {
+      const activeTenants = await tenantContext.runAsSystem(() =>
+        Tenant.find({ status: { $in: ['active', 'trialing'] } }).lean()
+      );
+
+      if (!activeTenants || activeTenants.length === 0) {
+        // Fallback: check for default tenant
+        const defaultTenant = await tenantContext.runAsSystem(() => Tenant.findOne({ isDefault: true }).lean());
+        if (defaultTenant) {
+          activeTenants.push(defaultTenant);
+        }
+      }
+
+      for (const tenant of activeTenants) {
+        try {
+          await tenantContext.runWithTenant(tenant._id, async () => {
+            await checkUpcomingEMIs();
+            await checkOverdueEMIs();
+          });
+        } catch (tenantErr) {
+          console.error(`[Cron] Error processing EMIs for tenant ${tenant._id} (${tenant.name}):`, tenantErr.message);
+        }
+      }
+    } catch (err) {
+      console.error('[Cron] Failed to execute multi-tenant EMI reminder job:', err.message);
     }
-    await tenantContext.runWithTenant(defaultTenant._id, async () => {
-      await checkUpcomingEMIs();
-      await checkOverdueEMIs();
-    });
   });
 };
 

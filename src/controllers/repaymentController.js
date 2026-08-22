@@ -13,7 +13,10 @@ const getLoanRepaymentSchedule = asyncHandler(async (req, res) => {
   const { loanId } = req.params;
   const { role, _id: userId } = req.user;
 
-  const loan = await ActiveLoan.findById(loanId);
+  const query = { _id: loanId };
+  if (req.tenantId) query.tenantId = req.tenantId;
+
+  const loan = await ActiveLoan.findOne(query);
   if (!loan) {
     return sendError(res, 'Loan not found', 404);
   }
@@ -28,8 +31,10 @@ const getLoanRepaymentSchedule = asyncHandler(async (req, res) => {
   }
 
   // Staff and Admin have full access to view
+  const schedQuery = { loanId };
+  if (req.tenantId) schedQuery.tenantId = req.tenantId;
 
-  let schedule = await RepaymentSchedule.find({ loanId }).sort({ emiNumber: 1 });
+  let schedule = await RepaymentSchedule.find(schedQuery).sort({ emiNumber: 1 });
 
   // FALLBACK & AUTO-MIGRATION:
   // If the centralized RepaymentSchedule collection is empty for this loan,
@@ -136,14 +141,38 @@ const waivePenalty = asyncHandler(async (req, res) => {
     return sendError(res, 'Access denied', 403);
   }
 
-  const repayment = await RepaymentSchedule.findById(req.params.id);
+  const query = { _id: req.params.id };
+  if (req.tenantId) query.tenantId = req.tenantId;
+
+  const repayment = await RepaymentSchedule.findOne(query);
   if (!repayment) {
     return sendError(res, 'Repayment record not found', 404);
   }
 
+  repayment.penaltyWaived = true;
+  repayment.penaltyWaivedAt = new Date();
+  repayment.penaltyWaivedBy = req.user._id;
   repayment.penaltyAmount = 0;
   repayment.notes = (repayment.notes || '') + `\nPenalty waived by admin on ${new Date().toLocaleDateString()}`;
   await repayment.save();
+
+  // Sync with activeLoan embedded list
+  const activeLoan = await ActiveLoan.findById(repayment.loanId);
+  if (activeLoan && Array.isArray(activeLoan.repaymentSchedule)) {
+    const emi = activeLoan.repaymentSchedule.find(s => s.installmentNumber === repayment.emiNumber);
+    if (emi) {
+      emi.lateFee = 0;
+      emi.penaltyWaived = true;
+      await activeLoan.save();
+    }
+  }
+
+  // Update corresponding DuePayment if it exists
+  const DuePayment = require('../models/DuePayment');
+  await DuePayment.findOneAndUpdate(
+    { loanId: repayment.loanId, installmentNumber: repayment.emiNumber },
+    { penaltyAmount: 0, totalDueAmount: repayment.amount }
+  );
 
   sendSuccess(res, 'Penalty waived successfully', repayment);
 });
@@ -159,7 +188,10 @@ const markDispute = asyncHandler(async (req, res) => {
   }
 
   const { reason } = req.body;
-  const repayment = await RepaymentSchedule.findById(req.params.id);
+  const query = { _id: req.params.id };
+  if (req.tenantId) query.tenantId = req.tenantId;
+
+  const repayment = await RepaymentSchedule.findOne(query);
   if (!repayment) {
     return sendError(res, 'Repayment record not found', 404);
   }
@@ -168,7 +200,7 @@ const markDispute = asyncHandler(async (req, res) => {
   repayment.notes = (repayment.notes || '') + `\nDispute marked by admin: ${reason}`;
   await repayment.save();
 
-  sendSuccess(res, 'Repayment marked as disputed', repayment);
+  sendSuccess(res, 'Dispute marked successfully', repayment);
 });
 
 module.exports = {

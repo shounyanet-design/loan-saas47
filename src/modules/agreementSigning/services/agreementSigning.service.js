@@ -31,6 +31,66 @@ const generateAgreement = async (loanId, adminId) => {
   const staffUser = await User.findById(adminId);
   const staffName = staffUser ? (staffUser.fullName || staffUser.name) : 'Admin';
 
+  // STEP 9 - Validate tenant legal details before agreement generation
+  const Tenant = require('../../../models/Tenant');
+  const tenantContext = require('../../../tenancy/tenantContext');
+  const tenant = await tenantContext.runAsSystem(() => Tenant.findById(application.tenantId));
+
+  const companyProfile = (tenant && tenant.companyProfile) ? tenant.companyProfile : {};
+  const legalName = companyProfile.legalName || (tenant && tenant.companyName);
+  const cipcRegistrationNumber = companyProfile.cipcRegistrationNumber;
+  const ncrRegistrationNumber = companyProfile.ncrRegistrationNumber;
+  const telephone = companyProfile.telephone || (tenant && tenant.phone);
+  const registeredAddress = companyProfile.registeredAddress || {};
+  const addressLine1 = registeredAddress.addressLine1;
+  const city = registeredAddress.city;
+  const province = registeredAddress.province;
+  const postalCode = registeredAddress.postalCode;
+  const country = registeredAddress.country || (tenant && tenant.country);
+
+  const missingFields = [];
+  if (!legalName) missingFields.push('legalName');
+  if (!cipcRegistrationNumber) missingFields.push('cipcRegistrationNumber');
+  if (!ncrRegistrationNumber) missingFields.push('ncrRegistrationNumber');
+  if (!telephone) missingFields.push('telephone');
+  if (!addressLine1) missingFields.push('addressLine1');
+  if (!city) missingFields.push('city');
+  if (!province) missingFields.push('province');
+  if (!postalCode) missingFields.push('postalCode');
+  if (!country) missingFields.push('country');
+
+  if (missingFields.length > 0) {
+    const error = new Error('Complete the Credit Provider legal details before generating a loan agreement.');
+    error.code = 'TENANT_LEGAL_PROFILE_INCOMPLETE';
+    error.missingFields = missingFields;
+    throw error;
+  }
+
+  // Create immutable snapshot of Credit Provider Legal Details (Step 6)
+  application.agreementCreditProviderSnapshot = {
+    tenantId: application.tenantId,
+    legalName,
+    tradingName: companyProfile.tradingName || legalName,
+    cipcRegistrationNumber,
+    ncrRegistrationNumber,
+    vatNumber: companyProfile.vatNumber || '',
+    telephone,
+    email: companyProfile.email || (tenant && tenant.email) || '',
+    registeredAddress: {
+      addressLine1,
+      addressLine2: registeredAddress.addressLine2 || '',
+      city,
+      province,
+      postalCode,
+      country
+    },
+    authorizedSignatory: {
+      fullName: companyProfile.authorizedSignatory?.fullName || staffName,
+      designation: companyProfile.authorizedSignatory?.designation || 'Authorized Officer'
+    },
+    logoUrl: companyProfile.logoUrl || (tenant && tenant.brandLogo) || ''
+  };
+
   // Update application status and agreement metadata
   application.status = 'AGREEMENT_PENDING_VERIFICATION';
   
@@ -175,15 +235,46 @@ const signAgreement = async (loanApplicationId, otpCode, ip = '', userAgent = ''
   await verifyOTP(application.borrowerId, application._id, otpCode);
   console.log(`[AgreementService] OTP verified successfully for agreement ${application.applicationId} by borrower.`);
 
+  const hasSnapshot = application.agreementCreditProviderSnapshot && application.agreementCreditProviderSnapshot.legalName;
+  const snapshot = hasSnapshot ? application.agreementCreditProviderSnapshot : {
+    legalName: 'Point.47 Finance Pty Ltd',
+    cipcRegistrationNumber: '2021/098765/07',
+    ncrRegistrationNumber: 'NCRCP12345',
+    telephone: '+27 11 456 7890',
+    email: 'info@point47.co.za',
+    registeredAddress: {
+      addressLine1: 'Platform default office address',
+      city: 'Johannesburg',
+      province: 'Gauteng',
+      postalCode: '2000',
+      country: 'South Africa'
+    },
+    authorizedSignatory: {
+      fullName: 'Aander',
+      designation: 'Authorized Signatory'
+    }
+  };
+
+  const addr = snapshot.registeredAddress || {};
+  const formattedAddress = `${addr.addressLine1 || ''}${addr.addressLine2 ? ', ' + addr.addressLine2 : ''}, ${addr.city || ''}, ${addr.province || ''}, ${addr.postalCode || ''}, ${addr.country || ''}`;
+
   const signedAtDate = new Date();
   const documentText = `========================================================================
-POINT.47 LOAN AGREEMENT & SIGNATURE RECEIPT
+LOAN AGREEMENT & SIGNATURE RECEIPT
 ========================================================================
 Application ID: ${application.applicationId}
 Borrower Name: ${application.fullName}
 Email Address: ${application.emailAddress}
 Mobile Number: ${application.phoneNumber}
 ID Number: ${application.idNumber}
+
+CREDIT PROVIDER DETAILS:
+Full Name / Entity: ${snapshot.legalName}
+CIPC Registration No: ${snapshot.cipcRegistrationNumber}
+NCR Registration No: ${snapshot.ncrRegistrationNumber}
+Telephone: ${snapshot.telephone}
+Email: ${snapshot.email}
+Registered Address: ${formattedAddress}
 
 LOAN PRINCIPAL DETAILS:
 Approved Amount: R ${Number(application.requestedAmount || 0).toLocaleString()}
@@ -198,7 +289,12 @@ Agreement Status: SIGNED
 Generated At: ${application.agreementGeneratedAt ? new Date(application.agreementGeneratedAt).toLocaleString() : new Date().toLocaleString()}
 Signed At: ${signedAtDate.toLocaleString()}
 
-Thank you for choosing Point.47.
+SIGNATURE CREDIT PROVIDER:
+Authorized Signatory: ${snapshot.authorizedSignatory?.fullName || 'Aander'}
+Designation: ${snapshot.authorizedSignatory?.designation || 'Authorized Officer'}
+Status: SIGNED
+
+Thank you for choosing ${snapshot.legalName}.
 ========================================================================`;
 
   const agreementHtml = `<div style="font-family: monospace; white-space: pre-wrap; padding: 20px; background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; color: #334155;">${documentText}</div>`;
@@ -248,111 +344,23 @@ Thank you for choosing Point.47.
 
   await application.save();
 
-  // Now, finalize the loan: Create ActiveLoan, RepaymentSchedule, Commission, and Sockets!
+  // ── Post-signing notifications & activity log ────────────────────────────
+  // NOTE: ActiveLoan creation is intentionally NOT done here.
+  // It is handled exclusively by POST /api/admin/loans/:id/disburse once the
+  // admin explicitly triggers disbursement after all gates are satisfied.
   try {
     const loanAmount = application.requestedAmount;
-    const duration = application.requestedDuration;
-    const rate = application.interestRate || 10; // Default 10% if not set
 
-    // Simple EMI Schedule Generation
-    const monthlyRate = rate / 12 / 100;
-    const emiAmount = Math.round(
-      (loanAmount * monthlyRate * Math.pow(1 + monthlyRate, duration)) /
-      (Math.pow(1 + monthlyRate, duration) - 1)
-    );
-
-    const emiSchedule = [];
-    let remainingBal = loanAmount;
-    const startDate = new Date();
-    startDate.setMonth(startDate.getMonth() + 1); // First EMI next month
-
-    for (let i = 1; i <= duration; i++) {
-      const interest = Math.round(remainingBal * monthlyRate);
-      const principalAmount = emiAmount - interest;
-      remainingBal -= principalAmount;
-
-      const dueDate = new Date(startDate);
-      dueDate.setMonth(dueDate.getMonth() + (i - 1));
-
-      emiSchedule.push({
-        installmentNumber: i,
-        dueDate,
-        emiAmount,
-        principalAmount,
-        interestAmount: interest,
-        paymentStatus: 'Pending',
-      });
-    }
-
-    const ActiveLoan = require('../../../models/ActiveLoan');
-    const RepaymentSchedule = require('../../../models/RepaymentSchedule');
-
-    const activeLoan = await ActiveLoan.create({
-      borrowerId: borrower._id, // Bug Fix: use borrower._id (ref Borrower) instead of application.borrowerId (ref User)
-      borrowerName: application.fullName || borrower.fullName || 'Unknown',
-      borrowerPhoto: borrower.profilePhoto || null,
-      borrowerEmail: application.emailAddress || borrower.email,
-      borrowerPhone: application.phoneNumber || borrower.phoneNumber,
-      loanApplicationId: application._id,
-      loanType: application.loanType || 'Personal Loan',
-      approvedAmount: loanAmount,
-      interestRate: rate,
-      loanDurationMonths: duration,
-      emiAmount,
-      totalPayableAmount: emiAmount * duration,
-      remainingBalance: emiAmount * duration,
-      nextDueDate: emiSchedule[0].dueDate,
-      repaymentSchedule: emiSchedule,
-      approvedBy: application.adminDecision?.approvedBy || null,
-      notes: application.adminDecision?.adminNotes || null,
-      
-      // Metadata added for Requirement 2 & 3:
-      applicationId: application.applicationId,
-      fullName: application.fullName || borrower.fullName || 'Unknown',
-      emailAddress: application.emailAddress || borrower.email,
-      phoneNumber: application.phoneNumber || borrower.phoneNumber,
-      idNumber: application.idNumber,
-      requestedAmount: application.requestedAmount,
-      requestedDuration: application.requestedDuration,
-      estimatedMonthlyEMI: application.estimatedMonthlyEMI,
-      agreementGeneratedAt: application.agreementGeneratedAt || new Date(),
-      verificationIp: ip,
-      verificationUserAgent: userAgent,
-      agreementHtml: application.agreementHtml || agreementHtml,
-      agreementPdfUrl: application.agreementPdfUrl || `/api/agreement/document/${application._id}`,
-      signedAgreement: application.signedAgreement || documentText,
-      otpVerificationStatus: application.otpVerificationStatus || 'VERIFIED',
-      processingFee: application.processingFee || 0,
-      
-      disbursementReady: true,
-      disbursementStatus: 'Ready for Disbursement',
-      agreementStatus: 'SIGNED',
-      agreementSignedAt: signedAtDate,
-      agreementDocumentUrl: application.agreementDocumentUrl || `/api/agreement/document/${application._id}`
-    });
-
-    // Create records in centralized RepaymentSchedule collection
-    const repaymentEntries = emiSchedule.map(emi => ({
-      loanId: activeLoan._id,
-      borrowerId: borrower._id, // Bug Fix: use borrower._id instead of application.borrowerId
-      emiNumber: emi.installmentNumber,
-      dueDate: emi.dueDate,
-      amount: emi.emiAmount,
-      status: 'Pending'
-    }));
-
-    await RepaymentSchedule.insertMany(repaymentEntries);
-
-    // COMMISSION LOGIC: If borrower has an assigned agent, generate commission
+    // COMMISSION LOGIC: If borrower has an assigned agent, generate a pending commission
     if (borrower && borrower.assignedAgent) {
       const Commission = require('../../../models/Commission');
-      const commissionPercent = 2.5; // Default 2.5%
+      const commissionPercent = 2.5;
       const commissionAmount = (loanAmount * commissionPercent) / 100;
 
       await Commission.create({
         agentId: borrower.assignedAgent,
         borrowerId: borrower._id,
-        loanId: activeLoan._id,
+        loanId: application._id,   // Reference the LoanApplication until ActiveLoan exists
         loanAmount,
         commissionPercent,
         commissionAmount,
@@ -360,7 +368,7 @@ Thank you for choosing Point.47.
       });
     }
 
-    // Trigger Real-time Notifications & Sockets
+    // Trigger real-time notifications & sockets for borrower
     if (borrower) {
       await createNotification({
         title: 'Agreement Signed',
@@ -375,33 +383,30 @@ Thank you for choosing Point.47.
       await BorrowerAlert.create({
         borrowerId: borrower._id,
         title: 'Agreement Signed',
-        message: `Your digital loan agreement for ${application.applicationId} has been signed successfully. Status: Ready for Disbursement.`,
+        message: `Your digital loan agreement for ${application.applicationId} has been signed successfully. It is now ready for disbursement.`,
         alertType: 'LOAN_APPROVED',
         priority: 'High'
       });
 
-      // Log Activity
       await LoanActivity.create({
-        loanId: activeLoan._id,
+        loanId: application._id,
         borrowerId: borrower._id,
         title: 'Agreement Signed',
         message: `Your loan agreement for ${application.applicationId} was signed successfully via secure OTP.`,
         type: 'StatusChange'
       });
 
-      // Socket notification for borrower
       const io = getIO();
       if (io) {
         const borrowerUserId = borrower.userId.toString();
-        io.to(borrowerUserId).emit('loan-updated', { 
+        io.to(borrowerUserId).emit('loan-updated', {
           status: 'APPROVED',
-          loanId: activeLoan._id,
+          applicationId: application._id,
           message: 'Your loan agreement has been successfully signed!'
         });
         io.to(borrowerUserId).emit('dashboard-updated');
         io.to(borrowerUserId).emit('notification-created');
 
-        // Notify admin
         io.emit('admin:loanSigned', {
           applicationId: application._id,
           borrowerName: application.fullName
@@ -409,8 +414,8 @@ Thank you for choosing Point.47.
       }
     }
 
+    // Notify agent
     if (borrower && borrower.assignedAgent) {
-      // Notify Agent
       await createNotification({
         receiverId: borrower.assignedAgent,
         receiverRole: 'agent',
@@ -420,7 +425,6 @@ Thank you for choosing Point.47.
         priority: 'IMPORTANT'
       });
 
-      // Socket notification for agent
       const io = getIO();
       if (io) {
         io.to(borrower.assignedAgent.toString()).emit('commission:generated', {
@@ -431,7 +435,7 @@ Thank you for choosing Point.47.
     }
 
   } catch (err) {
-    console.error('Failed to finalize active loan setup after OTP verification:', err.message);
+    console.error('[AgreementService] Non-fatal post-signing side-effect error:', err.message);
   }
 
   return application;
@@ -446,11 +450,19 @@ const markReadyForDisbursement = async (loanApplicationId, adminId) => {
     throw new Error('Loan application not found');
   }
 
-  const signedStatuses = ['Agreement Signed', 'AGREEMENT_SIGNED', 'OTP_VERIFIED'];
-  if (!signedStatuses.includes(application.status)) {
+  // 1. Authoritative Signed Agreement Gate
+  const isAgreementSigned =
+    application.agreementStatus === 'SIGNED' ||
+    application.agreementStatus === 'Signed' ||
+    Boolean(application.agreementSignedAt) ||
+    ['Agreement Signed', 'AGREEMENT_SIGNED', 'OTP_VERIFIED', 'READY_FOR_DISBURSEMENT', 'Ready for Disbursement'].includes(application.status) ||
+    (application.status === 'APPROVED' && (application.agreementStatus === 'SIGNED' || application.agreementSignedAt));
+
+  if (!isAgreementSigned) {
     throw new Error('Only signed agreements can be marked ready for disbursement.');
   }
 
+  // 2. DebiCheck Mandate Gate
   const mandateAccepted = application.debicheckMandateStatus === 'ACCEPTED'
     || application.realPayMandate?.status === 'ACCEPTED'
     || application.nupayMandate?.outcome === 'ACCEPTED';
@@ -459,10 +471,30 @@ const markReadyForDisbursement = async (loanApplicationId, adminId) => {
     throw new Error('Cannot mark loan ready for disbursement: DebiCheck mandate status is not ACCEPTED.');
   }
 
+  // 3. AML Compliance Gate
+  const isAmlBlocked = Boolean(
+    application.amlVerification?.isBlocked ||
+    application.verifications?.aml?.isBlocked
+  );
+  if (isAmlBlocked) {
+    throw new Error('Cannot mark loan ready for disbursement: AML compliance check has blocked this application.');
+  }
+
+  // Idempotency: If already in Ready for Disbursement, ensure active loan status and return safely
+  if (application.status === 'Ready for Disbursement' || application.status === 'READY_FOR_DISBURSEMENT') {
+    const ActiveLoan = require('../../../models/ActiveLoan');
+    await ActiveLoan.updateMany(
+      { loanApplicationId: application._id },
+      { $set: { disbursementReady: true, disbursementStatus: 'Ready for Disbursement' } }
+    );
+    return application;
+  }
+
   const staffUser = await User.findById(adminId);
   const staffName = staffUser ? (staffUser.fullName || staffUser.name) : 'Admin';
 
   application.status = 'Ready for Disbursement';
+  application.disbursementStatus = 'READY_FOR_DISBURSEMENT';
 
   application.statusHistory.push({
     status: 'Ready for Disbursement',
@@ -471,6 +503,17 @@ const markReadyForDisbursement = async (loanApplicationId, adminId) => {
   });
 
   await application.save();
+
+  // Keep ActiveLoan in sync
+  try {
+    const ActiveLoan = require('../../../models/ActiveLoan');
+    await ActiveLoan.updateMany(
+      { loanApplicationId: application._id },
+      { $set: { disbursementReady: true, disbursementStatus: 'Ready for Disbursement' } }
+    );
+  } catch (syncErr) {
+    console.error('Non-fatal: Failed to sync ActiveLoan status on ready-disbursement:', syncErr.message);
+  }
 
   // Socket notification
   try {

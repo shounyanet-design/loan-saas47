@@ -8,6 +8,7 @@ const VerificationLog = require('../../models/VerificationLog');
 const AMLCheck = require('../../models/AMLCheck');
 const { getIO } = require('../../socket/socketServer');
 const { callAMLScreening } = require('../../services/datanamix/amlScreening.service');
+const reportDocumentService = require('../../services/reportDocument.service');
 
 const writeAuditLog = async (data) => {
   try {
@@ -291,31 +292,43 @@ const verifyAMLScreeningController = async (req, res) => {
 };
 
 /**
- * 2. Streams the AML report PDF directly from the file system.
+ * 2. Streams the AML report PDF directly.
  * GET /api/verification/aml-report-pdf/:applicationId
  */
 const getAmlReportPdfController = async (req, res) => {
   const { applicationId } = req.params;
 
   try {
-    const app = await LoanApplication.findById(applicationId).select('compliance');
-    if (!app || !app.compliance?.aml?.pdfPath) {
-      return res.status(404).json({ success: false, message: 'No AML screening PDF report found for this application.' });
+    const app = await LoanApplication.findById(applicationId);
+    if (!app || (!app.compliance?.aml && !app.amlVerification)) {
+      return res.status(404).json({
+        success: false,
+        code: 'REPORT_NOT_FOUND',
+        message: 'No AML screening record found for this application.'
+      });
     }
 
-    const filePath = path.join(__dirname, '..', '..', '..', app.compliance.aml.pdfPath);
-    if (!fsSync.existsSync(filePath)) {
-      return res.status(404).json({ success: false, message: 'AML PDF report file not found on server disk.' });
+    const pdfBuffer = await reportDocumentService.resolveAmlReportPdf(app);
+    if (!pdfBuffer || pdfBuffer.length === 0) {
+      return res.status(404).json({
+        success: false,
+        code: 'REPORT_FILE_MISSING',
+        message: 'AML PDF report file could not be retrieved or generated.'
+      });
     }
 
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', 'inline; filename="aml_compliance_report.pdf"');
+    res.setHeader('Content-Length', pdfBuffer.length);
 
-    const readStream = fsSync.createReadStream(filePath);
-    readStream.pipe(res);
+    return res.status(200).send(pdfBuffer);
   } catch (error) {
     console.error('[STREAM AML PDF ERROR]:', error.message);
-    res.status(500).json({ success: false, message: 'Error streaming AML report PDF.' });
+    return res.status(500).json({
+      success: false,
+      code: 'REPORT_GENERATION_FAILED',
+      message: 'Error streaming AML report PDF.'
+    });
   }
 };
 
@@ -327,26 +340,38 @@ const downloadAmlReportController = async (req, res) => {
   const { applicationId } = req.params;
 
   try {
-    const app = await LoanApplication.findById(applicationId).select('compliance');
-    if (!app || !app.compliance?.aml?.pdfPath) {
-      return res.status(404).json({ success: false, message: 'No AML screening PDF report found for this application.' });
+    const app = await LoanApplication.findById(applicationId);
+    if (!app || (!app.compliance?.aml && !app.amlVerification)) {
+      return res.status(404).json({
+        success: false,
+        code: 'REPORT_NOT_FOUND',
+        message: 'No AML screening record found for this application.'
+      });
     }
 
-    const filePath = path.join(__dirname, '..', '..', '..', app.compliance.aml.pdfPath);
-    if (!fsSync.existsSync(filePath)) {
-      return res.status(404).json({ success: false, message: 'AML PDF report file not found on server disk.' });
+    const pdfBuffer = await reportDocumentService.resolveAmlReportPdf(app);
+    if (!pdfBuffer || pdfBuffer.length === 0) {
+      return res.status(404).json({
+        success: false,
+        code: 'REPORT_FILE_MISSING',
+        message: 'AML PDF report file could not be retrieved or generated for download.'
+      });
     }
 
-    const fileVersion = app.compliance.aml.version || 1;
+    const fileVersion = app.compliance?.aml?.version || 1;
 
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="aml-compliance-report-v${fileVersion}.pdf"`);
+    res.setHeader('Content-Length', pdfBuffer.length);
 
-    const readStream = fsSync.createReadStream(filePath);
-    readStream.pipe(res);
+    return res.status(200).send(pdfBuffer);
   } catch (error) {
     console.error('[DOWNLOAD AML PDF ERROR]:', error.message);
-    res.status(500).json({ success: false, message: 'Error downloading AML report PDF.' });
+    return res.status(500).json({
+      success: false,
+      code: 'REPORT_GENERATION_FAILED',
+      message: 'Error downloading AML report PDF.'
+    });
   }
 };
 

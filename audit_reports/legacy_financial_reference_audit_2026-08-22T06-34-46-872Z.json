@@ -1,0 +1,474 @@
+{
+  "generatedAt": "2026-08-22T06:34:42.190Z",
+  "tenantCount": 23,
+  "records": [
+    {
+      "collection": "Payment",
+      "recordId": "6a15edf3bbecc427e740a171",
+      "tenantId": "6a437fbbcc83008c43ffd498",
+      "category": "CURRENT_ACTIVELOAN_REFERENCE",
+      "details": "Found via loanId",
+      "linkedActiveLoanId": "6a0da7b2760f669db6be674f",
+      "linkedLoanApplicationId": null
+    },
+    {
+      "collection": "Payment",
+      "recordId": "6a5f3cadf34932483c34f079",
+      "tenantId": "6a437fbbcc83008c43ffd498",
+      "category": "INVALID_REFERENCE",
+      "details": "loanId is not a valid ObjectId",
+      "linkedActiveLoanId": null,
+      "linkedLoanApplicationId": null
+    },
+    {
+      "collection": "RepaymentSchedule",
+      "recordId": "6a2860cf2988bc1acbc20793",
+      "tenantId": "6a437fbbcc83008c43ffd498",
+      "category": "INVALID_REFERENCE",
+      "details": "loanId is not a valid ObjectId",
+      "linkedActiveLoanId": null,
+      "linkedLoanApplicationId": null
+    },
+    {
+      "collection": "RepaymentSchedule",
+      "recordId": "6a0da7b3760f669db6be6764",
+      "tenantId": "6a437fbbcc83008c43ffd498",
+      "category": "CURRENT_ACTIVELOAN_REFERENCE",
+      "details": "Found via loanId",
+      "linkedActiveLoanId": "6a0da7b2760f669db6be674f",
+      "linkedLoanApplicationId": null
+    },
+    {
+      "collection": "RepaymentSchedule",
+      "recordId": "6a38faf967bd6ae85f4ddd6d",
+      "tenantId": "6a437fbbcc83008c43ffd498",
+      "category": "INVALID_REFERENCE",
+      "details": "loanId is not a valid ObjectId",
+      "linkedActiveLoanId": null,
+      "linkedLoanApplicationId": null
+    },
+    {
+      "collection": "RepaymentSchedule",
+      "recordId": "6a281aa92988bc1acbc1fec8",
+      "tenantId": "6a437fbbcc83008c43ffd498",
+      "category": "INVALID_REFERENCE",
+      "details": "loanId is not a valid ObjectId",
+      "linkedActiveLoanId": null,
+      "linkedLoanApplicationId": null
+    },
+    {
+      "collection": "RepaymentSchedule",
+      "recordId": "6a63b6f3a59893a64e8a3e75",
+      "tenantId": "6a437fbbcc83008c43ffd498",
+      "category": "INVALID_REFERENCE",
+      "details": "loanId is not a valid ObjectId",
+      "linkedActiveLoanId": null,
+      "linkedLoanApplicationId": null
+    },
+    {
+      "collection": "RepaymentSchedule",
+      "recordId": "6a0da7b3760f669db6be675f",
+      "tenantId": "6a437fbbcc83008c43ffd498",
+      "category": "CURRENT_ACTIVELOAN_REFERENCE",
+      "details": "Found via loanId",
+      "linkedActiveLoanId": "6a0da7b2760f669db6be674f",
+      "linkedLoanApplicationId": null
+    },
+    {
+      "collection": "RepaymentSchedule",
+      "recordId": "6a35026f9cb275b3e7317a71",
+      "tenantId": "6a437fbbcc83008c43ffd498",
+      "category": "INVALID_REFERENCE",
+      "details": "loanId is not a valid ObjectId",
+      "linkedActiveLoanId": null,
+      "linkedLoanApplicationId": null
+    },
+    {
+      "collection": "RepaymentSchedule",
+      "recordId": "6a0d950cca30d5ae319000c7",
+      "tenantId": "6a437fbbcc83008c43ffd498",
+      "category": "INVALID_REFERENCE",
+      "details": "loanId is not a valid ObjectId",
+      "linkedActiveLoanId": null,
+      "linkedLoanApplicationId": null
+    },
+    {
+      "collection": "RepaymentSchedule",
+      "recordId": "6a38faf967bd6ae85f4ddd6f",
+      "tenantId": "6a437fbbcc83008c43ffd498",
+      "category": "INVALID_REFERENCE",
+      "details": "loanId is not a valid ObjectId",
+      "linkedActiveLoanId": null,
+      "linkedLoanApplicationId": null
+    },
+    {
+      "collection": "RepaymentSchedule",
+      "recordId": "6a63b6f3a59893a64e8a3e76",
+      "tenantId": "6a437fbbcc83008c43ffd498",
+      "category": "INVALID_REFERENCE",
+      "details": "loanId is not a valid ObjectId",
+      "linkedActiveLoanId": null,
+      "linkedLoanApplicationId": null
+    },
+    {
+      "collection": "RepaymentSchedule",
+      "recordId": "6a0da7b3760f669db6be6766",
+      "tenantId": "6a437fbbcc83008c43ffd498",
+      "category": "CURRENT_ACTIVELOAN_REFERENCE",
+      "details": "Found via loanId",
+      "linkedActiveLoanId": "6a0da7b2760f669db6be674f",
+      "linkedLoanApplicationId": null
+    },
+    {
+      "collection": "RepaymentSchedule",
+      "recordId": "6a3b80fe625081fad6ea9949",
+      "tenantId": "6a437fbbcc83008c43ffd498",
+      "category": "INVALID_REFERENCE",
+      "details": "loanId is not a valid ObjectId",
+      "linkedActiveLoanId": null,
+      "linkedLoanApplicationId": null
+    },
+    {
+      "collection": "RepaymentSchedule",
+      "recordId": "6a354b825524f5739f2edcf3",
+      "tenantId": "6a437fbbcc83008c43ffd498",
+      "category": "INVALID_REFERENCE",
+      "details": "loanId is not a valid ObjectId",
+      "linkedActiveLoanId": null,
+      "linkedLoanApplicationId": null
+    },
+    {
+      "collection": "RepaymentSchedule",
+      "recordId": "6a63b6f3a59893a64e8a3e74",
+      "tenantId": "6a437fbbcc83008c43ffd498",
+      "category": "INVALID_REFERENCE",
+      "details": "loanId is not a valid ObjectId",
+      "linkedActiveLoanId": null,
+      "linkedLoanApplicationId": null
+    },
+    {
+      "collection": "RepaymentSchedule",
+      "recordId": "6a0da7b3760f669db6be675c",
+      "tenantId": "6a437fbbcc83008c43ffd498",
+      "category": "CURRENT_ACTIVELOAN_REFERENCE",
+      "details": "Found via loanId",
+      "linkedActiveLoanId": "6a0da7b2760f669db6be674f",
+      "linkedLoanApplicationId": null
+    },
+    {
+      "collection": "RepaymentSchedule",
+      "recordId": "6a354220b9f4fd7caa362c29",
+      "tenantId": "6a437fbbcc83008c43ffd498",
+      "category": "INVALID_REFERENCE",
+      "details": "loanId is not a valid ObjectId",
+      "linkedActiveLoanId": null,
+      "linkedLoanApplicationId": null
+    },
+    {
+      "collection": "RepaymentSchedule",
+      "recordId": "6a3533689cb275b3e731835e",
+      "tenantId": "6a437fbbcc83008c43ffd498",
+      "category": "INVALID_REFERENCE",
+      "details": "loanId is not a valid ObjectId",
+      "linkedActiveLoanId": null,
+      "linkedLoanApplicationId": null
+    },
+    {
+      "collection": "RepaymentSchedule",
+      "recordId": "6a3533689cb275b3e731835d",
+      "tenantId": "6a437fbbcc83008c43ffd498",
+      "category": "INVALID_REFERENCE",
+      "details": "loanId is not a valid ObjectId",
+      "linkedActiveLoanId": null,
+      "linkedLoanApplicationId": null
+    },
+    {
+      "collection": "RepaymentSchedule",
+      "recordId": "6a0da7b3760f669db6be6767",
+      "tenantId": "6a437fbbcc83008c43ffd498",
+      "category": "CURRENT_ACTIVELOAN_REFERENCE",
+      "details": "Found via loanId",
+      "linkedActiveLoanId": "6a0da7b2760f669db6be674f",
+      "linkedLoanApplicationId": null
+    },
+    {
+      "collection": "RepaymentSchedule",
+      "recordId": "6a38faf967bd6ae85f4ddd6e",
+      "tenantId": "6a437fbbcc83008c43ffd498",
+      "category": "INVALID_REFERENCE",
+      "details": "loanId is not a valid ObjectId",
+      "linkedActiveLoanId": null,
+      "linkedLoanApplicationId": null
+    },
+    {
+      "collection": "RepaymentSchedule",
+      "recordId": "6a354220b9f4fd7caa362c27",
+      "tenantId": "6a437fbbcc83008c43ffd498",
+      "category": "INVALID_REFERENCE",
+      "details": "loanId is not a valid ObjectId",
+      "linkedActiveLoanId": null,
+      "linkedLoanApplicationId": null
+    },
+    {
+      "collection": "RepaymentSchedule",
+      "recordId": "6a35026f9cb275b3e7317a70",
+      "tenantId": "6a437fbbcc83008c43ffd498",
+      "category": "INVALID_REFERENCE",
+      "details": "loanId is not a valid ObjectId",
+      "linkedActiveLoanId": null,
+      "linkedLoanApplicationId": null
+    },
+    {
+      "collection": "RepaymentSchedule",
+      "recordId": "6a0d950cca30d5ae319000c3",
+      "tenantId": "6a437fbbcc83008c43ffd498",
+      "category": "INVALID_REFERENCE",
+      "details": "loanId is not a valid ObjectId",
+      "linkedActiveLoanId": null,
+      "linkedLoanApplicationId": null
+    },
+    {
+      "collection": "RepaymentSchedule",
+      "recordId": "6a281aa92988bc1acbc1fec6",
+      "tenantId": "6a437fbbcc83008c43ffd498",
+      "category": "INVALID_REFERENCE",
+      "details": "loanId is not a valid ObjectId",
+      "linkedActiveLoanId": null,
+      "linkedLoanApplicationId": null
+    },
+    {
+      "collection": "RepaymentSchedule",
+      "recordId": "6a0da7b3760f669db6be6763",
+      "tenantId": "6a437fbbcc83008c43ffd498",
+      "category": "CURRENT_ACTIVELOAN_REFERENCE",
+      "details": "Found via loanId",
+      "linkedActiveLoanId": "6a0da7b2760f669db6be674f",
+      "linkedLoanApplicationId": null
+    },
+    {
+      "collection": "RepaymentSchedule",
+      "recordId": "6a0da7b3760f669db6be6761",
+      "tenantId": "6a437fbbcc83008c43ffd498",
+      "category": "CURRENT_ACTIVELOAN_REFERENCE",
+      "details": "Found via loanId",
+      "linkedActiveLoanId": "6a0da7b2760f669db6be674f",
+      "linkedLoanApplicationId": null
+    },
+    {
+      "collection": "RepaymentSchedule",
+      "recordId": "6a0d950cca30d5ae319000c4",
+      "tenantId": "6a437fbbcc83008c43ffd498",
+      "category": "INVALID_REFERENCE",
+      "details": "loanId is not a valid ObjectId",
+      "linkedActiveLoanId": null,
+      "linkedLoanApplicationId": null
+    },
+    {
+      "collection": "RepaymentSchedule",
+      "recordId": "6a2860cf2988bc1acbc20791",
+      "tenantId": "6a437fbbcc83008c43ffd498",
+      "category": "INVALID_REFERENCE",
+      "details": "loanId is not a valid ObjectId",
+      "linkedActiveLoanId": null,
+      "linkedLoanApplicationId": null
+    },
+    {
+      "collection": "RepaymentSchedule",
+      "recordId": "6a0d950cca30d5ae319000c2",
+      "tenantId": "6a437fbbcc83008c43ffd498",
+      "category": "INVALID_REFERENCE",
+      "details": "loanId is not a valid ObjectId",
+      "linkedActiveLoanId": null,
+      "linkedLoanApplicationId": null
+    },
+    {
+      "collection": "RepaymentSchedule",
+      "recordId": "6a68838dc8726046bdb80334",
+      "tenantId": "6a437fbbcc83008c43ffd498",
+      "category": "INVALID_REFERENCE",
+      "details": "loanId is not a valid ObjectId",
+      "linkedActiveLoanId": null,
+      "linkedLoanApplicationId": null
+    },
+    {
+      "collection": "RepaymentSchedule",
+      "recordId": "6a3533689cb275b3e731835c",
+      "tenantId": "6a437fbbcc83008c43ffd498",
+      "category": "INVALID_REFERENCE",
+      "details": "loanId is not a valid ObjectId",
+      "linkedActiveLoanId": null,
+      "linkedLoanApplicationId": null
+    },
+    {
+      "collection": "RepaymentSchedule",
+      "recordId": "6a354b825524f5739f2edcf4",
+      "tenantId": "6a437fbbcc83008c43ffd498",
+      "category": "INVALID_REFERENCE",
+      "details": "loanId is not a valid ObjectId",
+      "linkedActiveLoanId": null,
+      "linkedLoanApplicationId": null
+    },
+    {
+      "collection": "RepaymentSchedule",
+      "recordId": "6a0da7b3760f669db6be6760",
+      "tenantId": "6a437fbbcc83008c43ffd498",
+      "category": "CURRENT_ACTIVELOAN_REFERENCE",
+      "details": "Found via loanId",
+      "linkedActiveLoanId": "6a0da7b2760f669db6be674f",
+      "linkedLoanApplicationId": null
+    },
+    {
+      "collection": "RepaymentSchedule",
+      "recordId": "6a3b80fe625081fad6ea994b",
+      "tenantId": "6a437fbbcc83008c43ffd498",
+      "category": "INVALID_REFERENCE",
+      "details": "loanId is not a valid ObjectId",
+      "linkedActiveLoanId": null,
+      "linkedLoanApplicationId": null
+    },
+    {
+      "collection": "RepaymentSchedule",
+      "recordId": "6a6c7b5e3f5e43f54624e3cc",
+      "tenantId": "6a437fbbcc83008c43ffd498",
+      "category": "INVALID_REFERENCE",
+      "details": "loanId is not a valid ObjectId",
+      "linkedActiveLoanId": null,
+      "linkedLoanApplicationId": null
+    },
+    {
+      "collection": "RepaymentSchedule",
+      "recordId": "6a0d950cca30d5ae319000c6",
+      "tenantId": "6a437fbbcc83008c43ffd498",
+      "category": "INVALID_REFERENCE",
+      "details": "loanId is not a valid ObjectId",
+      "linkedActiveLoanId": null,
+      "linkedLoanApplicationId": null
+    },
+    {
+      "collection": "RepaymentSchedule",
+      "recordId": "6a35026f9cb275b3e7317a72",
+      "tenantId": "6a437fbbcc83008c43ffd498",
+      "category": "INVALID_REFERENCE",
+      "details": "loanId is not a valid ObjectId",
+      "linkedActiveLoanId": null,
+      "linkedLoanApplicationId": null
+    },
+    {
+      "collection": "RepaymentSchedule",
+      "recordId": "6a354220b9f4fd7caa362c28",
+      "tenantId": "6a437fbbcc83008c43ffd498",
+      "category": "INVALID_REFERENCE",
+      "details": "loanId is not a valid ObjectId",
+      "linkedActiveLoanId": null,
+      "linkedLoanApplicationId": null
+    },
+    {
+      "collection": "RepaymentSchedule",
+      "recordId": "6a0da7b3760f669db6be675d",
+      "tenantId": "6a437fbbcc83008c43ffd498",
+      "category": "CURRENT_ACTIVELOAN_REFERENCE",
+      "details": "Found via loanId",
+      "linkedActiveLoanId": "6a0da7b2760f669db6be674f",
+      "linkedLoanApplicationId": null
+    },
+    {
+      "collection": "RepaymentSchedule",
+      "recordId": "6a0da7b3760f669db6be6762",
+      "tenantId": "6a437fbbcc83008c43ffd498",
+      "category": "CURRENT_ACTIVELOAN_REFERENCE",
+      "details": "Found via loanId",
+      "linkedActiveLoanId": "6a0da7b2760f669db6be674f",
+      "linkedLoanApplicationId": null
+    },
+    {
+      "collection": "RepaymentSchedule",
+      "recordId": "6a0d950cca30d5ae319000c5",
+      "tenantId": "6a437fbbcc83008c43ffd498",
+      "category": "INVALID_REFERENCE",
+      "details": "loanId is not a valid ObjectId",
+      "linkedActiveLoanId": null,
+      "linkedLoanApplicationId": null
+    },
+    {
+      "collection": "RepaymentSchedule",
+      "recordId": "6a281aa92988bc1acbc1fec7",
+      "tenantId": "6a437fbbcc83008c43ffd498",
+      "category": "INVALID_REFERENCE",
+      "details": "loanId is not a valid ObjectId",
+      "linkedActiveLoanId": null,
+      "linkedLoanApplicationId": null
+    },
+    {
+      "collection": "RepaymentSchedule",
+      "recordId": "6a2860cf2988bc1acbc20792",
+      "tenantId": "6a437fbbcc83008c43ffd498",
+      "category": "INVALID_REFERENCE",
+      "details": "loanId is not a valid ObjectId",
+      "linkedActiveLoanId": null,
+      "linkedLoanApplicationId": null
+    },
+    {
+      "collection": "RepaymentSchedule",
+      "recordId": "6a0da7b3760f669db6be675e",
+      "tenantId": "6a437fbbcc83008c43ffd498",
+      "category": "CURRENT_ACTIVELOAN_REFERENCE",
+      "details": "Found via loanId",
+      "linkedActiveLoanId": "6a0da7b2760f669db6be674f",
+      "linkedLoanApplicationId": null
+    },
+    {
+      "collection": "RepaymentSchedule",
+      "recordId": "6a3b80fe625081fad6ea994a",
+      "tenantId": "6a437fbbcc83008c43ffd498",
+      "category": "INVALID_REFERENCE",
+      "details": "loanId is not a valid ObjectId",
+      "linkedActiveLoanId": null,
+      "linkedLoanApplicationId": null
+    },
+    {
+      "collection": "RepaymentSchedule",
+      "recordId": "6a354b825524f5739f2edcf2",
+      "tenantId": "6a437fbbcc83008c43ffd498",
+      "category": "INVALID_REFERENCE",
+      "details": "loanId is not a valid ObjectId",
+      "linkedActiveLoanId": null,
+      "linkedLoanApplicationId": null
+    },
+    {
+      "collection": "RepaymentSchedule",
+      "recordId": "6a0da7b3760f669db6be6765",
+      "tenantId": "6a437fbbcc83008c43ffd498",
+      "category": "CURRENT_ACTIVELOAN_REFERENCE",
+      "details": "Found via loanId",
+      "linkedActiveLoanId": "6a0da7b2760f669db6be674f",
+      "linkedLoanApplicationId": null
+    },
+    {
+      "collection": "RepaymentSchedule",
+      "recordId": "6a7344a87b48bd2352138e62",
+      "tenantId": "6a437fbbcc83008c43ffd498",
+      "category": "INVALID_REFERENCE",
+      "details": "loanId is not a valid ObjectId",
+      "linkedActiveLoanId": null,
+      "linkedLoanApplicationId": null
+    },
+    {
+      "collection": "RepaymentSchedule",
+      "recordId": "6a81eb74527ec09561731152",
+      "tenantId": "6a437fbbcc83008c43ffd498",
+      "category": "CURRENT_ACTIVELOAN_REFERENCE",
+      "details": "Found via loanId",
+      "linkedActiveLoanId": "6a81eb73527ec09561731144",
+      "linkedLoanApplicationId": null
+    },
+    {
+      "collection": "RepaymentSchedule",
+      "recordId": "6a6893e23f5e43f54624d9b4",
+      "tenantId": "6a58e3433aff7e212b139969",
+      "category": "CURRENT_ACTIVELOAN_REFERENCE",
+      "details": "Found via loanId",
+      "linkedActiveLoanId": "6a6893e13f5e43f54624d9b2",
+      "linkedLoanApplicationId": null
+    }
+  ]
+}

@@ -34,8 +34,14 @@ const loanApplicationSchema = new mongoose.Schema(
     // Status Tracking
     status: {
       type: String,
-      enum: ['Draft', 'New', 'Submitted', 'Pending Review', 'Under Review', 'Reviewed', 'Recommended', 'Pending Verification', 'Approved', 'APPROVED', 'ACTIVE', 'STAFF_VERIFIED', 'ADMIN_APPROVED_PENDING_SIGNATURE', 'OTP_SENT', 'Rejected', 'Disbursed', 'Hold', 'Agreement Pending', 'Agreement Signed', 'Ready for Disbursement', 'SUBMITTED', 'UNDER_REVIEW', 'STAFF_RECOMMENDED', 'AGREEMENT_PENDING_VERIFICATION', 'OTP_VERIFIED', 'AGREEMENT_SIGNED', 'READY_FOR_DISBURSEMENT', 'REJECTED'],
+      enum: ['Draft', 'New', 'Submitted', 'Pending Review', 'Under Review', 'Reviewed', 'Recommended', 'Pending Verification', 'Approved', 'APPROVED', 'ACTIVE', 'STAFF_VERIFIED', 'ADMIN_APPROVED_PENDING_SIGNATURE', 'OTP_SENT', 'Rejected', 'Disbursed', 'Hold', 'Agreement Pending', 'Agreement Signed', 'Ready for Disbursement', 'SUBMITTED', 'UNDER_REVIEW', 'STAFF_RECOMMENDED', 'AGREEMENT_PENDING_VERIFICATION', 'OTP_VERIFIED', 'AGREEMENT_SIGNED', 'READY_FOR_DISBURSEMENT', 'REJECTED', 'DISBURSED'],
       default: 'Draft',
+    },
+    
+    disbursementStatus: {
+      type: String,
+      enum: ['READY_FOR_DISBURSEMENT', 'DISBURSED'],
+      default: null
     },
     
     // Submission flags
@@ -123,6 +129,9 @@ const loanApplicationSchema = new mongoose.Schema(
     approvedAt: { type: Date },
     rejectedAt: { type: Date },
     disbursedAt: { type: Date },
+
+    // Link to the created ActiveLoan record (set at actual disbursement)
+    activeLoanId: { type: mongoose.Schema.Types.ObjectId, ref: 'ActiveLoan', default: null },
 
     // Communication
     conversationId: { type: mongoose.Schema.Types.ObjectId, ref: 'Conversation' },
@@ -483,6 +492,29 @@ const loanApplicationSchema = new mongoose.Schema(
     agreementHtml: { type: String, default: '' },
     agreementPdfUrl: { type: String, default: '' },
     signedAgreement: { type: String, default: '' },
+    agreementCreditProviderSnapshot: {
+      tenantId: { type: String, default: '' },
+      legalName: { type: String, default: '' },
+      tradingName: { type: String, default: '' },
+      cipcRegistrationNumber: { type: String, default: '' },
+      ncrRegistrationNumber: { type: String, default: '' },
+      vatNumber: { type: String, default: '' },
+      telephone: { type: String, default: '' },
+      email: { type: String, default: '' },
+      registeredAddress: {
+        addressLine1: { type: String, default: '' },
+        addressLine2: { type: String, default: '' },
+        city: { type: String, default: '' },
+        province: { type: String, default: '' },
+        postalCode: { type: String, default: '' },
+        country: { type: String, default: '' }
+      },
+      authorizedSignatory: {
+        fullName: { type: String, default: '' },
+        designation: { type: String, default: '' }
+      },
+      logoUrl: { type: String, default: '' }
+    },
     debicheckMandateStatus: { type: String, default: '' },
     debicheckMandateReference: { type: String, default: '' },
     nupayMandate: {

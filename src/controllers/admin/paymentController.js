@@ -4,6 +4,7 @@ const ActiveLoan = require('../../models/ActiveLoan');
 const RepaymentSchedule = require('../../models/RepaymentSchedule');
 const Commission = require('../../models/Commission');
 const { sendSuccess, sendError } = require('../../utils/responseHandler');
+const { allocateVerifiedPayment, reverseVerifiedPayment } = require('../../services/paymentAllocationEngine');
 
 /**
  * @desc    Get all payments
@@ -14,6 +15,7 @@ const getAllPayments = asyncHandler(async (req, res) => {
   const { page = 1, limit = 10, search = '', status, method, type } = req.query;
 
   const query = { isDeleted: false };
+  if (req.tenantId) query.tenantId = req.tenantId;
 
   if (search) {
     query.$or = [
@@ -49,12 +51,21 @@ const getAllPayments = asyncHandler(async (req, res) => {
  * @access  Private/Admin
  */
 const getPaymentStats = asyncHandler(async (req, res) => {
-  const totalPayments = await Payment.countDocuments({ isDeleted: false });
-  const verifiedPayments = await Payment.countDocuments({ paymentStatus: 'Verified', isDeleted: false });
-  const pendingPayments = await Payment.countDocuments({ paymentStatus: 'Pending', isDeleted: false });
+  const query = { isDeleted: false };
+  if (req.tenantId) query.tenantId = req.tenantId;
+
+  const totalPayments = await Payment.countDocuments(query);
+  const verifiedPayments = await Payment.countDocuments({ ...query, paymentStatus: 'Verified' });
+  const pendingPayments = await Payment.countDocuments({ ...query, paymentStatus: 'Pending' });
+
+  const matchQuery = { isDeleted: false, paymentStatus: 'Verified' };
+  if (req.tenantId) {
+    const mongoose = require('mongoose');
+    matchQuery.tenantId = new mongoose.Types.ObjectId(req.tenantId);
+  }
 
   const aggregate = await Payment.aggregate([
-    { $match: { isDeleted: false, paymentStatus: 'Verified' } },
+    { $match: matchQuery },
     { $group: { _id: null, totalCollections: { $sum: '$paymentAmount' } } }
   ]);
   const totalCollections = aggregate.length > 0 ? aggregate[0].totalCollections : 0;
@@ -73,7 +84,9 @@ const getPaymentStats = asyncHandler(async (req, res) => {
  * @access  Private/Admin
  */
 const getPaymentDetails = asyncHandler(async (req, res) => {
-  const payment = await Payment.findOne({ _id: req.params.id, isDeleted: false });
+  const query = { _id: req.params.id, isDeleted: false };
+  if (req.tenantId) query.tenantId = req.tenantId;
+  const payment = await Payment.findOne(query);
   if (!payment) return sendError(res, 'Payment not found', 404);
   sendSuccess(res, 'Payment details fetched successfully', { payment });
 });
@@ -84,120 +97,76 @@ const getPaymentDetails = asyncHandler(async (req, res) => {
  * @access  Private/Admin
  */
 const verifyPayment = asyncHandler(async (req, res) => {
-  const payment = await Payment.findOne({ _id: req.params.id, isDeleted: false });
+  const query = { _id: req.params.id, isDeleted: false };
+  if (req.tenantId) query.tenantId = req.tenantId;
+  const payment = await Payment.findOne(query);
   if (!payment) return sendError(res, 'Payment not found', 404);
 
   if (payment.paymentStatus === 'Verified') {
     return sendError(res, 'Payment is already verified', 400);
   }
 
-  const activeLoan = await ActiveLoan.findById(payment.loanId);
-  if (!activeLoan) return sendError(res, 'Associated loan not found', 404);
-
-  // Update payment status
+  // Update payment status first
   payment.paymentStatus = 'Verified';
   payment.verifiedBy = req.user._id;
   payment.verifiedDate = new Date();
-  
-  // Update Loan Balance
-  activeLoan.remainingBalance = Math.max(0, activeLoan.remainingBalance - payment.paymentAmount);
-  payment.remainingBalanceAfterPayment = activeLoan.remainingBalance;
-
-  // Update EMI Schedule
-  let remainingAmountToApply = payment.paymentAmount;
-  
-  for (let i = 0; i < activeLoan.repaymentSchedule.length; i++) {
-    const emi = activeLoan.repaymentSchedule[i];
-    if (emi.paymentStatus !== 'Paid') {
-      if (remainingAmountToApply >= emi.emiAmount) {
-        emi.paymentStatus = 'Paid';
-        emi.paidDate = new Date();
-        
-        // Sync with centralized RepaymentSchedule collection
-        await RepaymentSchedule.findOneAndUpdate(
-          { loanId: activeLoan._id, emiNumber: emi.installmentNumber },
-          { status: 'Paid', paidAt: new Date() }
-        );
-
-        remainingAmountToApply -= emi.emiAmount;
-      } else {
-        // Handle partial payment status
-        if (remainingAmountToApply > 0) {
-           await RepaymentSchedule.findOneAndUpdate(
-            { loanId: activeLoan._id, emiNumber: emi.installmentNumber },
-            { status: 'Partial' }
-          );
-        }
-        break;
-      }
-    }
-  }
-
-  // Update Agent Earnings (Commissions)
-  const borrower = await require('../../models/Borrower').findById(activeLoan.borrowerId);
-  if (borrower && borrower.assignedAgent) {
-    const commission = await Commission.findOne({ 
-      loanId: activeLoan._id, 
-      agentId: borrower.assignedAgent,
-      status: 'Pending'
-    });
-    if (commission) {
-      commission.status = 'Paid';
-      commission.paidAt = new Date();
-      await commission.save();
-    }
-  }
-
-  // Find next pending EMI to set next due date
-  const nextEmi = activeLoan.repaymentSchedule.find(s => s.paymentStatus === 'Pending' || s.paymentStatus === 'Overdue');
-  if (nextEmi) {
-    activeLoan.nextDueDate = nextEmi.dueDate;
-  } else {
-    activeLoan.nextDueDate = null;
-  }
-
-  // Mark loan as completed if fully paid
-  if (activeLoan.remainingBalance === 0) {
-    activeLoan.loanStatus = 'Completed';
-  }
-
-  await activeLoan.save();
   await payment.save();
 
-  // Trigger admin notification for incoming verified cashflow
   try {
-    const { createNotification } = require('../../utils/notificationHelper');
-    await createNotification({
-      title: 'Payment Verified',
-      message: `Payment of R ${payment.paymentAmount} for Loan ${payment.loanCode} has been verified successfully.`,
-      notificationType: 'Payment Notification',
-      priority: 'Important',
-      borrowerId: payment.borrowerId,
-      loanId: payment.loanId,
-      paymentId: payment._id
-    });
+    const { activeLoan } = await allocateVerifiedPayment(payment._id, req.user._id);
 
-    // Realtime update via Socket.IO
-    const { getIO } = require('../../socket/socketServer');
-    const io = getIO();
-    if (io) {
-      io.emit('emi-paid', {
-        message: `EMI Paid for ${activeLoan.borrowerName}`,
-        loanId: activeLoan._id,
-        amount: payment.paymentAmount
+    // Update Agent Earnings (Commissions)
+    const borrower = await require('../../models/Borrower').findById(activeLoan.borrowerId);
+    if (borrower && borrower.assignedAgent) {
+      const commission = await Commission.findOne({ 
+        loanId: activeLoan._id, 
+        agentId: borrower.assignedAgent,
+        status: 'Pending'
       });
-      io.to(activeLoan.borrowerId.toString()).emit('dashboard-update');
-      if (borrower && borrower.assignedAgent) {
-        io.to(borrower.assignedAgent.toString()).emit('dashboard-update');
+      if (commission) {
+        commission.status = 'Paid';
+        commission.paidAt = new Date();
+        await commission.save();
       }
     }
-  } catch (err) {
-    console.error('Notification/Socket error in verifyPayment:', err);
-  }
 
-  sendSuccess(res, 'Payment verified successfully', { payment, activeLoan });
+    sendSuccess(res, 'Payment verified and allocated successfully', { payment, activeLoan });
+  } catch (allocErr) {
+    payment.paymentStatus = 'Pending';
+    payment.verifiedBy = null;
+    payment.verifiedDate = null;
+    await payment.save();
+    return sendError(res, allocErr.message || 'Payment allocation failed', 500);
+  }
 });
 
+/**
+ * @desc    Reverse payment
+ * @route   PUT /api/admin/payments/:id/reverse
+ * @access  Private/Admin
+ */
+const reversePayment = asyncHandler(async (req, res) => {
+  const { reason } = req.body;
+  if (!reason) {
+    return sendError(res, 'Reversal reason is required', 400);
+  }
+
+  const query = { _id: req.params.id, isDeleted: false };
+  if (req.tenantId) query.tenantId = req.tenantId;
+  const payment = await Payment.findOne(query);
+  if (!payment) return sendError(res, 'Payment not found', 404);
+
+  if (payment.paymentStatus !== 'Verified') {
+    return sendError(res, 'Only verified payments can be reversed', 400);
+  }
+
+  try {
+    const { activeLoan, payment: reversedPayment } = await reverseVerifiedPayment(payment._id, req.user._id, reason);
+    sendSuccess(res, 'Payment reversed successfully', { activeLoan, payment: reversedPayment });
+  } catch (err) {
+    return sendError(res, err.message || 'Payment reversal failed', 500);
+  }
+});
 /**
  * @desc    Reject payment
  * @route   PUT /api/admin/payments/:id/reject
@@ -276,5 +245,6 @@ module.exports = {
   getVerifiedPayments,
   getRejectedPayments,
   exportPayments,
-  downloadReceipt
+  downloadReceipt,
+  reversePayment
 };

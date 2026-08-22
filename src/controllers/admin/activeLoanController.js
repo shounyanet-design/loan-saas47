@@ -1,6 +1,9 @@
 const asyncHandler = require('express-async-handler');
 const ActiveLoan = require('../../models/ActiveLoan');
 const LoanApplication = require('../../models/LoanApplication');
+const Payment = require('../../models/Payment');
+const RepaymentSchedule = require('../../models/RepaymentSchedule');
+const PlatformAuditLog = require('../../modules/platform/models/PlatformAuditLog');
 const Agent = require('../../models/Agent');
 const AgentAssignment = require('../../models/AgentAssignment');
 const Notification = require('../../models/Notification');
@@ -22,6 +25,9 @@ const getAllActiveLoans = asyncHandler(async (req, res) => {
   } = req.query;
 
   const query = { isDeleted: false };
+  if (req.tenantId) {
+    query.tenantId = req.tenantId;
+  }
 
   // Search
   if (search) {
@@ -33,7 +39,7 @@ const getAllActiveLoans = asyncHandler(async (req, res) => {
   }
 
   // Filters
-  if (status) {
+  if (status && status !== 'All') {
     query.loanStatus = status;
   }
   if (overdueStatus) {
@@ -88,29 +94,45 @@ const getAllActiveLoans = asyncHandler(async (req, res) => {
  * @access  Private/Admin
  */
 const getDashboardStats = asyncHandler(async (req, res) => {
-  const totalActiveLoans = await ActiveLoan.countDocuments({ loanStatus: 'Active', isDeleted: false });
-  const overdueLoans = await ActiveLoan.countDocuments({ loanStatus: 'Overdue', isDeleted: false });
-  
+  const tenantId = req.tenantId;
+  const baseQuery = { isDeleted: false };
+  if (tenantId) baseQuery.tenantId = tenantId;
+
+  const totalLoans = await ActiveLoan.countDocuments(baseQuery);
+  const totalActiveLoans = await ActiveLoan.countDocuments({ ...baseQuery, loanStatus: 'Active' });
+  const overdueLoans = await ActiveLoan.countDocuments({ ...baseQuery, loanStatus: 'Overdue' });
+  const completedLoans = await ActiveLoan.countDocuments({ ...baseQuery, loanStatus: 'Completed' });
+  const closedLoans = await ActiveLoan.countDocuments({ ...baseQuery, loanStatus: 'Closed' });
+
   const startOfMonth = new Date();
   startOfMonth.setDate(1);
   startOfMonth.setHours(0,0,0,0);
   const completedThisMonth = await ActiveLoan.countDocuments({ 
+    ...baseQuery,
     loanStatus: 'Completed', 
-    updatedAt: { $gte: startOfMonth },
-    isDeleted: false
+    updatedAt: { $gte: startOfMonth }
   });
 
+  const matchQuery = { isDeleted: false, loanStatus: { $in: ['Active', 'Overdue'] } };
+  if (tenantId) {
+    const mongoose = require('mongoose');
+    matchQuery.tenantId = new mongoose.Types.ObjectId(tenantId);
+  }
+
   const aggregate = await ActiveLoan.aggregate([
-    { $match: { isDeleted: false, loanStatus: { $in: ['Active', 'Overdue'] } } },
+    { $match: matchQuery },
     { $group: { _id: null, totalRemaining: { $sum: '$remainingBalance' } } }
   ]);
 
   const outstandingBalance = aggregate.length > 0 ? aggregate[0].totalRemaining : 0;
 
   sendSuccess(res, 'Stats fetched successfully', {
+    totalLoans,
     totalActiveLoans,
     outstandingBalance,
     overdueLoans,
+    completedLoans,
+    closedLoans,
     completedThisMonth
   });
 });
@@ -121,7 +143,9 @@ const getDashboardStats = asyncHandler(async (req, res) => {
  * @access  Private/Admin
  */
 const getOverdueLoans = asyncHandler(async (req, res) => {
-  const overdueLoans = await ActiveLoan.find({ loanStatus: 'Overdue', isDeleted: false });
+  const query = { loanStatus: 'Overdue', isDeleted: false };
+  if (req.tenantId) query.tenantId = req.tenantId;
+  const overdueLoans = await ActiveLoan.find(query);
   sendSuccess(res, 'Overdue loans fetched successfully', { activeLoans: overdueLoans });
 });
 
@@ -131,7 +155,9 @@ const getOverdueLoans = asyncHandler(async (req, res) => {
  * @access  Private/Admin
  */
 const getCompletedLoans = asyncHandler(async (req, res) => {
-  const completedLoans = await ActiveLoan.find({ loanStatus: 'Completed', isDeleted: false });
+  const query = { loanStatus: 'Completed', isDeleted: false };
+  if (req.tenantId) query.tenantId = req.tenantId;
+  const completedLoans = await ActiveLoan.find(query);
   sendSuccess(res, 'Completed loans fetched successfully', { activeLoans: completedLoans });
 });
 
@@ -141,7 +167,9 @@ const getCompletedLoans = asyncHandler(async (req, res) => {
  * @access  Private/Admin
  */
 const exportLoanData = asyncHandler(async (req, res) => {
-  const activeLoans = await ActiveLoan.find({ isDeleted: false }).lean();
+  const query = { isDeleted: false };
+  if (req.tenantId) query.tenantId = req.tenantId;
+  const activeLoans = await ActiveLoan.find(query).lean();
   sendSuccess(res, 'Export data ready', { activeLoans });
 });
 
@@ -151,19 +179,21 @@ const exportLoanData = asyncHandler(async (req, res) => {
  * @access  Private/Admin
  */
 const getDuePayments = asyncHandler(async (req, res) => {
-  const activeLoans = await ActiveLoan.find({ isDeleted: false, loanStatus: { $in: ['Active', 'Overdue'] } });
+  const query = { isDeleted: false, loanStatus: { $in: ['Active', 'Overdue'] } };
+  if (req.tenantId) query.tenantId = req.tenantId;
+  const activeLoans = await ActiveLoan.find(query);
   
   let duePayments = [];
   const now = new Date();
 
   activeLoans.forEach(loan => {
-    const pendingInstallments = loan.repaymentSchedule.filter(s => s.paymentStatus === 'Pending' || s.paymentStatus === 'Overdue');
+    const pendingInstallments = (loan.repaymentSchedule || []).filter(s => s.paymentStatus === 'Pending' || s.paymentStatus === 'Overdue');
     pendingInstallments.forEach(inst => {
       duePayments.push({
         loanId: loan._id,
         loanCode: loan.loanCode,
-        borrowerName: loan.borrowerName,
-        borrowerPhone: loan.borrowerPhone,
+        borrowerName: loan.borrowerName || loan.fullName,
+        borrowerPhone: loan.borrowerPhone || loan.phoneNumber,
         installmentNumber: inst.installmentNumber,
         dueDate: inst.dueDate,
         emiAmount: inst.emiAmount,
@@ -180,7 +210,7 @@ const getDuePayments = asyncHandler(async (req, res) => {
 });
 
 /**
- * @desc    Get single loan details
+ * @desc    Get single loan details with authoritative servicing summary
  * @route   GET /api/admin/active-loans/:id
  * @access  Private/Admin
  */
@@ -210,11 +240,243 @@ const getLoanDetails = asyncHandler(async (req, res) => {
     }
   }
 
-  sendSuccess(res, 'Loan details fetched successfully', { activeLoan: loanObj });
+  // 1. Authoritative Payments Query (tenant-scoped via plugin/filter)
+  const verifiedPayments = await Payment.find({
+    loanId: activeLoan._id,
+    paymentStatus: 'Verified',
+    isDeleted: false
+  }).sort({ paymentDate: -1, createdAt: -1 });
+
+  const totalPaid = verifiedPayments.reduce((sum, p) => sum + (Number(p.paymentAmount) || 0), 0);
+
+  // 2. Authoritative Repayment Schedule Query
+  let schedule = await RepaymentSchedule.find({ loanId: activeLoan._id }).sort({ emiNumber: 1 });
+  if (!schedule || schedule.length === 0) {
+    schedule = (activeLoan.repaymentSchedule || []).map(emi => ({
+      _id: emi._id,
+      loanId: activeLoan._id,
+      borrowerId: activeLoan.borrowerId,
+      emiNumber: emi.installmentNumber,
+      dueDate: emi.dueDate,
+      amount: emi.emiAmount,
+      status: emi.paymentStatus === 'Paid' ? 'Paid' : (emi.paymentStatus === 'Overdue' ? 'Overdue' : 'Pending'),
+      paidAt: emi.paidDate || null,
+      penaltyAmount: emi.lateFee || 0
+    }));
+  }
+
+  const totalInstallments = schedule.length || activeLoan.loanDurationMonths || 1;
+  const paidInstallments = schedule.filter(s => s.status === 'Paid' || s.status === 'Late Paid' || s.paymentStatus === 'Paid').length;
+
+  const now = new Date();
+  const overdueInstallments = schedule.filter(s => {
+    const isUnpaid = s.status !== 'Paid' && s.status !== 'Late Paid' && s.paymentStatus !== 'Paid';
+    return isUnpaid && new Date(s.dueDate) < now;
+  });
+  const overdueAmount = overdueInstallments.reduce((sum, s) => sum + (Number(s.amount || s.emiAmount) || 0), 0);
+
+  const upcomingUnpaid = schedule.find(s => s.status !== 'Paid' && s.status !== 'Late Paid' && s.paymentStatus !== 'Paid');
+  const nextEmiDate = upcomingUnpaid ? upcomingUnpaid.dueDate : (activeLoan.nextDueDate || null);
+
+  const totalPayable = Number(activeLoan.totalPayableAmount) || Number(activeLoan.approvedAmount) || 1;
+  const remainingBalance = typeof activeLoan.remainingBalance === 'number'
+    ? activeLoan.remainingBalance
+    : Math.max(0, totalPayable - totalPaid);
+
+  const financialProgressPercent = totalPayable > 0
+    ? Math.min(100, Math.max(0, Math.round((totalPaid / totalPayable) * 100)))
+    : 0;
+
+  const installmentProgressPercent = totalInstallments > 0
+    ? Math.min(100, Math.max(0, Math.round((paidInstallments / totalInstallments) * 100)))
+    : 0;
+
+  const servicingSummary = {
+    totalPaid,
+    remainingBalance,
+    overdueAmount,
+    totalPenalties: activeLoan.penaltyAmount || 0,
+    paidInstallments,
+    totalInstallments,
+    financialProgressPercent,
+    installmentProgressPercent,
+    nextEmiDate
+  };
+
+  sendSuccess(res, 'Loan details fetched successfully', {
+    activeLoan: {
+      ...loanObj,
+      totalPaid,
+      servicingSummary
+    },
+    servicingSummary,
+    recentPayments: verifiedPayments.slice(0, 10),
+    repaymentSchedule: schedule
+  });
 });
 
 /**
- * @desc    Update loan status
+ * @desc    Get financial settlement quote for active loan
+ * @route   GET /api/admin/active-loans/:id/settlement-quote
+ * @access  Private/Admin
+ */
+const getSettlementQuote = asyncHandler(async (req, res) => {
+  const query = { _id: req.params.id, isDeleted: false };
+  if (req.tenantId) query.tenantId = req.tenantId;
+
+  const activeLoan = await ActiveLoan.findOne(query);
+  if (!activeLoan) {
+    return sendError(res, 'Active loan not found', 404);
+  }
+
+  const verifiedPayments = await Payment.find({
+    loanId: activeLoan._id,
+    paymentStatus: 'Verified',
+    isDeleted: false
+  });
+  const totalPaid = verifiedPayments.reduce((sum, p) => sum + (Number(p.paymentAmount) || 0), 0);
+
+  const totalPayable = Number(activeLoan.totalPayableAmount) || Number(activeLoan.approvedAmount) || 0;
+  const currentBalance = typeof activeLoan.remainingBalance === 'number'
+    ? activeLoan.remainingBalance
+    : Math.max(0, totalPayable - totalPaid);
+
+  const unpaidPenalties = Number(activeLoan.penaltyAmount) || 0;
+  const settlementAmount = Math.max(0, currentBalance);
+  const isSettled = activeLoan.loanStatus === 'Completed' || currentBalance === 0;
+
+  const quote = {
+    loanId: activeLoan._id,
+    loanCode: activeLoan.loanCode,
+    borrowerName: activeLoan.borrowerName || activeLoan.fullName,
+    approvedAmount: activeLoan.approvedAmount,
+    totalPayableAmount: totalPayable,
+    totalPaid,
+    currentBalance,
+    unpaidPenalties,
+    settlementAmount,
+    settlementDate: new Date(),
+    isSettled,
+    loanStatus: activeLoan.loanStatus
+  };
+
+  sendSuccess(res, 'Settlement quote calculated successfully', { settlementQuote: quote });
+});
+
+/**
+ * @desc    Execute production-safe financial settlement for active loan
+ * @route   POST /api/admin/active-loans/:id/settle
+ * @access  Private/Admin
+ */
+const settleLoan = asyncHandler(async (req, res) => {
+  const { paymentMethod = 'Bank Transfer', transactionId, paymentAmount, notes } = req.body;
+
+  const query = { _id: req.params.id, isDeleted: false };
+  if (req.tenantId) query.tenantId = req.tenantId;
+
+  const activeLoan = await ActiveLoan.findOne(query);
+  if (!activeLoan) {
+    return sendError(res, 'Active loan not found', 404);
+  }
+
+  if (activeLoan.loanStatus === 'Completed' || activeLoan.remainingBalance === 0) {
+    return sendError(res, 'Loan is already settled and completed.', 400);
+  }
+
+  const requiredAmount = activeLoan.remainingBalance;
+  const numPaymentAmount = Number(paymentAmount) || requiredAmount;
+
+  if (numPaymentAmount <= 0) {
+    return sendError(res, 'Settlement payment amount must be greater than zero.', 400);
+  }
+
+  const trxRef = transactionId || `SETTLE-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`;
+
+  const mongoose = require('mongoose');
+  const session = await mongoose.startSession();
+  session.startTransaction();
+
+  try {
+    // 1. Create Verified Payment record
+    const [settlementPayment] = await Payment.create([{
+      tenantId: activeLoan.tenantId,
+      borrowerId: activeLoan.borrowerId,
+      borrowerName: activeLoan.borrowerName || activeLoan.fullName || 'Borrower',
+      borrowerPhone: activeLoan.borrowerPhone || activeLoan.phoneNumber,
+      loanId: activeLoan._id,
+      loanCode: activeLoan.loanCode,
+      transactionId: trxRef,
+      paymentAmount: numPaymentAmount,
+      paymentDate: new Date(),
+      paymentMethod: ['Bank Transfer', 'EFT', 'Cash Deposit', 'Mobile Payment', 'Debit Order'].includes(paymentMethod) ? paymentMethod : 'Bank Transfer',
+      paymentStatus: 'Verified',
+      paymentType: 'Full Settlement',
+      verifiedBy: req.user._id,
+      verifiedDate: new Date(),
+      remainingBalanceAfterPayment: 0,
+      notes: notes || 'Full loan settlement payment verified by admin.'
+    }], { session });
+
+    // 2. Allocate payment to RepaymentSchedule collection
+    await RepaymentSchedule.updateMany(
+      { loanId: activeLoan._id, status: { $ne: 'Paid' } },
+      { $set: { status: 'Paid', paidAt: new Date() } },
+      { session }
+    );
+
+    // 3. Update ActiveLoan document
+    activeLoan.remainingBalance = 0;
+    activeLoan.loanStatus = 'Completed';
+    activeLoan.nextDueDate = null;
+    activeLoan.settledAt = new Date();
+    activeLoan.settledBy = req.user._id;
+
+    if (Array.isArray(activeLoan.repaymentSchedule)) {
+      activeLoan.repaymentSchedule.forEach(s => {
+        s.paymentStatus = 'Paid';
+        s.paidDate = new Date();
+      });
+    }
+
+    await activeLoan.save({ session });
+
+    // 4. Record PlatformAuditLog
+    await PlatformAuditLog.create([{
+      tenantId: activeLoan.tenantId,
+      userId: req.user._id,
+      action: 'LOAN_SETTLED',
+      entity: 'ActiveLoan',
+      entityId: activeLoan._id,
+      description: `Loan ${activeLoan.loanCode} fully settled with payment reference ${trxRef} of R ${numPaymentAmount}.`,
+      createdAt: new Date()
+    }], { session });
+
+    await session.commitTransaction();
+    session.endSession();
+
+    // Trigger real-time notifications
+    try {
+      const io = getIO();
+      if (io) {
+        io.emit('loan:settled', { loanId: activeLoan._id, loanCode: activeLoan.loanCode, amount: numPaymentAmount });
+        io.emit('dashboard:updated', { trigger: 'loan_settlement' });
+      }
+    } catch (_) {}
+
+    return sendSuccess(res, 'Loan successfully settled and completed.', {
+      activeLoan,
+      payment: settlementPayment
+    }, 201);
+  } catch (err) {
+    await session.abortTransaction();
+    session.endSession();
+    console.error('[ActiveLoanController] Settlement transaction failed:', err.message);
+    return sendError(res, err.message || 'Settlement workflow failed', 500);
+  }
+});
+
+/**
+ * @desc    Update loan status / Settle loan safely
  * @route   PUT /api/admin/active-loans/:id/status
  * @access  Private/Admin
  */
@@ -551,5 +813,7 @@ module.exports = {
   addAdminNotes,
   closeLoan,
   deleteLoan,
-  assignAgent
+  assignAgent,
+  getSettlementQuote,
+  settleLoan
 };

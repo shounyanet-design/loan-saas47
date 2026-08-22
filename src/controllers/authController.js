@@ -118,17 +118,26 @@ exports.login = asyncHandler(async (req, res) => {
     Tenant.findOne({ email: cleanEmail })
   );
 
-  // Look for a user document matching email. If a tenant exists, prefer the user document already linked to this tenant!
-  let user;
-  if (tenant) {
-    user = await tenantContext.runAsSystem(() =>
-      User.findOne({ email: cleanEmail, tenantId: tenant._id }).select('+password')
-    );
-  }
-  if (!user) {
-    user = await tenantContext.runAsSystem(() =>
-      User.findOne({ email: cleanEmail }).select('+password')
-    );
+  // Find all candidate user accounts matching this email across tenants
+  const candidateUsers = await tenantContext.runAsSystem(() =>
+    User.find({ email: cleanEmail }).select('+password')
+  );
+
+  let user = null;
+  for (const candidate of candidateUsers) {
+    const isMatch = await candidate.matchPassword(password);
+    if (isMatch) {
+      if (candidate.tenantId) {
+        const candidateTenant = await tenantContext.runAsSystem(() => Tenant.findById(candidate.tenantId));
+        if (candidateTenant) {
+          user = candidate;
+          break;
+        }
+      } else {
+        user = candidate;
+        break;
+      }
+    }
   }
 
   // Self-healing for Tenant Admin: If user account does not exist in `users` collection yet,
@@ -148,9 +157,8 @@ exports.login = asyncHandler(async (req, res) => {
         })
       );
     } catch (createErr) {
-      // If creation hits an index conflict, fallback to fetching the existing user for this tenant
       user = await tenantContext.runAsSystem(() =>
-        User.findOne({ email: cleanEmail }).select('+password')
+        User.findOne({ email: cleanEmail, tenantId: tenant._id }).select('+password')
       );
     }
 
@@ -165,12 +173,6 @@ exports.login = asyncHandler(async (req, res) => {
     return sendError(res, 'Invalid credentials', 401);
   }
 
-  // Check if password matches
-  const isMatch = await user.matchPassword(password);
-  if (!isMatch) {
-    return sendError(res, 'Invalid credentials', 401);
-  }
-
   // Ensure user is attached to tenantId if missing
   if (!user.tenantId && tenant) {
     await tenantContext.runAsSystem(() =>
@@ -181,19 +183,27 @@ exports.login = asyncHandler(async (req, res) => {
 
   // Check if tenant is active/suspended
   if (user.tenantId) {
-    const tenant = await tenantContext.runAsSystem(() =>
+    let tenantDoc = await tenantContext.runAsSystem(() =>
       Tenant.findById(user.tenantId)
     );
-    if (!tenant) {
+    if (!tenantDoc) {
+      // Auto-heal if user points to a stale/missing tenant ID
+      const healResult = await healUserTenant(user);
+      if (healResult.healed && healResult.tenantId) {
+        user.tenantId = healResult.tenantId;
+        tenantDoc = await tenantContext.runAsSystem(() => Tenant.findById(user.tenantId));
+      }
+    }
+    if (!tenantDoc) {
       return sendError(res, 'Tenant account not found', 404);
     }
-    if (tenant.status === 'suspended') {
+    if (tenantDoc.status === 'suspended') {
       return sendError(res, 'Your organization account has been suspended. Please contact support.', 403);
     }
-    if (tenant.status === 'disabled') {
+    if (tenantDoc.status === 'disabled') {
       return sendError(res, 'Your organization account is disabled.', 403);
     }
-    if (tenant.status === 'expired') {
+    if (tenantDoc.status === 'expired') {
       return sendError(res, 'Your organization subscription has expired.', 403);
     }
   }

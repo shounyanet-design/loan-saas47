@@ -12,7 +12,9 @@ const {
   addAdminNotes,
   closeLoan,
   deleteLoan,
-  assignAgent
+  assignAgent,
+  getSettlementQuote,
+  settleLoan
 } = require('../../controllers/admin/activeLoanController');
 const { protect } = require('../../middlewares/authMiddleware');
 const { authorize } = require('../../middlewares/roleMiddleware');
@@ -31,6 +33,8 @@ router.get('/due-payments', getDuePayments);
 // Core CRUD
 router.get('/', getAllActiveLoans);
 router.get('/:id', getLoanDetails);
+router.get('/:id/settlement-quote', getSettlementQuote);
+router.post('/:id/settle', settleLoan);
 router.delete('/:id', deleteLoan);
 
 // Status, Notes, and Closure

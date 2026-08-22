@@ -17,7 +17,7 @@ const mongoose = require('mongoose');
  */
 
 // Known providers (extensible — `providers` is an open Map).
-const PROVIDERS = ['nupay', 'realpay', 'webfin', 'bulksms', 'emailjs', 'smtp', 'imagekit', 'facetec', 'datanamix'];
+const PROVIDERS = ['nupay', 'realpay', 'webfin', 'bulksms', 'emailjs', 'smtp', 'imagekit', 'facetec', 'datanamix', 'debitOrder'];
 
 const providerSchema = new mongoose.Schema(
   {

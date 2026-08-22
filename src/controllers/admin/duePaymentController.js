@@ -1,6 +1,7 @@
 const asyncHandler = require('express-async-handler');
 const DuePayment = require('../../models/DuePayment');
 const ActiveLoan = require('../../models/ActiveLoan');
+const RepaymentSchedule = require('../../models/RepaymentSchedule');
 const { sendSuccess, sendError } = require('../../utils/responseHandler');
 const { createNotification } = require('../../utils/notificationHelper');
 const Borrower = require('../../models/Borrower');
@@ -8,8 +9,10 @@ const Borrower = require('../../models/Borrower');
 /**
  * Utility function to sync Due Payments from ActiveLoans
  */
-const syncDuePayments = async () => {
-  const activeLoans = await ActiveLoan.find({ isDeleted: false, loanStatus: { $in: ['Active', 'Overdue'] } });
+const syncDuePayments = async (tenantId) => {
+  const query = { isDeleted: false, loanStatus: { $in: ['Active', 'Overdue'] } };
+  if (tenantId) query.tenantId = tenantId;
+  const activeLoans = await ActiveLoan.find(query);
   
   const now = new Date();
   const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -18,12 +21,17 @@ const syncDuePayments = async () => {
     let loanIsOverdue = false;
     let loanPenaltyAccumulated = 0;
 
-    for (const inst of loan.repaymentSchedule) {
-      if (inst.paymentStatus === 'Paid') {
-        // Mark as paid in DuePayment if it exists
+    const schedQuery = { loanId: loan._id };
+    if (tenantId) schedQuery.tenantId = tenantId;
+    const schedules = await RepaymentSchedule.find(schedQuery).sort({ emiNumber: 1 });
+
+    for (const inst of schedules) {
+      if (inst.status === 'Paid' || inst.status === 'Late Paid') {
+        const dpUpdate = { dueStatus: 'Paid' };
+        if (tenantId) dpUpdate.tenantId = tenantId;
         await DuePayment.findOneAndUpdate(
-          { loanId: loan._id, installmentNumber: inst.installmentNumber },
-          { dueStatus: 'Paid' }
+          { loanId: loan._id, installmentNumber: inst.emiNumber },
+          dpUpdate
         );
         continue;
       }
@@ -35,57 +43,65 @@ const syncDuePayments = async () => {
       const overdueDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
       
       if (overdueDays >= 0) {
-        // Due today or Overdue
         let dueStatus = overdueDays === 0 ? 'Due Today' : 'Overdue';
         let lateDayStatus = 'On Time';
-        let penaltyAmount = 0;
-        
-        if (overdueDays >= 1 && overdueDays <= 7) {
-          lateDayStatus = '1-7 Days Late';
-          penaltyAmount = 150; // Small penalty
-        } else if (overdueDays > 7) {
-          lateDayStatus = '8+ Days Late';
-          penaltyAmount = 300; // Higher penalty
+        let penaltyAmount = inst.penaltyWaived ? 0 : (inst.penaltyAmount || 0);
+
+        if (!inst.penaltyWaived && penaltyAmount === 0) {
+          if (overdueDays >= 1 && overdueDays <= 7) {
+            lateDayStatus = '1-7 Days Late';
+            penaltyAmount = 150;
+          } else if (overdueDays > 7) {
+            lateDayStatus = '8+ Days Late';
+            penaltyAmount = 300;
+          }
+          inst.penaltyAmount = penaltyAmount;
+          await inst.save();
         }
 
         if (dueStatus === 'Overdue') {
           loanIsOverdue = true;
-          inst.paymentStatus = 'Overdue';
+          inst.status = 'Overdue';
+          await inst.save();
         }
         
         loanPenaltyAccumulated += penaltyAmount;
 
-        const totalDueAmount = inst.emiAmount + penaltyAmount;
+        const totalDueAmount = inst.amount + penaltyAmount;
+
+        const updateObj = {
+          remainingBalance: loan.remainingBalance,
+          overdueDays,
+          penaltyAmount,
+          totalDueAmount,
+          dueStatus,
+          lateDayStatus,
+          isDeleted: false
+        };
+
+        if (tenantId) updateObj.tenantId = tenantId;
 
         await DuePayment.findOneAndUpdate(
-          { loanId: loan._id, installmentNumber: inst.installmentNumber },
+          { loanId: loan._id, installmentNumber: inst.emiNumber },
           {
             $setOnInsert: {
+              tenantId: tenantId || loan.tenantId,
               borrowerId: loan.borrowerId,
-              borrowerName: loan.borrowerName,
+              borrowerName: loan.borrowerName || loan.fullName,
               borrowerPhoto: loan.borrowerPhoto,
-              borrowerPhone: loan.borrowerPhone,
-              borrowerEmail: loan.borrowerEmail || 'Not Provided',
+              borrowerPhone: loan.borrowerPhone || loan.phoneNumber,
+              borrowerEmail: loan.borrowerEmail || loan.emailAddress || 'Not Provided',
               borrowerAddress: 'Verified Address on File',
               loanCode: loan.loanCode,
-              emiAmount: inst.emiAmount,
+              emiAmount: inst.amount,
               dueDate: inst.dueDate,
               loanAmount: loan.approvedAmount,
             },
-            $set: {
-              remainingBalance: loan.remainingBalance,
-              overdueDays,
-              penaltyAmount,
-              totalDueAmount,
-              dueStatus,
-              lateDayStatus,
-              isDeleted: false
-            }
+            $set: updateObj
           },
           { upsert: true }
         );
 
-        // Trigger notification if newly overdue
         if (dueStatus === 'Overdue') {
           try {
             const borrower = await Borrower.findById(loan.borrowerId);
@@ -117,6 +133,18 @@ const syncDuePayments = async () => {
       loan.penaltyAmount = loanPenaltyAccumulated;
       needsSave = true;
     }
+
+    if (Array.isArray(loan.repaymentSchedule)) {
+      loan.repaymentSchedule.forEach(emi => {
+        const correspondingSched = schedules.find(s => s.emiNumber === emi.installmentNumber);
+        if (correspondingSched) {
+          emi.paymentStatus = correspondingSched.status === 'Paid' ? 'Paid' : (correspondingSched.status === 'Partial' ? 'Partial' : emi.paymentStatus);
+          emi.lateFee = correspondingSched.penaltyAmount;
+          emi.penaltyWaived = correspondingSched.penaltyWaived;
+        }
+      });
+      needsSave = true;
+    }
     
     if (needsSave) {
       await loan.save();
@@ -130,10 +158,11 @@ const syncDuePayments = async () => {
  * @access  Private/Admin
  */
 const getAllDuePayments = asyncHandler(async (req, res) => {
-  await syncDuePayments();
+  await syncDuePayments(req.tenantId);
 
   const { page = 1, limit = 10, search = '', status } = req.query;
   const query = { isDeleted: false, dueStatus: { $nin: ['Paid', 'Rescheduled', 'Cancelled', 'Recalled'] } };
+  if (req.tenantId) query.tenantId = req.tenantId;
 
   if (search) {
     query.$or = [
@@ -168,14 +197,18 @@ const getAllDuePayments = asyncHandler(async (req, res) => {
  * @access  Private/Admin
  */
 const getDueTodayPayments = asyncHandler(async (req, res) => {
-  await syncDuePayments();
-  const duePayments = await DuePayment.find({ dueStatus: 'Due Today', isDeleted: false });
+  await syncDuePayments(req.tenantId);
+  const query = { dueStatus: 'Due Today', isDeleted: false };
+  if (req.tenantId) query.tenantId = req.tenantId;
+  const duePayments = await DuePayment.find(query);
   sendSuccess(res, 'Due today payments fetched', { duePayments });
 });
 
 const getOverduePayments = asyncHandler(async (req, res) => {
-  await syncDuePayments();
-  const duePayments = await DuePayment.find({ dueStatus: 'Overdue', isDeleted: false }).sort({ overdueDays: -1 });
+  await syncDuePayments(req.tenantId);
+  const query = { dueStatus: 'Overdue', isDeleted: false };
+  if (req.tenantId) query.tenantId = req.tenantId;
+  const duePayments = await DuePayment.find(query).sort({ overdueDays: -1 });
   sendSuccess(res, 'Overdue payments fetched', { duePayments });
 });
 
@@ -185,14 +218,23 @@ const getOverduePayments = asyncHandler(async (req, res) => {
  * @access  Private/Admin
  */
 const getDuePaymentStats = asyncHandler(async (req, res) => {
-  await syncDuePayments();
+  await syncDuePayments(req.tenantId);
 
-  const dueTodayCount = await DuePayment.countDocuments({ dueStatus: 'Due Today', isDeleted: false });
-  const overdueCount = await DuePayment.countDocuments({ dueStatus: 'Overdue', isDeleted: false });
-  const lateEmiAccounts = await DuePayment.distinct('loanId', { dueStatus: 'Overdue', isDeleted: false });
+  const query = { isDeleted: false };
+  if (req.tenantId) query.tenantId = req.tenantId;
+
+  const dueTodayCount = await DuePayment.countDocuments({ ...query, dueStatus: 'Due Today' });
+  const overdueCount = await DuePayment.countDocuments({ ...query, dueStatus: 'Overdue' });
+  const lateEmiAccounts = await DuePayment.distinct('loanId', { ...query, dueStatus: 'Overdue' });
+
+  const matchQuery = { isDeleted: false, dueStatus: { $nin: ['Paid', 'Rescheduled', 'Cancelled', 'Recalled'] } };
+  if (req.tenantId) {
+    const mongoose = require('mongoose');
+    matchQuery.tenantId = new mongoose.Types.ObjectId(req.tenantId);
+  }
 
   const aggregate = await DuePayment.aggregate([
-    { $match: { isDeleted: false, dueStatus: { $nin: ['Paid', 'Rescheduled', 'Cancelled', 'Recalled'] } } },
+    { $match: matchQuery },
     { $group: { _id: null, totalDue: { $sum: '$totalDueAmount' } } }
   ]);
   const totalDueAmount = aggregate.length > 0 ? aggregate[0].totalDue : 0;
@@ -211,7 +253,9 @@ const getDuePaymentStats = asyncHandler(async (req, res) => {
  * @access  Private/Admin
  */
 const getDuePaymentDetails = asyncHandler(async (req, res) => {
-  const duePayment = await DuePayment.findOne({ _id: req.params.id, isDeleted: false });
+  const query = { _id: req.params.id, isDeleted: false };
+  if (req.tenantId) query.tenantId = req.tenantId;
+  const duePayment = await DuePayment.findOne(query);
   if (!duePayment) return sendError(res, 'Due payment not found', 404);
   sendSuccess(res, 'Details fetched successfully', { duePayment });
 });
@@ -222,7 +266,9 @@ const getDuePaymentDetails = asyncHandler(async (req, res) => {
  * @access  Private/Admin
  */
 const sendReminder = asyncHandler(async (req, res) => {
-  const duePayment = await DuePayment.findOne({ _id: req.params.id, isDeleted: false });
+  const query = { _id: req.params.id, isDeleted: false };
+  if (req.tenantId) query.tenantId = req.tenantId;
+  const duePayment = await DuePayment.findOne(query);
   if (!duePayment) return sendError(res, 'Due payment not found', 404);
 
   const senderName = req.user.firstName + ' ' + req.user.lastName;
@@ -249,8 +295,9 @@ const sendReminder = asyncHandler(async (req, res) => {
  * @access  Private/Admin
  */
 const sendBulkReminders = asyncHandler(async (req, res) => {
-  const { filter } = req.body; // 'Due Today', 'Overdue', or 'All'
+  const { filter } = req.body;
   let query = { isDeleted: false, dueStatus: { $ne: 'Paid' } };
+  if (req.tenantId) query.tenantId = req.tenantId;
 
   if (filter === 'Due Today' || filter === 'Overdue') {
     query.dueStatus = filter;
@@ -281,8 +328,10 @@ const sendBulkReminders = asyncHandler(async (req, res) => {
  * @access  Private/Admin
  */
 const exportDuePayments = asyncHandler(async (req, res) => {
-  await syncDuePayments();
-  const duePayments = await DuePayment.find({ isDeleted: false, dueStatus: { $nin: ['Paid', 'Rescheduled', 'Cancelled', 'Recalled'] } }).lean();
+  await syncDuePayments(req.tenantId);
+  const query = { isDeleted: false, dueStatus: { $nin: ['Paid', 'Rescheduled', 'Cancelled', 'Recalled'] } };
+  if (req.tenantId) query.tenantId = req.tenantId;
+  const duePayments = await DuePayment.find(query).lean();
   sendSuccess(res, 'Export data ready', { duePayments });
 });
 
@@ -293,8 +342,11 @@ const exportDuePayments = asyncHandler(async (req, res) => {
  */
 const updateNotes = asyncHandler(async (req, res) => {
   const { notes } = req.body;
+  const query = { _id: req.params.id, isDeleted: false };
+  if (req.tenantId) query.tenantId = req.tenantId;
+
   const duePayment = await DuePayment.findOneAndUpdate(
-    { _id: req.params.id, isDeleted: false },
+    query,
     { notes },
     { returnDocument: 'after' }
   );

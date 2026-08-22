@@ -40,6 +40,23 @@ const repaymentScheduleSchema = new mongoose.Schema({
   penaltyAmount: {
     type: Number,
     default: 0
+  },
+  amountPaid: {
+    type: Number,
+    default: 0
+  },
+  penaltyWaived: {
+    type: Boolean,
+    default: false
+  },
+  penaltyWaivedAt: {
+    type: Date,
+    default: null
+  },
+  penaltyWaivedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    default: null
   }
 }, {
   timestamps: true

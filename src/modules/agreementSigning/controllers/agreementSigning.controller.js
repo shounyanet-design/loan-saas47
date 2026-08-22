@@ -20,6 +20,14 @@ const generateAgreement = asyncHandler(async (req, res) => {
     const application = await agreementSigningService.generateAgreement(loanApplicationId, req.user._id);
     return sendSuccess(res, 'Loan agreement generated successfully', { application });
   } catch (error) {
+    if (error.code === 'TENANT_LEGAL_PROFILE_INCOMPLETE') {
+      return res.status(400).json({
+        success: false,
+        code: error.code,
+        message: error.message,
+        missingFields: error.missingFields
+      });
+    }
     return sendError(res, error.message, 400);
   }
 });
@@ -103,12 +111,22 @@ const getAgreementStatus = asyncHandler(async (req, res) => {
       .sort({ createdAt: -1 })
       .lean();
 
+    const resolvedAgreementStatus = application.agreementStatus || (
+      application.agreementSignedAt || ['Agreement Signed', 'AGREEMENT_SIGNED', 'READY_FOR_DISBURSEMENT', 'Ready for Disbursement'].includes(application.status)
+        ? 'SIGNED'
+        : application.agreementGenerated || ['Agreement Pending', 'AGREEMENT_PENDING', 'AGREEMENT_PENDING_VERIFICATION'].includes(application.status)
+          ? 'PENDING SIGNATURE'
+          : 'Not Generated'
+    );
+
     return sendSuccess(res, 'Agreement status fetched successfully', {
       status: application.status,
-      agreementGenerated: application.agreementGenerated || false,
+      agreementGenerated: Boolean(application.agreementGenerated || application.agreementGeneratedAt),
       agreementGeneratedAt: application.agreementGeneratedAt || null,
       agreementSignedAt: application.agreementSignedAt || null,
-      agreementStatus: application.agreementStatus || 'Not Generated',
+      agreementStatus: resolvedAgreementStatus,
+      borrowerConsentVerified: Boolean(application.borrowerConsentVerified),
+      otpVerificationStatus: application.otpVerificationStatus || 'Pending',
       otpHistory,
     });
   } catch (error) {
@@ -182,14 +200,45 @@ const getAgreementDocument = asyncHandler(async (req, res) => {
       return sendError(res, 'Loan application not found', 404);
     }
 
+    const hasSnapshot = application.agreementCreditProviderSnapshot && application.agreementCreditProviderSnapshot.legalName;
+    const snapshot = hasSnapshot ? application.agreementCreditProviderSnapshot : {
+      legalName: 'Point.47 Finance Pty Ltd',
+      cipcRegistrationNumber: '2021/098765/07',
+      ncrRegistrationNumber: 'NCRCP12345',
+      telephone: '+27 11 456 7890',
+      email: 'info@point47.co.za',
+      registeredAddress: {
+        addressLine1: 'Platform default office address',
+        city: 'Johannesburg',
+        province: 'Gauteng',
+        postalCode: '2000',
+        country: 'South Africa'
+      },
+      authorizedSignatory: {
+        fullName: 'Aander',
+        designation: 'Authorized Signatory'
+      }
+    };
+
+    const addr = snapshot.registeredAddress || {};
+    const formattedAddress = `${addr.addressLine1 || ''}${addr.addressLine2 ? ', ' + addr.addressLine2 : ''}, ${addr.city || ''}, ${addr.province || ''}, ${addr.postalCode || ''}, ${addr.country || ''}`;
+
     const documentText = application.signedAgreement || `========================================================================
-POINT.47 LOAN AGREEMENT & SIGNATURE RECEIPT
+LOAN AGREEMENT & SIGNATURE RECEIPT
 ========================================================================
 Application ID: ${application.applicationId}
 Borrower Name: ${application.fullName}
 Email Address: ${application.emailAddress}
 Mobile Number: ${application.phoneNumber}
 ID Number: ${application.idNumber}
+
+CREDIT PROVIDER DETAILS:
+Full Name / Entity: ${snapshot.legalName}
+CIPC Registration No: ${snapshot.cipcRegistrationNumber}
+NCR Registration No: ${snapshot.ncrRegistrationNumber}
+Telephone: ${snapshot.telephone}
+Email: ${snapshot.email}
+Registered Address: ${formattedAddress}
 
 LOAN PRINCIPAL DETAILS:
 Approved Amount: R ${Number(application.requestedAmount || 0).toLocaleString()}
@@ -204,7 +253,7 @@ Agreement Status: ${application.agreementStatus || 'Not Generated'}
 Generated At: ${application.agreementGeneratedAt ? new Date(application.agreementGeneratedAt).toLocaleString() : '—'}
 Signed At: ${application.agreementSignedAt ? new Date(application.agreementSignedAt).toLocaleString() : '—'}
 
-Thank you for choosing Point.47.
+Thank you for choosing ${snapshot.legalName}.
 ========================================================================`;
 
     res.setHeader('Content-Type', 'text/plain');

@@ -1,0 +1,217 @@
+{
+  "generatedAt": "2026-08-22T09:56:16.485Z",
+  "mode": "readonly",
+  "environment": {
+    "nodeEnv": "production",
+    "backendConfigured": true,
+    "frontendConfigured": true,
+    "mongoConfigured": true
+  },
+  "steps": [
+    {
+      "test": "Backend health endpoint",
+      "status": "PASS",
+      "details": "/api/health returned HTTP 200"
+    },
+    {
+      "test": "Database classification",
+      "status": "NOT_APPLICABLE",
+      "details": "PRODUCTION_LIKE"
+    },
+    {
+      "test": "MongoDB connection",
+      "status": "PASS",
+      "details": "Connected successfully"
+    },
+    {
+      "test": "Admin user discovery",
+      "status": "PASS",
+      "details": "10 admin-like account(s) found"
+    },
+    {
+      "test": "Tenant discovery",
+      "status": "PASS",
+      "details": "5 tenant(s) discovered"
+    },
+    {
+      "test": "Payment reference integrity",
+      "status": "PASS_WITH_WARNING",
+      "details": "All payments resolved, warnings=1"
+    },
+    {
+      "test": "RepaymentSchedule reference integrity",
+      "status": "PASS_WITH_WARNING",
+      "details": "All schedules resolved, warnings=36"
+    },
+    {
+      "test": "ActiveLoan → LoanApplication orphan check",
+      "status": "PASS",
+      "details": "0 orphan ActiveLoan record(s)"
+    },
+    {
+      "test": "Authenticated runtime API checks",
+      "status": "BLOCKED",
+      "details": "Safe test credentials unavailable"
+    }
+  ],
+  "warnings": [
+    "Database was not positively classified as SAFE_TEST. No mutation testing was performed."
+  ],
+  "failures": [],
+  "blocked": [
+    "Authenticated runtime API checks"
+  ],
+  "dbCounts": {
+    "tenants": 5,
+    "users": 57,
+    "loanApplications": 16,
+    "activeLoans": 3,
+    "payments": 2,
+    "repaymentSchedules": 50,
+    "penalties": null,
+    "wallets": 23,
+    "walletTransactions": 216,
+    "tenantSubscriptions": 23,
+    "invoices": 23
+  },
+  "consistency": {
+    "orphanActiveLoans": 0
+  },
+  "auth": {
+    "status": "BLOCKED_BY_TEST_CREDENTIALS",
+    "note": "ADMIN_EMAIL / ADMIN_PASSWORD are not configured. No credentials were requested or exposed."
+  },
+  "apiChecks": {},
+  "invalidReferencePayments": 1,
+  "invalidReferenceSchedules": 36,
+  "rawLoanIdLookupMissPayments": 0,
+  "rawLoanIdLookupMissSchedules": 0,
+  "discovered": {
+    "adminUsers": [
+      {
+        "id": "6a3b...959e",
+        "role": "admin",
+        "tenantId": "6a43...d498",
+        "email": "a***n@lms.com",
+        "status": "ACTIVE"
+      },
+      {
+        "id": "6a61...c40c",
+        "role": "admin",
+        "tenantId": "6a61...c40b",
+        "email": "p***e@thego.co.za",
+        "status": "ACTIVE"
+      },
+      {
+        "id": "6a67...4122",
+        "role": "admin",
+        "tenantId": "6a67...4121",
+        "email": "p***e@thego.co.za",
+        "status": "ACTIVE"
+      },
+      {
+        "id": "6a5b...2a92",
+        "role": "admin",
+        "tenantId": "6a5b...2a91",
+        "email": "a***d@gmail.com",
+        "status": "ACTIVE"
+      },
+      {
+        "id": "6a47...4dce",
+        "role": "admin",
+        "tenantId": "6a47...4dcd",
+        "email": "h***o@gmail.com",
+        "status": "ACTIVE"
+      },
+      {
+        "id": "6a67...bb15",
+        "role": "admin",
+        "tenantId": "6a67...bb14",
+        "email": "t***7@gmail.com",
+        "status": "ACTIVE"
+      },
+      {
+        "id": "6a5b...2a82",
+        "role": "admin",
+        "tenantId": "6a5b...2a81",
+        "email": "a***c@gmail.com",
+        "status": "ACTIVE"
+      },
+      {
+        "id": "6a67...4107",
+        "role": "admin",
+        "tenantId": "6a67...4106",
+        "email": "p***e@thego.co.za",
+        "status": "ACTIVE"
+      },
+      {
+        "id": "6a4f...3ba8",
+        "role": "admin",
+        "tenantId": "6a4f...3ba7",
+        "email": "d***y@gmail.com",
+        "status": "ACTIVE"
+      },
+      {
+        "id": "6a58...996a",
+        "role": "admin",
+        "tenantId": "6a58...9969",
+        "email": "m***i@dimeva.co.za",
+        "status": "ACTIVE"
+      }
+    ],
+    "tenants": [
+      {
+        "id": "6a43...d498",
+        "name": "Po***",
+        "status": "active"
+      },
+      {
+        "id": "6a58...9969",
+        "name": "Di***",
+        "status": "active"
+      },
+      {
+        "id": "6a68...029a",
+        "name": "Th***",
+        "status": "active"
+      },
+      {
+        "id": "6a68...92df",
+        "name": "ki***",
+        "status": "active"
+      },
+      {
+        "id": "6a67...442a",
+        "name": "Sh***",
+        "status": "active"
+      }
+    ],
+    "paymentMetrics": {
+      "invalidTotal": 1,
+      "unresolvedActive": 0,
+      "tenantMismatches": 0,
+      "liveUnresolved": 0,
+      "warnings": 1
+    },
+    "scheduleMetrics": {
+      "invalidTotal": 36,
+      "unresolvedActive": 0,
+      "tenantMismatches": 0,
+      "liveUnresolved": 0,
+      "warnings": 36
+    }
+  },
+  "health": {
+    "backend": "UP",
+    "endpoint": "/api/health"
+  },
+  "dbClassification": "PRODUCTION_LIKE",
+  "summary": {
+    "passes": 5,
+    "warnings": 2,
+    "failures": 0,
+    "blocked": 1,
+    "notApplicable": 1
+  },
+  "finalVerdict": "LIVE READ-ONLY ACCEPTANCE PASSED — HISTORICAL REFERENCE WARNINGS ONLY"
+}

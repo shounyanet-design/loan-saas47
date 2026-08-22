@@ -59,6 +59,30 @@ const tenantSchema = new mongoose.Schema(
     // TOP of the tenant's plan-derived features (override wins). Absent key =>
     // inherit from plan. Empty {} => pure plan behaviour (backward compatible).
     featureOverrides: { type: mongoose.Schema.Types.Mixed, default: {} },
+
+    companyProfile: {
+      legalName: { type: String, default: '' },
+      tradingName: { type: String, default: '' },
+      cipcRegistrationNumber: { type: String, default: '' },
+      ncrRegistrationNumber: { type: String, default: '' },
+      vatNumber: { type: String, default: '' },
+      telephone: { type: String, default: '' },
+      email: { type: String, default: '' },
+      registeredAddress: {
+        addressLine1: { type: String, default: '' },
+        addressLine2: { type: String, default: '' },
+        city: { type: String, default: '' },
+        province: { type: String, default: '' },
+        postalCode: { type: String, default: '' },
+        country: { type: String, default: '' }
+      },
+      authorizedSignatory: {
+        fullName: { type: String, default: '' },
+        designation: { type: String, default: '' }
+      },
+      logoUrl: { type: String, default: '' },
+      website: { type: String, default: '' }
+    }
   },
   { timestamps: true }
 );

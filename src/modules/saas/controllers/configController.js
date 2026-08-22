@@ -173,3 +173,12 @@ exports.testProvider = asyncHandler(async (req, res) => {
   await audit(req, { action: 'API_CREDENTIALS_TESTED', entity: 'TenantApiSettings', entityId: tid(req), newValues: { provider: req.params.provider, ok: result.ok } });
   return sendSuccess(res, 'Connection test', result);
 });
+
+// ---------------- UNIFIED SAAS CONTEXT ----------------
+exports.getSaasContext = asyncHandler(async (req, res) => {
+  const saasContextService = require('../services/saasContextService');
+  const tenantId = tid(req);
+  const data = await saasContextService.getSaasContext(tenantId);
+  if (!data) return sendError(res, 'Tenant context not found', 404);
+  return sendSuccess(res, 'SaaS Context', data);
+});

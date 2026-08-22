@@ -5,9 +5,10 @@ const { authorize } = require('../../../middlewares/roleMiddleware');
 const validateSubscription = require('../../../middlewares/validateSubscription');
 const c = require('../controllers/tenantCommerceController');
 
-// Tenant admin self-service commerce. Tenant context via `protect`;
-// validateSubscription is permissive for grandfathered/active tenants.
-router.use(protect, authorize('admin'), validateSubscription());
+// Tenant admin self-service commerce. Tenant context via `protect`.
+// Commerce (marketplace, wallet, orders, invoices) must always be accessible
+// so tenants can top up tokens and manage billing regardless of subscription state.
+router.use(protect, authorize('admin'));
 
 // Wallet
 router.get('/wallet', c.getWallet);

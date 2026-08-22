@@ -8,9 +8,8 @@ const sub = require('../controllers/subscriptionController');
 const cfg = require('../controllers/configController');
 
 // Tenant self-service SaaS pages. Tenant admin only. Runs inside the tenant
-// context (established by `protect`). validateSubscription guards account state
-// but is permissive for grandfathered/active tenants (never blocks the LMS).
-router.use(protect, authorize('admin'), validateSubscription());
+// context (established by `protect`).
+router.use(protect, authorize('admin'));
 
 // Subscription
 router.get('/subscription', sub.mySubscription);
@@ -28,6 +27,9 @@ router.get('/license', cfg.getLicense);
 // Branding (self-service)
 router.get('/branding', cfg.getBranding);
 router.put('/branding', cfg.updateBranding);
+
+// Unified SaaS Context (Consolidated metadata for Tenant Admin)
+router.get('/saas-context', cfg.getSaasContext);
 
 // API credentials (self-service) — secrets masked on read
 router.get('/api-credentials', cfg.getApiSettings);

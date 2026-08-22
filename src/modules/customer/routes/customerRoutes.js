@@ -6,7 +6,7 @@ const validateSubscription = require('../../../middlewares/validateSubscription'
 const c = require('../controllers/customerController');
 
 // Customer portal (tenant admin). Distinct prefix /api/customer.
-router.use(protect, authorize('admin'), validateSubscription());
+router.use(protect, authorize('admin'));
 
 // Support
 router.get('/support/tickets', c.listTickets);

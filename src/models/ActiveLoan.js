@@ -13,7 +13,9 @@ const repaymentScheduleSchema = new mongoose.Schema({
     default: 'Pending' 
   },
   paidDate: { type: Date },
-  lateFee: { type: Number, default: 0 }
+  lateFee: { type: Number, default: 0 },
+  amountPaid: { type: Number, default: 0 },
+  penaltyWaived: { type: Boolean, default: false }
 });
 
 const activeLoanSchema = new mongoose.Schema({
@@ -76,6 +78,29 @@ const activeLoanSchema = new mongoose.Schema({
   agreementHtml: { type: String, default: '' },
   agreementPdfUrl: { type: String, default: '' },
   signedAgreement: { type: String, default: '' },
+  agreementCreditProviderSnapshot: {
+    tenantId: { type: String, default: '' },
+    legalName: { type: String, default: '' },
+    tradingName: { type: String, default: '' },
+    cipcRegistrationNumber: { type: String, default: '' },
+    ncrRegistrationNumber: { type: String, default: '' },
+    vatNumber: { type: String, default: '' },
+    telephone: { type: String, default: '' },
+    email: { type: String, default: '' },
+    registeredAddress: {
+      addressLine1: { type: String, default: '' },
+      addressLine2: { type: String, default: '' },
+      city: { type: String, default: '' },
+      province: { type: String, default: '' },
+      postalCode: { type: String, default: '' },
+      country: { type: String, default: '' }
+    },
+    authorizedSignatory: {
+      fullName: { type: String, default: '' },
+      designation: { type: String, default: '' }
+    },
+    logoUrl: { type: String, default: '' }
+  },
   otpVerificationStatus: { type: String, default: '' },
   processingFee: { type: Number },
   
@@ -132,7 +157,7 @@ activeLoanSchema.pre('validate', async function() {
 activeLoanSchema.plugin(tenantPlugin);
 
 // Tenant-scoped uniqueness.
-activeLoanSchema.index({ tenantId: 1, loanCode: 1 }, { unique: true });
+activeLoanSchema.index({ tenantId: 1, loanApplicationId: 1 }, { unique: true, sparse: true });
 // Hot-path: active-loan lists/dashboards filter by status and soft-delete flag.
 activeLoanSchema.index({ tenantId: 1, loanStatus: 1, isDeleted: 1 });
 

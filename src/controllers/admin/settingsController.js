@@ -234,6 +234,87 @@ const calculateLivePreview = asyncHandler(async (req, res) => {
   sendSuccess(res, 'Live preview calculated', response);
 });
 
+/**
+ * @desc    Get current tenant's company legal profile
+ * @route   GET /api/admin/settings/company-profile
+ * @access  Private/Admin
+ */
+const getCompanyProfile = asyncHandler(async (req, res) => {
+  const tenantId = req.user.tenantId;
+  if (!tenantId) {
+    return sendError(res, 'Tenant context missing on user profile', 400);
+  }
+  const Tenant = require('../../models/Tenant');
+  const tenantContext = require('../../tenancy/tenantContext');
+  const tenant = await tenantContext.runAsSystem(() => Tenant.findById(tenantId).lean());
+  if (!tenant) {
+    return sendError(res, 'Tenant not found', 404);
+  }
+  sendSuccess(res, 'Tenant company profile fetched', tenant.companyProfile || {});
+});
+
+/**
+ * @desc    Update current tenant's company legal profile
+ * @route   PUT /api/admin/settings/company-profile
+ * @access  Private/Admin
+ */
+const updateCompanyProfile = asyncHandler(async (req, res) => {
+  const tenantId = req.user.tenantId;
+  if (!tenantId) {
+    return sendError(res, 'Tenant context missing on user profile', 400);
+  }
+  const Tenant = require('../../models/Tenant');
+  const tenantContext = require('../../tenancy/tenantContext');
+
+  const profileData = req.body;
+  const tenant = await tenantContext.runAsSystem(() => Tenant.findById(tenantId));
+  if (!tenant) {
+    return sendError(res, 'Tenant not found', 404);
+  }
+
+  tenant.companyProfile = tenant.companyProfile || {};
+
+  const fields = [
+    'legalName', 'tradingName', 'cipcRegistrationNumber', 'ncrRegistrationNumber',
+    'vatNumber', 'telephone', 'email', 'website', 'logoUrl'
+  ];
+  fields.forEach(f => {
+    if (profileData[f] !== undefined) tenant.companyProfile[f] = profileData[f];
+  });
+
+  if (profileData.registeredAddress) {
+    tenant.companyProfile.registeredAddress = tenant.companyProfile.registeredAddress || {};
+    const addrFields = ['addressLine1', 'addressLine2', 'city', 'province', 'postalCode', 'country'];
+    addrFields.forEach(f => {
+      if (profileData.registeredAddress[f] !== undefined) {
+        tenant.companyProfile.registeredAddress[f] = profileData.registeredAddress[f];
+      }
+    });
+  }
+
+  if (profileData.authorizedSignatory) {
+    tenant.companyProfile.authorizedSignatory = tenant.companyProfile.authorizedSignatory || {};
+    const sigFields = ['fullName', 'designation'];
+    sigFields.forEach(f => {
+      if (profileData.authorizedSignatory[f] !== undefined) {
+        tenant.companyProfile.authorizedSignatory[f] = profileData.authorizedSignatory[f];
+      }
+    });
+  }
+
+  // Map back to root fields to prevent duplicates and maintain compatibility
+  if (tenant.companyProfile.legalName) tenant.companyName = tenant.companyProfile.legalName;
+  if (tenant.companyProfile.email) tenant.email = tenant.companyProfile.email;
+  if (tenant.companyProfile.telephone) tenant.phone = tenant.companyProfile.telephone;
+  if (tenant.companyProfile.logoUrl) tenant.brandLogo = tenant.companyProfile.logoUrl;
+  if (tenant.companyProfile.registeredAddress?.country) tenant.country = tenant.companyProfile.registeredAddress.country;
+
+  tenant.markModified('companyProfile');
+  await tenantContext.runAsSystem(() => tenant.save());
+
+  sendSuccess(res, 'Tenant company profile updated successfully', tenant.companyProfile);
+});
+
 module.exports = {
   getSettings,
   updateGeneralSettings,
@@ -241,5 +322,7 @@ module.exports = {
   updateDocumentRules,
   updateBulkSettings,
   resetSettings,
-  calculateLivePreview
+  calculateLivePreview,
+  getCompanyProfile,
+  updateCompanyProfile
 };

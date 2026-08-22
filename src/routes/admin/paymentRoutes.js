@@ -10,7 +10,8 @@ const {
   getVerifiedPayments,
   getRejectedPayments,
   exportPayments,
-  downloadReceipt
+  downloadReceipt,
+  reversePayment
 } = require('../../controllers/admin/paymentController');
 const { protect } = require('../../middlewares/authMiddleware');
 const { authorize } = require('../../middlewares/roleMiddleware');
@@ -33,6 +34,7 @@ router.get('/', getAllPayments);
 router.get('/:id', getPaymentDetails);
 router.put('/:id/verify', verifyPayment);
 router.put('/:id/reject', rejectPayment);
+router.put('/:id/reverse', reversePayment);
 router.get('/:id/receipt', downloadReceipt);
 
 module.exports = router;

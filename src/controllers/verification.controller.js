@@ -23,6 +23,7 @@ const { callAMLVerification }       = require('../services/datanamix/amlVerifica
 const { getIO } = require('../socket/socketServer');
 const tenantContext = require('../tenancy/tenantContext');
 const { isDevelopmentSandboxBypassEnabled, isDevelopmentNextStepBypassEnabled } = require('../utils/devSandboxBypass');
+const reportDocumentService = require('../services/reportDocument.service');
 
 const validateSAPhone = (phone) => {
   if (!phone) return false;
@@ -2467,34 +2468,38 @@ exports.resetCreditAssessmentController = async (req, res) => {
  */
 exports.getBankReportPdfController = async (req, res) => {
   const { applicationId } = req.params;
-  const userId = req.user ? req.user._id : null;
-  const ipAddress = req.ip || req.headers['x-forwarded-for'] || req.socket.remoteAddress;
 
   try {
-    const app = await LoanApplication.findById(applicationId).select('bankVerification');
-    if (!app || !app.bankVerification || !app.bankVerification.pdfReportPath) {
-      return res.status(404).json({ success: false, message: 'No bank verification PDF found for this application.' });
+    const app = await LoanApplication.findById(applicationId);
+    if (!app || !app.bankVerification) {
+      return res.status(404).json({
+        success: false,
+        code: 'REPORT_NOT_FOUND',
+        message: 'No bank verification record found for this application.'
+      });
     }
 
-    const path = require('path');
-    const fsSync = require('fs');
-
-    // Resolve the path relative to Backend root
-    const filePath = path.join(__dirname, '..', '..', app.bankVerification.pdfReportPath);
-    if (!fsSync.existsSync(filePath)) {
-      return res.status(404).json({ success: false, message: 'Bank verification PDF file not found on disk.' });
+    const pdfBuffer = await reportDocumentService.resolveBankReportPdf(app);
+    if (!pdfBuffer || pdfBuffer.length === 0) {
+      return res.status(404).json({
+        success: false,
+        code: 'REPORT_FILE_MISSING',
+        message: 'Bank verification PDF document could not be retrieved or generated.'
+      });
     }
 
-    // Set headers for secure streaming inline
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', 'inline; filename="bank_verification_report.pdf"');
+    res.setHeader('Content-Length', pdfBuffer.length);
 
-    // Stream the file chunk by chunk without loading into memory
-    const readStream = fsSync.createReadStream(filePath);
-    readStream.pipe(res);
+    return res.status(200).send(pdfBuffer);
   } catch (error) {
     console.error('[STREAM BANK PDF ERROR]:', error.message);
-    res.status(500).json({ success: false, message: 'Error streaming bank verification report PDF.' });
+    return res.status(500).json({
+      success: false,
+      code: 'REPORT_GENERATION_FAILED',
+      message: 'Error streaming bank verification report PDF.'
+    });
   }
 };
 
@@ -2507,30 +2512,38 @@ exports.downloadBankReportController = async (req, res) => {
   const { applicationId } = req.params;
 
   try {
-    const app = await LoanApplication.findById(applicationId).select('bankVerification');
-    if (!app || !app.bankVerification || !app.bankVerification.pdfReportPath) {
-      return res.status(404).json({ success: false, message: 'No bank verification PDF found for download.' });
+    const app = await LoanApplication.findById(applicationId);
+    if (!app || !app.bankVerification) {
+      return res.status(404).json({
+        success: false,
+        code: 'REPORT_NOT_FOUND',
+        message: 'No bank verification record found for download.'
+      });
     }
 
-    const path = require('path');
-    const fsSync = require('fs');
-
-    const filePath = path.join(__dirname, '..', '..', app.bankVerification.pdfReportPath);
-    if (!fsSync.existsSync(filePath)) {
-      return res.status(404).json({ success: false, message: 'Bank verification PDF file not found on disk.' });
+    const pdfBuffer = await reportDocumentService.resolveBankReportPdf(app);
+    if (!pdfBuffer || pdfBuffer.length === 0) {
+      return res.status(404).json({
+        success: false,
+        code: 'REPORT_FILE_MISSING',
+        message: 'Bank verification PDF document could not be retrieved or generated for download.'
+      });
     }
 
-    const fileVersion = app.bankVerification.verificationVersion || 1;
+    const fileVersion = app.bankVerification?.verificationVersion || 1;
 
-    // Set headers for download as attachment
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="bank-avs-report-v${fileVersion}.pdf"`);
+    res.setHeader('Content-Length', pdfBuffer.length);
 
-    const readStream = fsSync.createReadStream(filePath);
-    readStream.pipe(res);
+    return res.status(200).send(pdfBuffer);
   } catch (error) {
     console.error('[DOWNLOAD BANK PDF ERROR]:', error.message);
-    res.status(500).json({ success: false, message: 'Error downloading bank verification report PDF.' });
+    return res.status(500).json({
+      success: false,
+      code: 'REPORT_GENERATION_FAILED',
+      message: 'Error downloading bank verification report PDF.'
+    });
   }
 };
 

@@ -41,57 +41,56 @@ exports.getDashboardData = asyncHandler(async (req, res) => {
     updatedAt: { $gte: today }
   });
 
-  const threeDaysAgo = new Date();
-  threeDaysAgo.setDate(threeDaysAgo.getDate() - 3);
+  // 2. WORKFLOW QUEUE (Prioritized operational pipeline for pending applications)
+  const pendingStatuses = [
+    'New', 'Submitted', 'Under Review', 'Pending Review', 'Pending Verification', 
+    'Pending', 'AGREEMENT_PENDING_VERIFICATION', 'DOCUMENTS_SUBMITTED', 'Draft'
+  ];
 
   const workflowQueue = await LoanApplication.find({
-    $or: [
-      { assignedReviewer: staffId, assignedAt: { $gte: threeDaysAgo } },
-      { status: { $in: ['New', 'Submitted'] }, assignedReviewer: { $exists: false }, createdAt: { $gte: threeDaysAgo } },
-      { status: { $in: ['New', 'Submitted'] }, assignedReviewer: null, createdAt: { $gte: threeDaysAgo } }
-    ],
-    status: { $in: ['New', 'Submitted', 'Under Review', 'Pending Review', 'Pending Verification', 'Pending'] }
+    status: { $in: pendingStatuses }
   })
-  .sort({ updatedAt: -1 })
-  .limit(10)
-  .populate('borrowerId', 'phoneNumber');
+  .sort({ updatedAt: -1, createdAt: -1 })
+  .limit(15)
+  .populate('borrowerId', 'phoneNumber email profilePhoto');
 
   const formattedQueue = workflowQueue.map(app => ({
     applicationId: app._id,
     borrowerId: app.borrowerId?._id,
-    borrowerName: app.fullName,
-    borrowerPhone: app.borrowerId?.phoneNumber || app.phoneNumber,
-    loanId: app.applicationId,
+    borrowerName: app.fullName || app.borrowerName || 'Applicant',
+    borrowerPhone: app.borrowerId?.phoneNumber || app.phoneNumber || 'N/A',
+    loanId: app.applicationId || `APP-${String(app._id).slice(-6).toUpperCase()}`,
     loanType: app.loanType || 'Personal Loan',
-    loanAmount: app.requestedAmount,
-    currentStatus: app.status,
-    assignedDate: app.assignedAt || app.updatedAt
+    loanAmount: app.requestedAmount || app.loanAmount || 0,
+    currentStatus: app.status || 'Pending Review',
+    assignedDate: app.assignedAt || app.updatedAt || app.createdAt
   }));
 
-  // 2.5 VERIFICATIONS QUEUE (Payments pending verification - Recent 3 days)
-  // Find borrowers assigned to this staff
+  // 2.5 VERIFICATIONS QUEUE (Payments pending verification)
   const assignedBorrowerIds = await Borrower.find({ assignedStaff: staffId }).distinct('_id');
 
   const pendingPayments = await Payment.find({
     $or: [
       { borrowerId: { $in: assignedBorrowerIds } },
-      { verifiedBy: staffId }
+      { verifiedBy: staffId },
+      { verifiedBy: null },
+      { verifiedBy: { $exists: false } }
     ],
     paymentStatus: 'Pending',
-    createdAt: { $gte: threeDaysAgo }
+    isDeleted: { $ne: true }
   })
-  .sort({ createdAt: -1 })
-  .limit(10);
+  .sort({ paymentDate: -1, createdAt: -1 })
+  .limit(15);
 
   const verificationsQueue = pendingPayments.map(pay => ({
     id: pay._id,
     borrowerId: pay.borrowerId,
-    borrowerName: pay.borrowerName,
-    type: pay.paymentType || 'Payment Verification',
-    status: pay.paymentStatus,
-    date: pay.paymentDate,
-    amount: pay.paymentAmount,
-    transactionId: pay.transactionId
+    borrowerName: pay.borrowerName || 'Borrower',
+    type: pay.paymentType || 'EMI Payment',
+    status: pay.paymentStatus || 'Pending',
+    date: pay.paymentDate || pay.createdAt,
+    amount: pay.paymentAmount || 0,
+    transactionId: pay.transactionId || `TRX-${String(pay._id).slice(-6).toUpperCase()}`
   }));
 
   // 3. PRIORITY ALERTS (Urgent operational alerts from Notification model)

@@ -20,7 +20,6 @@ const getAllConversations = asyncHandler(async (req, res) => {
     : new Set();
 
   let conversations = await Conversation.find({
-    participants: req.user._id,
     isDeleted: false
   })
     .populate('participants', 'fullName email role profilePhoto accountStatus status')

@@ -7,7 +7,9 @@ const {
   updateDocumentRules,
   updateBulkSettings,
   resetSettings,
-  calculateLivePreview
+  calculateLivePreview,
+  getCompanyProfile,
+  updateCompanyProfile
 } = require('../../controllers/admin/settingsController');
 const { protect } = require('../../middlewares/authMiddleware');
 const { authorize } = require('../../middlewares/roleMiddleware');
@@ -23,5 +25,9 @@ router.put('/document-rules', updateDocumentRules);
 router.put('/bulk', updateBulkSettings);
 router.post('/reset', resetSettings);
 router.post('/live-preview', calculateLivePreview);
+
+// Credit Provider / Company Legal Profile Settings routes
+router.get('/company-profile', getCompanyProfile);
+router.put('/company-profile', updateCompanyProfile);
 
 module.exports = router;

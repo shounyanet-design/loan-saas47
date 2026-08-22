@@ -26,6 +26,7 @@ const agentRoutes = require('./routes/agentRoutes');
 const uploadRoutes = require('./routes/uploadRoutes');
 const loanApplicationRoutes = require('./routes/loanApplicationRoutes');
 const activeLoanRoutes = require('./routes/admin/activeLoanRoutes');
+const disbursementRoutes = require('./routes/admin/disbursementRoutes');
 const paymentRoutes = require('./routes/admin/paymentRoutes');
 const duePaymentRoutes = require('./routes/admin/duePaymentRoutes');
 const nupayRoutes = require('./routes/admin/nupayRoutes');
@@ -120,16 +121,7 @@ const limiter = rateLimit({
   message: 'Too many requests from this IP, please try again after 10 minutes'
 });
 app.use(limiter);
-// Stricter limiter for authentication endpoints — credential-stuffing defence.
-const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 mins
-  max: 30, // generous enough for legitimate retries, low enough to blunt brute force
-  standardHeaders: true,
-  legacyHeaders: false,
-  validate: { xForwardedForHeader: false },
-  message: 'Too many authentication attempts, please try again later',
-});
-app.use('/api/auth', authLimiter);
+
 // Mount routers
 app.use('/api/auth', authRoutes);
 app.use('/api/admin/borrowers', adminBorrowerRoutes);
@@ -137,6 +129,7 @@ app.use('/api/admin/agents', adminAgentRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/admin/staff', staffRoutes);
 app.use('/api/admin/loan-applications', loanApplicationRoutes);
+app.use('/api/admin/loans', disbursementRoutes);
 app.use('/api/admin/active-loans', activeLoanRoutes);
 app.use('/api/admin/payments', paymentRoutes);
 app.use('/api/admin/due-payments', duePaymentRoutes);

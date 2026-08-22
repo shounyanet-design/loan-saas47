@@ -1,25 +1,31 @@
-const mongoose = require('mongoose');
-const User = require('../../models/User');
+const asyncHandler = require('express-async-handler');
 const Borrower = require('../../models/Borrower');
 const ActiveLoan = require('../../models/ActiveLoan');
-const LoanApplication = require('../../models/LoanApplication');
-const Payment = require('../../models/Payment');
 const DuePayment = require('../../models/DuePayment');
+const Payment = require('../../models/Payment');
+const LoanApplication = require('../../models/LoanApplication');
 const Notification = require('../../models/Notification');
-const asyncHandler = require('../../utils/asyncHandler');
-const { sendSuccess, sendError } = require('../../utils/responseHandler');
+const { sendSuccess } = require('../../utils/responseHandler');
+const mongoose = require('mongoose');
 
-// Helper to get start and end of current & prior month for growth logic
-const getMonthRange = (monthsAgo = 0) => {
-  const now = new Date();
-  const start = new Date(now.getFullYear(), now.getMonth() - monthsAgo, 1);
-  const end = new Date(now.getFullYear(), now.getMonth() - monthsAgo + 1, 0, 23, 59, 59);
-  return { start, end };
+// Helper to calculate Growth
+const calculateGrowth = (current, previous) => {
+  if (!previous || previous === 0) return current > 0 ? 100 : 0;
+  const growth = ((current - previous) / previous) * 100;
+  return Math.round(growth * 10) / 10;
 };
 
-const calculateGrowth = (current, prior) => {
-  if (!prior || prior === 0) return current > 0 ? 100 : 0;
-  return Math.round(((current - prior) / prior) * 100 * 10) / 10;
+// Helper to get relative Month Range
+const getMonthRange = (monthsAgo = 0) => {
+  const start = new Date();
+  start.setMonth(start.getMonth() - monthsAgo);
+  start.setDate(1);
+  start.setHours(0, 0, 0, 0);
+
+  const end = new Date(start.getFullYear(), start.getMonth() + 1, 0);
+  end.setHours(23, 59, 59, 999);
+
+  return { start, end };
 };
 
 /**
@@ -29,34 +35,44 @@ const calculateGrowth = (current, prior) => {
 const getDashboardOverview = asyncHandler(async (req, res) => {
   const thisMonth = getMonthRange(0);
   const lastMonth = getMonthRange(1);
+  const tenantId = req.tenantId;
+
+  const borrowerQuery = { accountStatus: 'Active' };
+  if (tenantId) borrowerQuery.tenantId = tenantId;
 
   // 1. Borrowers
-  const totalBorrowers = await Borrower.countDocuments({ accountStatus: 'Active' });
-  const currMonthBorrowers = await Borrower.countDocuments({ accountStatus: 'Active', createdAt: { $gte: thisMonth.start, $lte: thisMonth.end } });
-  const prevMonthBorrowers = await Borrower.countDocuments({ accountStatus: 'Active', createdAt: { $gte: lastMonth.start, $lte: lastMonth.end } });
+  const totalBorrowers = await Borrower.countDocuments(borrowerQuery);
+  const currMonthBorrowers = await Borrower.countDocuments({ ...borrowerQuery, createdAt: { $gte: thisMonth.start, $lte: thisMonth.end } });
+  const prevMonthBorrowers = await Borrower.countDocuments({ ...borrowerQuery, createdAt: { $gte: lastMonth.start, $lte: lastMonth.end } });
   const borrowerGrowth = calculateGrowth(currMonthBorrowers, prevMonthBorrowers);
 
   // 2. Active Loans
-  const totalActiveLoans = await ActiveLoan.countDocuments({ loanStatus: 'Active', isDeleted: false });
-  const currActiveLoans = await ActiveLoan.countDocuments({ loanStatus: 'Active', isDeleted: false, createdAt: { $gte: thisMonth.start, $lte: thisMonth.end } });
-  const prevActiveLoans = await ActiveLoan.countDocuments({ loanStatus: 'Active', isDeleted: false, createdAt: { $gte: lastMonth.start, $lte: lastMonth.end } });
+  const activeLoanQuery = { loanStatus: 'Active', isDeleted: false };
+  if (tenantId) activeLoanQuery.tenantId = tenantId;
+
+  const totalActiveLoans = await ActiveLoan.countDocuments(activeLoanQuery);
+  const currActiveLoans = await ActiveLoan.countDocuments({ ...activeLoanQuery, createdAt: { $gte: thisMonth.start, $lte: thisMonth.end } });
+  const prevActiveLoans = await ActiveLoan.countDocuments({ ...activeLoanQuery, createdAt: { $gte: lastMonth.start, $lte: lastMonth.end } });
   const loanGrowth = calculateGrowth(currActiveLoans, prevActiveLoans);
 
   // 3. Total Disbursed
+  const matchQuery = { isDeleted: false };
+  if (tenantId) matchQuery.tenantId = new mongoose.Types.ObjectId(tenantId);
+
   const totalDisbursedAgg = await ActiveLoan.aggregate([
-    { $match: { isDeleted: false } },
+    { $match: matchQuery },
     { $group: { _id: null, total: { $sum: '$approvedAmount' } } }
   ]);
   const totalDisbursed = totalDisbursedAgg[0]?.total || 0;
 
   const currDisbursedAgg = await ActiveLoan.aggregate([
-    { $match: { isDeleted: false, createdAt: { $gte: thisMonth.start, $lte: thisMonth.end } } },
+    { $match: { ...matchQuery, createdAt: { $gte: thisMonth.start, $lte: thisMonth.end } } },
     { $group: { _id: null, total: { $sum: '$approvedAmount' } } }
   ]);
   const currDisbursed = currDisbursedAgg[0]?.total || 0;
 
   const prevDisbursedAgg = await ActiveLoan.aggregate([
-    { $match: { isDeleted: false, createdAt: { $gte: lastMonth.start, $lte: lastMonth.end } } },
+    { $match: { ...matchQuery, createdAt: { $gte: lastMonth.start, $lte: lastMonth.end } } },
     { $group: { _id: null, total: { $sum: '$approvedAmount' } } }
   ]);
   const prevDisbursed = prevDisbursedAgg[0]?.total || 0;
@@ -68,30 +84,25 @@ const getDashboardOverview = asyncHandler(async (req, res) => {
   const endOfToday = new Date();
   endOfToday.setHours(23, 59, 59, 999);
 
+  const dueMatch = { isDeleted: false, dueStatus: 'Due Today' };
+  if (tenantId) dueMatch.tenantId = new mongoose.Types.ObjectId(tenantId);
+
   const duePaymentsTodayAgg = await DuePayment.aggregate([
-    { 
-      $match: { 
-        isDeleted: false, 
-        dueStatus: 'Due Today'
-      } 
-    },
+    { $match: dueMatch },
     { $group: { _id: null, total: { $sum: '$totalDueAmount' } } }
   ]);
   const duePaymentsToday = duePaymentsTodayAgg[0]?.total || 0;
 
-  // Growth based on yesterday's due vs today's due as fallback indicator
   const startOfYesterday = new Date(startOfToday);
   startOfYesterday.setDate(startOfYesterday.getDate() - 1);
   const endOfYesterday = new Date(endOfToday);
   endOfYesterday.setDate(endOfYesterday.getDate() - 1);
 
+  const yesterdayDueMatch = { isDeleted: false, dueDate: { $gte: startOfYesterday, $lte: endOfYesterday } };
+  if (tenantId) yesterdayDueMatch.tenantId = new mongoose.Types.ObjectId(tenantId);
+
   const yesterdayDueAgg = await DuePayment.aggregate([
-    {
-      $match: {
-        isDeleted: false,
-        dueDate: { $gte: startOfYesterday, $lte: endOfYesterday }
-      }
-    },
+    { $match: yesterdayDueMatch },
     { $group: { _id: null, total: { $sum: '$totalDueAmount' } } }
   ]);
   const yesterdayDue = yesterdayDueAgg[0]?.total || 0;
@@ -117,16 +128,17 @@ const getFinancialPerformance = asyncHandler(async (req, res) => {
   const now = new Date();
   const startOfYear = new Date(now.getFullYear(), 0, 1);
   const endOfYear = new Date(now.getFullYear(), 11, 31, 23, 59, 59);
+  const tenantId = req.tenantId;
 
-  // Collections: Verified payments
+  const matchPayment = { 
+    paymentStatus: 'Verified',
+    isDeleted: { $ne: true },
+    paymentDate: { $gte: startOfYear, $lte: endOfYear }
+  };
+  if (tenantId) matchPayment.tenantId = new mongoose.Types.ObjectId(tenantId);
+
   const monthlyCollections = await Payment.aggregate([
-    { 
-      $match: { 
-        paymentStatus: 'Verified',
-        isDeleted: { $ne: true },
-        paymentDate: { $gte: startOfYear, $lte: endOfYear }
-      }
-    },
+    { $match: matchPayment },
     {
       $group: {
         _id: { $month: '$paymentDate' },
@@ -135,14 +147,14 @@ const getFinancialPerformance = asyncHandler(async (req, res) => {
     }
   ]);
 
-  // Disbursements: Approved loans
+  const matchLoan = {
+    isDeleted: false,
+    createdAt: { $gte: startOfYear, $lte: endOfYear }
+  };
+  if (tenantId) matchLoan.tenantId = new mongoose.Types.ObjectId(tenantId);
+
   const monthlyDisbursements = await ActiveLoan.aggregate([
-    {
-      $match: {
-        isDeleted: false,
-        createdAt: { $gte: startOfYear, $lte: endOfYear }
-      }
-    },
+    { $match: matchLoan },
     {
       $group: {
         _id: { $month: '$createdAt' },
@@ -153,7 +165,6 @@ const getFinancialPerformance = asyncHandler(async (req, res) => {
 
   const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   
-  // Hydrate empty 12-month array
   const chartData = monthNames.map((name, idx) => {
     const monthNum = idx + 1;
     const col = monthlyCollections.find(c => c._id === monthNum);
@@ -173,10 +184,17 @@ const getFinancialPerformance = asyncHandler(async (req, res) => {
  * @route   GET /api/admin/dashboard/operational-status
  */
 const getOperationalStatus = asyncHandler(async (req, res) => {
-  const newApplications = await LoanApplication.countDocuments({ status: { $in: ['New', 'Submitted'] } });
-  const underReview = await LoanApplication.countDocuments({ status: { $in: ['Under Review', 'Pending Review', 'Recommended'] } });
-  const approvedLoans = await LoanApplication.countDocuments({ status: { $in: ['Approved', 'APPROVED', 'ACTIVE', 'READY_FOR_DISBURSEMENT', 'Ready for Disbursement'] } });
-  const activeLoans = await ActiveLoan.countDocuments({ loanStatus: 'Active', isDeleted: false });
+  const tenantId = req.tenantId;
+  const appQuery = {};
+  if (tenantId) appQuery.tenantId = tenantId;
+
+  const newApplications = await LoanApplication.countDocuments({ ...appQuery, status: { $in: ['New', 'Submitted'] } });
+  const underReview = await LoanApplication.countDocuments({ ...appQuery, status: { $in: ['Under Review', 'Pending Review', 'Recommended'] } });
+  const approvedLoans = await LoanApplication.countDocuments({ ...appQuery, status: { $in: ['Approved', 'APPROVED', 'ACTIVE', 'READY_FOR_DISBURSEMENT', 'Ready for Disbursement'] } });
+
+  const activeLoanQuery = { loanStatus: 'Active', isDeleted: false };
+  if (tenantId) activeLoanQuery.tenantId = tenantId;
+  const activeLoans = await ActiveLoan.countDocuments(activeLoanQuery);
 
   sendSuccess(res, 'Operational counts loaded', {
     newApplications,
@@ -191,7 +209,11 @@ const getOperationalStatus = asyncHandler(async (req, res) => {
  * @route   GET /api/admin/dashboard/recent-applications
  */
 const getRecentApplications = asyncHandler(async (req, res) => {
-  const apps = await LoanApplication.find()
+  const tenantId = req.tenantId;
+  const query = {};
+  if (tenantId) query.tenantId = tenantId;
+
+  const apps = await LoanApplication.find(query)
     .sort({ createdAt: -1 })
     .limit(5)
     .select('fullName applicationId requestedAmount status createdAt');
@@ -213,7 +235,11 @@ const getRecentApplications = asyncHandler(async (req, res) => {
  * @route   GET /api/admin/dashboard/system-alerts
  */
 const getSystemAlerts = asyncHandler(async (req, res) => {
-  const recentNotifications = await Notification.find({ isDeleted: { $ne: true } })
+  const tenantId = req.tenantId;
+  const query = { isDeleted: { $ne: true } };
+  if (tenantId) query.tenantId = tenantId;
+
+  const recentNotifications = await Notification.find(query)
     .sort({ createdAt: -1 })
     .limit(6);
 
@@ -234,7 +260,11 @@ const getSystemAlerts = asyncHandler(async (req, res) => {
  * @route   GET /api/admin/dashboard/recent-payments
  */
 const getRecentPayments = asyncHandler(async (req, res) => {
-  const payments = await Payment.find({ isDeleted: { $ne: true } })
+  const tenantId = req.tenantId;
+  const query = { isDeleted: { $ne: true } };
+  if (tenantId) query.tenantId = tenantId;
+
+  const payments = await Payment.find(query)
     .sort({ createdAt: -1 })
     .limit(5)
     .select('borrowerName paymentMethod paymentAmount paymentDate paymentStatus');
@@ -255,7 +285,6 @@ const getRecentPayments = asyncHandler(async (req, res) => {
  * @route   GET /api/admin/dashboard/system-health
  */
 const getSystemHealth = asyncHandler(async (req, res) => {
-  // Standard high-quality health indicators
   sendSuccess(res, 'API ping success', {
     bureauConnectivity: 'Live',
     paymentGateway: 'Operational',
@@ -270,10 +299,16 @@ const getSystemHealth = asyncHandler(async (req, res) => {
  * @route   GET /api/admin/dashboard/realtime
  */
 const getRealtimeData = asyncHandler(async (req, res) => {
-  // Package a light snapshot for Socket listeners
-  const newApplications = await LoanApplication.countDocuments({ status: { $in: ['New', 'Submitted'] } });
-  const pendingPayments = await Payment.countDocuments({ paymentStatus: 'Pending' });
-  const activeLoans = await ActiveLoan.countDocuments({ loanStatus: 'Active', isDeleted: false });
+  const tenantId = req.tenantId;
+  const baseQuery = {};
+  if (tenantId) baseQuery.tenantId = tenantId;
+
+  const newApplications = await LoanApplication.countDocuments({ ...baseQuery, status: { $in: ['New', 'Submitted'] } });
+  const pendingPayments = await Payment.countDocuments({ ...baseQuery, paymentStatus: 'Pending' });
+
+  const activeLoanQuery = { loanStatus: 'Active', isDeleted: false };
+  if (tenantId) activeLoanQuery.tenantId = tenantId;
+  const activeLoans = await ActiveLoan.countDocuments(activeLoanQuery);
 
   sendSuccess(res, 'Realtime snap', {
     newApplications,

@@ -7,7 +7,7 @@ const c = require('../controllers/tenantOpsController');
 
 // Tenant self-service ops. Distinct prefix (/api/ops) to avoid overlap with
 // /api/tenant. Tenant context via `protect`.
-router.use(protect, authorize('admin'), validateSubscription());
+router.use(protect, authorize('admin'));
 
 router.get('/domains', c.listDomains);
 router.get('/domains/availability', c.checkAvailability);

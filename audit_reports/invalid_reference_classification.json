@@ -1,0 +1,424 @@
+{
+  "totalInvalid": 37,
+  "byCollection": {
+    "Payment": 1,
+    "RepaymentSchedule": 36
+  },
+  "classificationCounts": {
+    "UNRESOLVED_HISTORICAL_RECORD": 37
+  },
+  "patternCounts": {
+    "OBJECTID": 37
+  },
+  "tenantMismatchCount": 0,
+  "liveServicingImpactCount": 0,
+  "detailed": [
+    {
+      "collection": "Payment",
+      "recordId": "6a5f3cadf34932483c34f079",
+      "tenantId": "6a437fbbcc83008c43ffd498",
+      "loanIdRaw": "6a3b80fd625081fad6ea9942",
+      "pattern": "OBJECTID",
+      "classification": "UNRESOLVED_HISTORICAL_RECORD",
+      "tenantMismatch": false,
+      "affectsLive": false,
+      "queryEligibility": "NOT_INCLUDED_BY_CURRENT_QUERY"
+    },
+    {
+      "collection": "RepaymentSchedule",
+      "recordId": "6a2860cf2988bc1acbc20793",
+      "tenantId": "6a437fbbcc83008c43ffd498",
+      "loanIdRaw": "6a2860cf2988bc1acbc2078a",
+      "pattern": "OBJECTID",
+      "classification": "UNRESOLVED_HISTORICAL_RECORD",
+      "tenantMismatch": false,
+      "affectsLive": false,
+      "queryEligibility": "NOT_INCLUDED_BY_CURRENT_QUERY"
+    },
+    {
+      "collection": "RepaymentSchedule",
+      "recordId": "6a38faf967bd6ae85f4ddd6d",
+      "tenantId": "6a437fbbcc83008c43ffd498",
+      "loanIdRaw": "6a38faf867bd6ae85f4ddd66",
+      "pattern": "OBJECTID",
+      "classification": "UNRESOLVED_HISTORICAL_RECORD",
+      "tenantMismatch": false,
+      "affectsLive": false,
+      "queryEligibility": "NOT_INCLUDED_BY_CURRENT_QUERY"
+    },
+    {
+      "collection": "RepaymentSchedule",
+      "recordId": "6a281aa92988bc1acbc1fec8",
+      "tenantId": "6a437fbbcc83008c43ffd498",
+      "loanIdRaw": "6a281aa82988bc1acbc1feb6",
+      "pattern": "OBJECTID",
+      "classification": "UNRESOLVED_HISTORICAL_RECORD",
+      "tenantMismatch": false,
+      "affectsLive": false,
+      "queryEligibility": "NOT_INCLUDED_BY_CURRENT_QUERY"
+    },
+    {
+      "collection": "RepaymentSchedule",
+      "recordId": "6a63b6f3a59893a64e8a3e75",
+      "tenantId": "6a437fbbcc83008c43ffd498",
+      "loanIdRaw": "6a63b6f3a59893a64e8a3e64",
+      "pattern": "OBJECTID",
+      "classification": "UNRESOLVED_HISTORICAL_RECORD",
+      "tenantMismatch": false,
+      "affectsLive": false,
+      "queryEligibility": "NOT_INCLUDED_BY_CURRENT_QUERY"
+    },
+    {
+      "collection": "RepaymentSchedule",
+      "recordId": "6a35026f9cb275b3e7317a71",
+      "tenantId": "6a437fbbcc83008c43ffd498",
+      "loanIdRaw": "6a35026e9cb275b3e7317a69",
+      "pattern": "OBJECTID",
+      "classification": "UNRESOLVED_HISTORICAL_RECORD",
+      "tenantMismatch": false,
+      "affectsLive": false,
+      "queryEligibility": "NOT_INCLUDED_BY_CURRENT_QUERY"
+    },
+    {
+      "collection": "RepaymentSchedule",
+      "recordId": "6a0d950cca30d5ae319000c7",
+      "tenantId": "6a437fbbcc83008c43ffd498",
+      "loanIdRaw": "6a0d950cca30d5ae319000bb",
+      "pattern": "OBJECTID",
+      "classification": "UNRESOLVED_HISTORICAL_RECORD",
+      "tenantMismatch": false,
+      "affectsLive": false,
+      "queryEligibility": "NOT_INCLUDED_BY_CURRENT_QUERY"
+    },
+    {
+      "collection": "RepaymentSchedule",
+      "recordId": "6a38faf967bd6ae85f4ddd6f",
+      "tenantId": "6a437fbbcc83008c43ffd498",
+      "loanIdRaw": "6a38faf867bd6ae85f4ddd66",
+      "pattern": "OBJECTID",
+      "classification": "UNRESOLVED_HISTORICAL_RECORD",
+      "tenantMismatch": false,
+      "affectsLive": false,
+      "queryEligibility": "NOT_INCLUDED_BY_CURRENT_QUERY"
+    },
+    {
+      "collection": "RepaymentSchedule",
+      "recordId": "6a63b6f3a59893a64e8a3e76",
+      "tenantId": "6a437fbbcc83008c43ffd498",
+      "loanIdRaw": "6a63b6f3a59893a64e8a3e64",
+      "pattern": "OBJECTID",
+      "classification": "UNRESOLVED_HISTORICAL_RECORD",
+      "tenantMismatch": false,
+      "affectsLive": false,
+      "queryEligibility": "NOT_INCLUDED_BY_CURRENT_QUERY"
+    },
+    {
+      "collection": "RepaymentSchedule",
+      "recordId": "6a3b80fe625081fad6ea9949",
+      "tenantId": "6a437fbbcc83008c43ffd498",
+      "loanIdRaw": "6a3b80fd625081fad6ea9942",
+      "pattern": "OBJECTID",
+      "classification": "UNRESOLVED_HISTORICAL_RECORD",
+      "tenantMismatch": false,
+      "affectsLive": false,
+      "queryEligibility": "NOT_INCLUDED_BY_CURRENT_QUERY"
+    },
+    {
+      "collection": "RepaymentSchedule",
+      "recordId": "6a354b825524f5739f2edcf3",
+      "tenantId": "6a437fbbcc83008c43ffd498",
+      "loanIdRaw": "6a354b815524f5739f2edceb",
+      "pattern": "OBJECTID",
+      "classification": "UNRESOLVED_HISTORICAL_RECORD",
+      "tenantMismatch": false,
+      "affectsLive": false,
+      "queryEligibility": "NOT_INCLUDED_BY_CURRENT_QUERY"
+    },
+    {
+      "collection": "RepaymentSchedule",
+      "recordId": "6a63b6f3a59893a64e8a3e74",
+      "tenantId": "6a437fbbcc83008c43ffd498",
+      "loanIdRaw": "6a63b6f3a59893a64e8a3e64",
+      "pattern": "OBJECTID",
+      "classification": "UNRESOLVED_HISTORICAL_RECORD",
+      "tenantMismatch": false,
+      "affectsLive": false,
+      "queryEligibility": "NOT_INCLUDED_BY_CURRENT_QUERY"
+    },
+    {
+      "collection": "RepaymentSchedule",
+      "recordId": "6a354220b9f4fd7caa362c29",
+      "tenantId": "6a437fbbcc83008c43ffd498",
+      "loanIdRaw": "6a354220b9f4fd7caa362c20",
+      "pattern": "OBJECTID",
+      "classification": "UNRESOLVED_HISTORICAL_RECORD",
+      "tenantMismatch": false,
+      "affectsLive": false,
+      "queryEligibility": "NOT_INCLUDED_BY_CURRENT_QUERY"
+    },
+    {
+      "collection": "RepaymentSchedule",
+      "recordId": "6a3533689cb275b3e731835e",
+      "tenantId": "6a437fbbcc83008c43ffd498",
+      "loanIdRaw": "6a3533689cb275b3e7318355",
+      "pattern": "OBJECTID",
+      "classification": "UNRESOLVED_HISTORICAL_RECORD",
+      "tenantMismatch": false,
+      "affectsLive": false,
+      "queryEligibility": "NOT_INCLUDED_BY_CURRENT_QUERY"
+    },
+    {
+      "collection": "RepaymentSchedule",
+      "recordId": "6a3533689cb275b3e731835d",
+      "tenantId": "6a437fbbcc83008c43ffd498",
+      "loanIdRaw": "6a3533689cb275b3e7318355",
+      "pattern": "OBJECTID",
+      "classification": "UNRESOLVED_HISTORICAL_RECORD",
+      "tenantMismatch": false,
+      "affectsLive": false,
+      "queryEligibility": "NOT_INCLUDED_BY_CURRENT_QUERY"
+    },
+    {
+      "collection": "RepaymentSchedule",
+      "recordId": "6a38faf967bd6ae85f4ddd6e",
+      "tenantId": "6a437fbbcc83008c43ffd498",
+      "loanIdRaw": "6a38faf867bd6ae85f4ddd66",
+      "pattern": "OBJECTID",
+      "classification": "UNRESOLVED_HISTORICAL_RECORD",
+      "tenantMismatch": false,
+      "affectsLive": false,
+      "queryEligibility": "NOT_INCLUDED_BY_CURRENT_QUERY"
+    },
+    {
+      "collection": "RepaymentSchedule",
+      "recordId": "6a354220b9f4fd7caa362c27",
+      "tenantId": "6a437fbbcc83008c43ffd498",
+      "loanIdRaw": "6a354220b9f4fd7caa362c20",
+      "pattern": "OBJECTID",
+      "classification": "UNRESOLVED_HISTORICAL_RECORD",
+      "tenantMismatch": false,
+      "affectsLive": false,
+      "queryEligibility": "NOT_INCLUDED_BY_CURRENT_QUERY"
+    },
+    {
+      "collection": "RepaymentSchedule",
+      "recordId": "6a35026f9cb275b3e7317a70",
+      "tenantId": "6a437fbbcc83008c43ffd498",
+      "loanIdRaw": "6a35026e9cb275b3e7317a69",
+      "pattern": "OBJECTID",
+      "classification": "UNRESOLVED_HISTORICAL_RECORD",
+      "tenantMismatch": false,
+      "affectsLive": false,
+      "queryEligibility": "NOT_INCLUDED_BY_CURRENT_QUERY"
+    },
+    {
+      "collection": "RepaymentSchedule",
+      "recordId": "6a0d950cca30d5ae319000c3",
+      "tenantId": "6a437fbbcc83008c43ffd498",
+      "loanIdRaw": "6a0d950cca30d5ae319000bb",
+      "pattern": "OBJECTID",
+      "classification": "UNRESOLVED_HISTORICAL_RECORD",
+      "tenantMismatch": false,
+      "affectsLive": false,
+      "queryEligibility": "NOT_INCLUDED_BY_CURRENT_QUERY"
+    },
+    {
+      "collection": "RepaymentSchedule",
+      "recordId": "6a281aa92988bc1acbc1fec6",
+      "tenantId": "6a437fbbcc83008c43ffd498",
+      "loanIdRaw": "6a281aa82988bc1acbc1feb6",
+      "pattern": "OBJECTID",
+      "classification": "UNRESOLVED_HISTORICAL_RECORD",
+      "tenantMismatch": false,
+      "affectsLive": false,
+      "queryEligibility": "NOT_INCLUDED_BY_CURRENT_QUERY"
+    },
+    {
+      "collection": "RepaymentSchedule",
+      "recordId": "6a0d950cca30d5ae319000c4",
+      "tenantId": "6a437fbbcc83008c43ffd498",
+      "loanIdRaw": "6a0d950cca30d5ae319000bb",
+      "pattern": "OBJECTID",
+      "classification": "UNRESOLVED_HISTORICAL_RECORD",
+      "tenantMismatch": false,
+      "affectsLive": false,
+      "queryEligibility": "NOT_INCLUDED_BY_CURRENT_QUERY"
+    },
+    {
+      "collection": "RepaymentSchedule",
+      "recordId": "6a2860cf2988bc1acbc20791",
+      "tenantId": "6a437fbbcc83008c43ffd498",
+      "loanIdRaw": "6a2860cf2988bc1acbc2078a",
+      "pattern": "OBJECTID",
+      "classification": "UNRESOLVED_HISTORICAL_RECORD",
+      "tenantMismatch": false,
+      "affectsLive": false,
+      "queryEligibility": "NOT_INCLUDED_BY_CURRENT_QUERY"
+    },
+    {
+      "collection": "RepaymentSchedule",
+      "recordId": "6a0d950cca30d5ae319000c2",
+      "tenantId": "6a437fbbcc83008c43ffd498",
+      "loanIdRaw": "6a0d950cca30d5ae319000bb",
+      "pattern": "OBJECTID",
+      "classification": "UNRESOLVED_HISTORICAL_RECORD",
+      "tenantMismatch": false,
+      "affectsLive": false,
+      "queryEligibility": "NOT_INCLUDED_BY_CURRENT_QUERY"
+    },
+    {
+      "collection": "RepaymentSchedule",
+      "recordId": "6a68838dc8726046bdb80334",
+      "tenantId": "6a437fbbcc83008c43ffd498",
+      "loanIdRaw": "6a68838cc8726046bdb80326",
+      "pattern": "OBJECTID",
+      "classification": "UNRESOLVED_HISTORICAL_RECORD",
+      "tenantMismatch": false,
+      "affectsLive": false,
+      "queryEligibility": "NOT_INCLUDED_BY_CURRENT_QUERY"
+    },
+    {
+      "collection": "RepaymentSchedule",
+      "recordId": "6a3533689cb275b3e731835c",
+      "tenantId": "6a437fbbcc83008c43ffd498",
+      "loanIdRaw": "6a3533689cb275b3e7318355",
+      "pattern": "OBJECTID",
+      "classification": "UNRESOLVED_HISTORICAL_RECORD",
+      "tenantMismatch": false,
+      "affectsLive": false,
+      "queryEligibility": "NOT_INCLUDED_BY_CURRENT_QUERY"
+    },
+    {
+      "collection": "RepaymentSchedule",
+      "recordId": "6a354b825524f5739f2edcf4",
+      "tenantId": "6a437fbbcc83008c43ffd498",
+      "loanIdRaw": "6a354b815524f5739f2edceb",
+      "pattern": "OBJECTID",
+      "classification": "UNRESOLVED_HISTORICAL_RECORD",
+      "tenantMismatch": false,
+      "affectsLive": false,
+      "queryEligibility": "NOT_INCLUDED_BY_CURRENT_QUERY"
+    },
+    {
+      "collection": "RepaymentSchedule",
+      "recordId": "6a3b80fe625081fad6ea994b",
+      "tenantId": "6a437fbbcc83008c43ffd498",
+      "loanIdRaw": "6a3b80fd625081fad6ea9942",
+      "pattern": "OBJECTID",
+      "classification": "UNRESOLVED_HISTORICAL_RECORD",
+      "tenantMismatch": false,
+      "affectsLive": false,
+      "queryEligibility": "NOT_INCLUDED_BY_CURRENT_QUERY"
+    },
+    {
+      "collection": "RepaymentSchedule",
+      "recordId": "6a6c7b5e3f5e43f54624e3cc",
+      "tenantId": "6a437fbbcc83008c43ffd498",
+      "loanIdRaw": "6a6c7b5d3f5e43f54624e3be",
+      "pattern": "OBJECTID",
+      "classification": "UNRESOLVED_HISTORICAL_RECORD",
+      "tenantMismatch": false,
+      "affectsLive": false,
+      "queryEligibility": "NOT_INCLUDED_BY_CURRENT_QUERY"
+    },
+    {
+      "collection": "RepaymentSchedule",
+      "recordId": "6a0d950cca30d5ae319000c6",
+      "tenantId": "6a437fbbcc83008c43ffd498",
+      "loanIdRaw": "6a0d950cca30d5ae319000bb",
+      "pattern": "OBJECTID",
+      "classification": "UNRESOLVED_HISTORICAL_RECORD",
+      "tenantMismatch": false,
+      "affectsLive": false,
+      "queryEligibility": "NOT_INCLUDED_BY_CURRENT_QUERY"
+    },
+    {
+      "collection": "RepaymentSchedule",
+      "recordId": "6a35026f9cb275b3e7317a72",
+      "tenantId": "6a437fbbcc83008c43ffd498",
+      "loanIdRaw": "6a35026e9cb275b3e7317a69",
+      "pattern": "OBJECTID",
+      "classification": "UNRESOLVED_HISTORICAL_RECORD",
+      "tenantMismatch": false,
+      "affectsLive": false,
+      "queryEligibility": "NOT_INCLUDED_BY_CURRENT_QUERY"
+    },
+    {
+      "collection": "RepaymentSchedule",
+      "recordId": "6a354220b9f4fd7caa362c28",
+      "tenantId": "6a437fbbcc83008c43ffd498",
+      "loanIdRaw": "6a354220b9f4fd7caa362c20",
+      "pattern": "OBJECTID",
+      "classification": "UNRESOLVED_HISTORICAL_RECORD",
+      "tenantMismatch": false,
+      "affectsLive": false,
+      "queryEligibility": "NOT_INCLUDED_BY_CURRENT_QUERY"
+    },
+    {
+      "collection": "RepaymentSchedule",
+      "recordId": "6a0d950cca30d5ae319000c5",
+      "tenantId": "6a437fbbcc83008c43ffd498",
+      "loanIdRaw": "6a0d950cca30d5ae319000bb",
+      "pattern": "OBJECTID",
+      "classification": "UNRESOLVED_HISTORICAL_RECORD",
+      "tenantMismatch": false,
+      "affectsLive": false,
+      "queryEligibility": "NOT_INCLUDED_BY_CURRENT_QUERY"
+    },
+    {
+      "collection": "RepaymentSchedule",
+      "recordId": "6a281aa92988bc1acbc1fec7",
+      "tenantId": "6a437fbbcc83008c43ffd498",
+      "loanIdRaw": "6a281aa82988bc1acbc1feb6",
+      "pattern": "OBJECTID",
+      "classification": "UNRESOLVED_HISTORICAL_RECORD",
+      "tenantMismatch": false,
+      "affectsLive": false,
+      "queryEligibility": "NOT_INCLUDED_BY_CURRENT_QUERY"
+    },
+    {
+      "collection": "RepaymentSchedule",
+      "recordId": "6a2860cf2988bc1acbc20792",
+      "tenantId": "6a437fbbcc83008c43ffd498",
+      "loanIdRaw": "6a2860cf2988bc1acbc2078a",
+      "pattern": "OBJECTID",
+      "classification": "UNRESOLVED_HISTORICAL_RECORD",
+      "tenantMismatch": false,
+      "affectsLive": false,
+      "queryEligibility": "NOT_INCLUDED_BY_CURRENT_QUERY"
+    },
+    {
+      "collection": "RepaymentSchedule",
+      "recordId": "6a3b80fe625081fad6ea994a",
+      "tenantId": "6a437fbbcc83008c43ffd498",
+      "loanIdRaw": "6a3b80fd625081fad6ea9942",
+      "pattern": "OBJECTID",
+      "classification": "UNRESOLVED_HISTORICAL_RECORD",
+      "tenantMismatch": false,
+      "affectsLive": false,
+      "queryEligibility": "NOT_INCLUDED_BY_CURRENT_QUERY"
+    },
+    {
+      "collection": "RepaymentSchedule",
+      "recordId": "6a354b825524f5739f2edcf2",
+      "tenantId": "6a437fbbcc83008c43ffd498",
+      "loanIdRaw": "6a354b815524f5739f2edceb",
+      "pattern": "OBJECTID",
+      "classification": "UNRESOLVED_HISTORICAL_RECORD",
+      "tenantMismatch": false,
+      "affectsLive": false,
+      "queryEligibility": "NOT_INCLUDED_BY_CURRENT_QUERY"
+    },
+    {
+      "collection": "RepaymentSchedule",
+      "recordId": "6a7344a87b48bd2352138e62",
+      "tenantId": "6a437fbbcc83008c43ffd498",
+      "loanIdRaw": "6a7344a77b48bd2352138e54",
+      "pattern": "OBJECTID",
+      "classification": "UNRESOLVED_HISTORICAL_RECORD",
+      "tenantMismatch": false,
+      "affectsLive": false,
+      "queryEligibility": "NOT_INCLUDED_BY_CURRENT_QUERY"
+    }
+  ]
+}

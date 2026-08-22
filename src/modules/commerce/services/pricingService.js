@@ -1,7 +1,9 @@
+const mongoose = require('mongoose');
 const ApiPricing = require('../../../models/ApiPricing');
 
-/** Resolve configured pricing for a service. Returns null if not configured. */
+/** Resolve configured pricing for a service. Returns null if not configured or disconnected. */
 async function getPricing(service) {
+  if (mongoose.connection.readyState !== 1) return null;
   return ApiPricing.findOne({ service }).lean();
 }
 
