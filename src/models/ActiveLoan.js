@@ -37,6 +37,46 @@ const activeLoanSchema = new mongoose.Schema({
   totalPayableAmount: { type: Number, required: true },
   remainingBalance: { type: Number, required: true },
   
+  // Authoritative Financial Snapshots
+  financialSnapshot: {
+    principalAmount: { type: Number, default: 0 },
+    annualInterestRate: { type: Number, default: 0 },
+    monthlyInterestRate: { type: Number, default: 0 },
+    durationMonths: { type: Number, default: 1 },
+    interestType: { type: String, default: 'Reducing Balance' },
+    baseEmi: { type: Number, default: 0 },
+    pureInterestAmount: { type: Number, default: 0 },
+    initiationFeeAmount: { type: Number, default: 0 },
+    monthlyServiceFee: { type: Number, default: 0 },
+    totalServiceFeeAmount: { type: Number, default: 0 },
+    insuranceAmount: { type: Number, default: 0 },
+    vatAmount: { type: Number, default: 0 },
+    totalCostOfCreditAmount: { type: Number, default: 0 },
+    totalRepaymentAmount: { type: Number, default: 0 },
+    monthlyInstallmentAmount: { type: Number, default: 0 },
+    calculatedAt: { type: Date, default: Date.now },
+    calculatorVersion: { type: String, default: '2.0.0' }
+  },
+  agreementFinancialSnapshot: {
+    principalAmount: { type: Number, default: 0 },
+    annualInterestRate: { type: Number, default: 0 },
+    monthlyInterestRate: { type: Number, default: 0 },
+    durationMonths: { type: Number, default: 1 },
+    interestType: { type: String, default: 'Reducing Balance' },
+    baseEmi: { type: Number, default: 0 },
+    pureInterestAmount: { type: Number, default: 0 },
+    initiationFeeAmount: { type: Number, default: 0 },
+    monthlyServiceFee: { type: Number, default: 0 },
+    totalServiceFeeAmount: { type: Number, default: 0 },
+    insuranceAmount: { type: Number, default: 0 },
+    vatAmount: { type: Number, default: 0 },
+    totalCostOfCreditAmount: { type: Number, default: 0 },
+    totalRepaymentAmount: { type: Number, default: 0 },
+    monthlyInstallmentAmount: { type: Number, default: 0 },
+    calculatedAt: { type: Date },
+    calculatorVersion: { type: String }
+  },
+  
   nextDueDate: { type: Date },
   
   repaymentSchedule: [repaymentScheduleSchema],

@@ -667,6 +667,22 @@ exports.getCreditReportPdfController = async (req, res) => {
     const archive = await BureauReportArchive.findOne(query).sort({ pdfVersion: -1 });
 
     if (!archive) {
+      // Fallback: Check LoanApplication model directly
+      const LoanApplication = require('../../models/LoanApplication');
+      const app = await LoanApplication.findById(applicationId);
+      const pdfData = app?.consumerCreditReport?.pdfReport || app?.bureauVerification?.pdfReport || app?.consumerCreditReport?.reportPdfUrl;
+
+      if (pdfData) {
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', 'inline; filename="credit-report.pdf"');
+        if (pdfData.startsWith('data:application/pdf;base64,') || pdfData.startsWith('JVBERi')) {
+          const base64Str = pdfData.replace(/^data:application\/pdf;base64,/, '');
+          return res.send(Buffer.from(base64Str, 'base64'));
+        } else if (pdfData.startsWith('http')) {
+          const response = await axios({ method: 'get', url: pdfData, responseType: 'stream' });
+          return response.data.pipe(res);
+        }
+      }
       return res.status(404).json({ success: false, message: 'No credit report PDF found for this application.' });
     }
 
@@ -714,6 +730,22 @@ exports.downloadCreditReportController = async (req, res) => {
     const archive = await BureauReportArchive.findOne(query).sort({ pdfVersion: -1 });
 
     if (!archive) {
+      // Fallback: Check LoanApplication model directly
+      const LoanApplication = require('../../models/LoanApplication');
+      const app = await LoanApplication.findById(applicationId);
+      const pdfData = app?.consumerCreditReport?.pdfReport || app?.bureauVerification?.pdfReport || app?.consumerCreditReport?.reportPdfUrl;
+
+      if (pdfData) {
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', 'attachment; filename="credit-report.pdf"');
+        if (pdfData.startsWith('data:application/pdf;base64,') || pdfData.startsWith('JVBERi')) {
+          const base64Str = pdfData.replace(/^data:application\/pdf;base64,/, '');
+          return res.send(Buffer.from(base64Str, 'base64'));
+        } else if (pdfData.startsWith('http')) {
+          const response = await axios({ method: 'get', url: pdfData, responseType: 'stream' });
+          return response.data.pipe(res);
+        }
+      }
       return res.status(404).json({ success: false, message: 'No credit report PDF found for download.' });
     }
 

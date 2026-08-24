@@ -261,54 +261,7 @@ const getApplicationDetails = asyncHandler(async (req, res) => {
     const calculatedHash = generateVerificationHash(appDoc, borrowerDoc);
     if (calculatedHash !== appDoc.creditAssessment.verificationHash) {
       verificationHashValid = false;
-
-      // Invalidate all bureau / underwriting fields
-      appDoc.creditAssessment = {
-        verificationStatus: 'Pending', enquiryId: null, enquiryResultId: null,
-        matchedConsumers: [], reportReference: null, reportDate: null,
-        searchSuccess: false, responseCode: null, underwritingDecision: null,
-        riskSeverity: null, eligibilityStatus: null, workflowRoute: null,
-        completedAt: null, verificationHash: null
-      };
-      appDoc.consumerCreditScore    = null;
-      appDoc.consumerRiskCategory   = null;
-      appDoc.consumerDebtSummary    = { totalOutstandingDebt: null, totalMonthlyInstallment: null,
-        totalArrearsAmount: null, totalAdverseAmount: null, judgementCount: 0,
-        courtNoticeCount: 0, defaultListingCount: 0, highestMonthsInArrears: 0,
-        activeAccountsCount: 0, propertyOwnershipCount: 0 };
-      appDoc.fraudIndicators        = { safpsListed: false, deceasedStatus: false,
-        debtReviewStatus: false, homeAffairsVerified: false };
-      appDoc.affordabilityOutcome   = {};
-      appDoc.underwritingDecision   = null;
-      appDoc.workflowRoute          = null;
-      appDoc.bureauRecommendation   = null;
-      appDoc.bureauReportFetchedAt  = null;
-      appDoc.consumerCreditReport   = {
-        verificationStatus: 'Pending', completedAt: null, reportReference: null,
-        reportDate: null, enquiryId: null, enquiryResultId: null,
-        scoring: {}, debtSummary: {}, fraudIndicators: {},
-        underwriting: { level: null, riskCategory: null, reasons: [] },
-        consumerDetails: {}, accountSummary: [],
-        adverseInformation: { judgments: [], defaults: [], sequestration: [], adminOrders: [], rehabilitation: [] },
-        properties: [], directorships: [], addressHistory: [], contactHistory: [],
-        emailHistory: [], employmentHistory: [], enquiryHistory: [],
-        monthlyPaymentHistory: [], pdfReport: null, rawResponse: null, verificationHash: null
-      };
-      appDoc.consumerCreditReportRaw = null;
-      await appDoc.save();
-
-      try {
-        await VerificationLog.create({
-          borrowerId: borrowerDoc?._id || borrowerIdVal,
-          applicationId: appDoc._id,
-          verificationType: 'HASH_INVALIDATION',
-          status: 'SUCCESS',
-          initiatedBy: req.user?._id || borrowerIdVal,
-          requestPayload: { reason: 'Financial details or applicant data mismatch with bureau hash' }
-        });
-      } catch (logErr) {
-        console.error('⚠️ [Audit Log Error]: Failed to write HASH_INVALIDATION log:', logErr.message);
-      }
+      console.warn(`⚠️ [Verification Hash Mismatch] Application ${appDoc.applicationId || appDoc._id}: Stored hash does not match calculated hash. Flagging verificationHashValid=false without mutating stored records.`);
     }
   }
 
@@ -474,12 +427,43 @@ const approveApplication = asyncHandler(async (req, res) => {
     application.staffReviewLocked = true;
     application.staffReviewCompleted = true;
     application.reviewLockedAt = new Date();
+
+    const finalApprovedAmount = Number(approvedAmount || application.approvedAmount || application.requestedAmount);
+    const finalApprovedDuration = Number(finalDuration || application.adminDecision?.finalDuration || application.requestedDuration);
+    const finalInterestRate = (interestOverride !== undefined && interestOverride !== null && interestOverride !== '') 
+      ? Number(interestOverride) 
+      : Number(application.interestRate || 12.5);
+
+    // Dynamic Authoritative Recalculation on Approval
+    const settings = await SystemSettings.findOne().session(session);
+    const activeProducts = settings?.loanProducts || [];
+    const selectedProduct = activeProducts.find(p => p.name === application.loanType);
+
+    const { calculateLoanFinances } = require('../services/loanFinancialCalculator');
+    const approvedFinances = calculateLoanFinances({
+      amount: finalApprovedAmount,
+      duration: finalApprovedDuration,
+      interestRate: finalInterestRate,
+      interestType: selectedProduct?.interestType || application.financialSnapshot?.interestType || 'Reducing Balance',
+      settings,
+      selectedProduct
+    });
+
+    application.approvedAmount = finalApprovedAmount;
+    application.requestedDuration = finalApprovedDuration;
+    application.interestRate = approvedFinances.annualInterestRate;
+    application.processingFee = approvedFinances.initiationFeeAmount;
+    application.estimatedMonthlyEMI = approvedFinances.monthlyInstallmentAmount;
+    application.totalRepayment = approvedFinances.totalRepaymentAmount;
+    application.financialSnapshot = approvedFinances;
+    application.agreementFinancialSnapshot = approvedFinances;
+
     application.adminDecision = {
       decision: 'Approved',
       adminNotes,
-      approvedAmount: approvedAmount || application.requestedAmount,
-      finalDuration: finalDuration || application.requestedDuration,
-      interestOverride: interestOverride || application.interestRate,
+      approvedAmount: finalApprovedAmount,
+      finalDuration: finalApprovedDuration,
+      interestOverride: finalInterestRate,
       approvedBy: req.user._id,
       approvedDate: new Date(),
     };
@@ -1052,10 +1036,10 @@ const createApplicationOnBehalf = asyncHandler(async (req, res) => {
     });
   }
 
-  // Unique ID Check — exclude the current draft being finalized
+  // Unique ID Check — exclude the current draft being finalized as well as closed/settled/disbursed loans
   const duplicateQuery = { 
     idNumber: personal.idNumber, 
-    status: { $nin: ['Rejected', 'Draft', 'Pending Review'] } 
+    status: { $nin: ['Rejected', 'Draft', 'Pending Review', 'Settled', 'Closed', 'COMPLETED', 'Disbursed', 'DISBURSED', 'SETTLED'] } 
   };
   if (draft) {
     duplicateQuery._id = { $ne: draft._id };
@@ -1091,56 +1075,20 @@ const createApplicationOnBehalf = asyncHandler(async (req, res) => {
   const activeProducts = settings?.loanProducts || defaultProducts;
   const selectedProduct = activeProducts.find(p => p.name === loanType) || activeProducts[0];
   
-  const interestRate = Number(selectedProduct.defaultInterestRate ?? 12.5);
-  
-  // 1. Calculate Initiation Fee
-  let initiationFee = 0;
-  if (selectedProduct.processingFeeEnabled !== false && amount > 0) {
-    const feeType = settings?.initiationFeeType || 'Percentage';
-    const feeValue = Number(settings?.initiationFeeValue ?? 10);
-    if (feeType === 'Percentage') {
-      initiationFee = (amount * feeValue) / 100;
-    } else {
-      initiationFee = feeValue;
-    }
-  }
+  const { calculateLoanFinances } = require('../services/loanFinancialCalculator');
+  const finances = calculateLoanFinances({
+    amount,
+    duration,
+    interestRate: banking.interestRate || selectedProduct?.defaultInterestRate,
+    interestType: selectedProduct?.interestType,
+    settings,
+    selectedProduct
+  });
 
-  // 2. Monthly Service Fee
-  const serviceFeeRate = Number(settings?.monthlyServiceFee ?? 60);
-  const monthlyServiceFee = amount > 0 ? serviceFeeRate : 0;
-
-  // 3. Base EMI (Principal + Interest)
-  let baseEmi = 0;
-  if (selectedProduct.interestType === 'Flat Rate') {
-    const totalInterest = amount * (interestRate / 100);
-    baseEmi = (amount + totalInterest) / duration;
-  } else {
-    const monthlyRate = (interestRate / 100) / 12;
-    if (monthlyRate === 0) {
-      baseEmi = amount / duration;
-    } else {
-      baseEmi = (amount * monthlyRate * Math.pow(1 + monthlyRate, duration)) / (Math.pow(1 + monthlyRate, duration) - 1);
-    }
-  }
-
-  // 4. Credit Life Insurance
-  let creditLifeInsurance = 0;
-  if (selectedProduct.insuranceEnabled !== false && amount > 0) {
-    const insuranceRate = Number(settings?.creditLifeInsuranceRate ?? 1.2);
-    creditLifeInsurance = (amount * insuranceRate) / 100;
-  }
-
-  // 5. VAT on fees
-  let vatOnFees = 0;
-  if (selectedProduct.vatEnabled !== false && amount > 0) {
-    const vatRate = Number(settings?.vatPercentage ?? 15);
-    vatOnFees = (initiationFee + (monthlyServiceFee * duration)) * (vatRate / 100);
-  }
-
-  const totalRepayment = (baseEmi * duration) + initiationFee + (monthlyServiceFee * duration) + creditLifeInsurance + vatOnFees;
-  const estimatedMonthlyEMI = duration > 0 ? (totalRepayment / duration) : 0;
-  
-  const processingFee = initiationFee;
+  const interestRate = finances.annualInterestRate;
+  const processingFee = finances.initiationFeeAmount;
+  const estimatedMonthlyEMI = finances.monthlyInstallmentAmount;
+  const totalRepayment = finances.totalRepaymentAmount;
 
   // Compute credit-risk readiness fields
   const REQUIRED_DOC_TYPES = ['ID Document', 'Payslip', 'Bank Statement', 'Proof Of Address'];
@@ -1167,6 +1115,19 @@ const createApplicationOnBehalf = asyncHandler(async (req, res) => {
     else if (!creditConsentAccepted) applicationAuditStatus = 'Credit Consent Missing';
   }
 
+  const Borrower = require('../models/Borrower');
+  const borrowerDoc = await Borrower.findById(borrowerId);
+
+  // Identity Mismatch Gate
+  const verifiedId = borrowerDoc?.kycVerifiedIdNumber || draft?.kycVerification?.extractedOCRData?.IDNumber || (draft?.kycVerification?.verificationStatus === 'Verified' ? draft.idNumber : null);
+  if (verifiedId && verifiedId !== personal.idNumber) {
+    return res.status(400).json({
+      success: false,
+      code: 'IDENTITY_MISMATCH',
+      message: 'IDENTITY_MISMATCH: Borrower identity does not match the verified KYC record.'
+    });
+  }
+
   // --- START TRANSACTION ---
   const mongoose = require('mongoose');
   const session = await mongoose.startSession();
@@ -1188,6 +1149,8 @@ const createApplicationOnBehalf = asyncHandler(async (req, res) => {
       interestRate,
       estimatedMonthlyEMI,
       totalRepayment,
+      financialSnapshot: finances,
+      agreementFinancialSnapshot: finances,
       status: 'Submitted',
       confirmationAccepted: true,
       submittedAt: new Date(),
@@ -1197,6 +1160,38 @@ const createApplicationOnBehalf = asyncHandler(async (req, res) => {
       creditRiskReady,
       applicationAuditStatus,
     };
+
+    // Auto-link reusable verified KYC if borrower is verified
+    if (
+      borrowerDoc &&
+      borrowerDoc.kycStatus === 'VERIFIED' &&
+      borrowerDoc.kycVerifiedIdNumber === personal.idNumber &&
+      (!draft?.kycVerification || draft.kycVerification.verificationStatus !== 'Verified')
+    ) {
+      appData.kycVerification = {
+        verificationStatus: 'Verified',
+        responseStatusCode: 1,
+        responseMessage: 'Previously Verified Client (Reused Verification Profile)',
+        faceMatchScore: borrowerDoc.kycFaceMatchScore ?? 100,
+        verificationReference: borrowerDoc.kycProviderReference || `REUSED-${borrowerDoc._id}`,
+        verificationTimestamp: borrowerDoc.kycVerifiedAt || new Date(),
+        fraudFlags: [],
+        extractedOCRData: borrowerDoc.kycExtractedData || {},
+        verifiedPhotoUrl: borrowerDoc.kycPhotoUrl,
+        verifiedPhotoFileId: borrowerDoc.kycPhotoFileId,
+        reportPdfUrl: borrowerDoc.kycReportPdfUrl,
+        reportPdfPath: borrowerDoc.kycReportPdfPath,
+        reportReference: borrowerDoc.kycReportReference || borrowerDoc.kycProviderReference,
+        isReused: true,
+        originalVerifiedAt: borrowerDoc.kycVerifiedAt || new Date(),
+        reusedAt: new Date(),
+        idNumberMatch: true,
+        photoMatch: true,
+        verificationSource: borrowerDoc.kycProvider || 'DATANAMIX',
+        verificationProvider: borrowerDoc.kycProviderProduct || 'Profile Plus ID Photo Match',
+        rawApiResponse: borrowerDoc.kycSnapshot || {},
+      };
+    }
 
     let application;
     if (draft) {

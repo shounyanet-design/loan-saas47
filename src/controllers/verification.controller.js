@@ -22,8 +22,9 @@ const { callBankVerification }      = require('../services/datanamix/bankVerific
 const { callAMLVerification }       = require('../services/datanamix/amlVerification.service');
 const { getIO } = require('../socket/socketServer');
 const tenantContext = require('../tenancy/tenantContext');
-const { isDevelopmentSandboxBypassEnabled, isDevelopmentNextStepBypassEnabled } = require('../utils/devSandboxBypass');
 const reportDocumentService = require('../services/reportDocument.service');
+const path = require('path');
+const fs = require('fs/promises');
 
 const validateSAPhone = (phone) => {
   if (!phone) return false;
@@ -511,11 +512,11 @@ exports.verifyAMLController = async (req, res) => {
 /**
  * POST /api/verification/profile-id-photo-match
  * Multipart: idFrontImage (required), selfieImage (optional), idBackImage (optional)
- * Body fields: idNumber (required), applicationId (optional), borrowerId (optional)
+ * Body fields: idNumber (required), applicationId (optional), borrowerId (optional), forceReverification (optional)
  */
 exports.verifyBorrowerKYCController = async (req, res) => {
   const initiatedBy = req.user?._id;
-  const { idNumber, applicationId, borrowerId: bodyBorrowerId } = req.body;
+  const { idNumber, applicationId, borrowerId: bodyBorrowerId, forceReverification } = req.body;
 
   // borrowerId: use body value or fall back to the authenticated user's _id
   const borrowerId = bodyBorrowerId || initiatedBy;
@@ -524,6 +525,81 @@ exports.verifyBorrowerKYCController = async (req, res) => {
   return tenantContext.runWithTenant(tenantId, async () => {
     if (!idNumber) {
       return res.status(400).json({ success: false, message: 'idNumber is required' });
+    }
+
+    // ── 1. RETURNING BORROWER REUSABLE KYC CHECK ───────────────────────────
+    // If borrower is already verified in this tenant with matching ID and not forcing re-verification:
+    if (!forceReverification && borrowerId) {
+      let existingBorrower = null;
+      try {
+        existingBorrower = await Borrower.findById(borrowerId);
+      } catch (_) {}
+
+      if (!existingBorrower && idNumber) {
+        existingBorrower = await Borrower.findOne({ idNumber });
+      }
+
+      if (
+        existingBorrower &&
+        existingBorrower.kycStatus === 'VERIFIED' &&
+        existingBorrower.kycVerifiedIdNumber === idNumber
+      ) {
+        console.log(`[KYC Controller] Reusing existing valid KYC profile for borrower ${existingBorrower._id} (ID: ${idNumber})`);
+
+        const reusedSnapshot = {
+          verificationStatus: 'Verified',
+          responseStatusCode: 1,
+          responseMessage: 'Previously Verified Client (Reused Verification Profile)',
+          faceMatchScore: existingBorrower.kycFaceMatchScore ?? 100,
+          verificationReference: existingBorrower.kycProviderReference || `REUSED-${existingBorrower._id}`,
+          verificationTimestamp: existingBorrower.kycVerifiedAt || new Date(),
+          fraudFlags: [],
+          extractedOCRData: existingBorrower.kycExtractedData || {},
+          verifiedPhotoUrl: existingBorrower.kycPhotoUrl,
+          verifiedPhotoFileId: existingBorrower.kycPhotoFileId,
+          reportPdfUrl: existingBorrower.kycReportPdfUrl,
+          reportPdfPath: existingBorrower.kycReportPdfPath,
+          reportReference: existingBorrower.kycReportReference || existingBorrower.kycProviderReference,
+          isReused: true,
+          originalVerifiedAt: existingBorrower.kycVerifiedAt || new Date(),
+          reusedAt: new Date(),
+          idNumberMatch: true,
+          photoMatch: true,
+          verifiedBy: initiatedBy,
+          verificationSource: existingBorrower.kycProvider || 'DATANAMIX',
+          verificationProvider: existingBorrower.kycProviderProduct || 'Profile Plus ID Photo Match',
+          rawApiResponse: existingBorrower.kycSnapshot || {},
+        };
+
+        if (applicationId) {
+          await LoanApplication.findByIdAndUpdate(applicationId, {
+            kycVerification: reusedSnapshot,
+          });
+        }
+
+        await writeAuditLog({
+          borrowerId: existingBorrower._id,
+          applicationId: applicationId || undefined,
+          verificationType: 'KYC_PROFILE_PHOTO_REUSED',
+          status: 'SUCCESS',
+          initiatedBy,
+          requestPayload: { idNumber, clientReference: applicationId, isReused: true },
+          responsePayload: {
+            verificationStatus: 'Verified',
+            reusedFrom: existingBorrower._id,
+            verifiedAt: existingBorrower.kycVerifiedAt,
+          },
+        });
+
+        return res.status(200).json({
+          success: true,
+          message: 'Borrower identity already verified (reused verification profile)',
+          data: {
+            ...reusedSnapshot,
+            isReused: true,
+          },
+        });
+      }
     }
 
     const idFrontFile = req.files?.idFrontImage?.[0] || req.file;
@@ -547,6 +623,69 @@ exports.verifyBorrowerKYCController = async (req, res) => {
         clientReference: applicationId || `TEMP-${Date.now()}`,
       });
 
+      let verifiedPhotoUrl = null;
+      let verifiedPhotoFileId = null;
+      let reportPdfUrl = null;
+      let reportPdfPath = null;
+
+      if (result.verificationStatus === 'Verified') {
+        // ── 2. Persist Verified Client Photo ──────────────────────────────
+        try {
+          let photoBuffer = null;
+          if (result.verifiedPhotoBase64) {
+            photoBuffer = Buffer.from(result.verifiedPhotoBase64, 'base64');
+          } else if (idFrontFile.buffer) {
+            photoBuffer = idFrontFile.buffer;
+          }
+
+          if (photoBuffer) {
+            const uploadRes = await reportDocumentService.uploadReportToImageKit(
+              photoBuffer,
+              `kyc_photo_${idNumber}.jpg`,
+              `/borrowers/${borrowerId || 'unknown'}/kyc-photo`
+            );
+            if (uploadRes) {
+              verifiedPhotoUrl = uploadRes.url;
+              verifiedPhotoFileId = uploadRes.fileId;
+            } else if (photoBuffer.length < 500000) {
+              // Fallback to data URL if cloud storage not configured and photo size safe
+              verifiedPhotoUrl = `data:image/jpeg;base64,${photoBuffer.toString('base64')}`;
+            }
+          }
+        } catch (photoErr) {
+          console.warn(`[KYC Photo Archive Warning]: ${photoErr.message}`);
+        }
+
+        // ── 3. Persist Verification PDF Report ─────────────────────────────
+        try {
+          let pdfBuffer = null;
+          if (result.verificationPdf) {
+            pdfBuffer = Buffer.from(result.verificationPdf, 'base64');
+          }
+
+          const targetAppId = applicationId || (borrowerId ? `BRW-${borrowerId}` : `KYC-${Date.now()}`);
+          const diskDir = path.join(process.cwd(), 'storage', 'kyc-reports', targetAppId.toString());
+          await fs.mkdir(diskDir, { recursive: true }).catch(() => {});
+          const diskPath = path.join(diskDir, 'report.pdf');
+
+          if (pdfBuffer) {
+            await fs.writeFile(diskPath, pdfBuffer).catch(() => {});
+            reportPdfPath = path.join('storage', 'kyc-reports', targetAppId.toString(), 'report.pdf');
+
+            const uploadRes = await reportDocumentService.uploadReportToImageKit(
+              pdfBuffer,
+              'kyc_report.pdf',
+              `/compliance-reports/${targetAppId}/kyc`
+            );
+            if (uploadRes) {
+              reportPdfUrl = uploadRes.url;
+            }
+          }
+        } catch (pdfErr) {
+          console.warn(`[KYC PDF Archive Warning]: ${pdfErr.message}`);
+        }
+      }
+
       // ── Audit log ──────────────────────────────────────────────────────────
       await writeAuditLog({
         borrowerId,
@@ -560,26 +699,68 @@ exports.verifyBorrowerKYCController = async (req, res) => {
           verificationStatus: result.verificationStatus,
           faceMatchScore: result.faceMatchScore,
           verificationReference: result.verificationReference,
+          hasPhoto: !!verifiedPhotoUrl,
+          hasPdf: !!reportPdfUrl || !!reportPdfPath,
         },
       });
+
+      const kycSnapshotData = {
+        verificationStatus: result.verificationStatus,
+        responseStatusCode: result.responseStatusCode,
+        responseMessage: result.responseMessage,
+        faceMatchScore: result.faceMatchScore,
+        verificationReference: result.verificationReference,
+        verificationTimestamp: new Date(),
+        fraudFlags: result.fraudFlags || [],
+        extractedOCRData: result.extractedOCRData || {},
+        verificationPdf: result.verificationPdf,
+        verifiedPhotoUrl,
+        verifiedPhotoFileId,
+        reportPdfUrl,
+        reportPdfPath,
+        reportReference: result.verificationReference,
+        isReused: false,
+        originalVerifiedAt: new Date(),
+        reusedAt: null,
+        idNumberMatch: result.verificationStatus === 'Verified',
+        photoMatch: result.verificationStatus === 'Verified',
+        rawApiResponse: result.rawApiResponse || {},
+        verifiedBy: initiatedBy,
+        verificationSource: 'DATANAMIX',
+        verificationProvider: 'Profile Plus ID Photo Match',
+      };
 
       // ── Persist into LoanApplication if applicationId provided ─────────────
       if (applicationId) {
         await LoanApplication.findByIdAndUpdate(applicationId, {
-          'kycVerification.verificationStatus': result.verificationStatus,
-          'kycVerification.responseStatusCode': result.responseStatusCode,
-          'kycVerification.responseMessage': result.responseMessage,
-          'kycVerification.faceMatchScore': result.faceMatchScore,
-          'kycVerification.verificationReference': result.verificationReference,
-          'kycVerification.verificationTimestamp': new Date(),
-          'kycVerification.fraudFlags': result.fraudFlags,
-          'kycVerification.extractedOCRData': result.extractedOCRData,
-          'kycVerification.verificationPdf': result.verificationPdf,
-          'kycVerification.rawApiResponse': result.rawApiResponse,
-          'kycVerification.verifiedBy': initiatedBy,
-          'kycVerification.verificationSource': 'DATANAMIX',
-          'kycVerification.verificationProvider': 'Profile Plus ID Photo Match',
+          kycVerification: kycSnapshotData,
         });
+      }
+
+      // ── 4. Persist Reusable KYC onto Borrower Profile ─────────────────────
+      if (result.verificationStatus === 'Verified') {
+        const targetBId = borrowerId || application?.borrowerId;
+        if (targetBId) {
+          await Borrower.findOneAndUpdate(
+            { $or: [{ _id: targetBId }, { userId: targetBId }] },
+            {
+              kycStatus: 'VERIFIED',
+              kycVerifiedAt: new Date(),
+              kycProvider: 'DATANAMIX',
+              kycProviderProduct: 'Profile Plus ID Photo Match',
+              kycProviderReference: result.verificationReference,
+              kycVerifiedIdNumber: idNumber,
+              kycPhotoUrl: verifiedPhotoUrl,
+              kycPhotoFileId: verifiedPhotoFileId,
+              kycReportPdfUrl: reportPdfUrl,
+              kycReportPdfPath: reportPdfPath,
+              kycReportReference: result.verificationReference,
+              kycFaceMatchScore: result.faceMatchScore,
+              kycExtractedData: result.extractedOCRData,
+              kycSnapshot: result.rawApiResponse,
+            }
+          ).catch((err) => console.warn(`[Borrower KYC Save Warning]: ${err.message}`));
+        }
       }
 
       // ── Socket events ──────────────────────────────────────────────────────
@@ -590,6 +771,7 @@ exports.verifyBorrowerKYCController = async (req, res) => {
           io.to(roomId).emit('verification-completed', {
             applicationId,
             faceMatchScore: result.faceMatchScore,
+            verifiedPhotoUrl,
             message: 'Identity verified successfully',
           });
         } else {
@@ -615,16 +797,7 @@ exports.verifyBorrowerKYCController = async (req, res) => {
         message: result.verificationStatus === 'Verified'
           ? 'Identity verified successfully'
           : 'Identity verification failed',
-        data: {
-          verificationStatus: result.verificationStatus,
-          responseStatusCode: result.responseStatusCode,
-          responseMessage: result.responseMessage,
-          faceMatchScore: result.faceMatchScore,
-          verificationReference: result.verificationReference,
-          verificationTimestamp: new Date(),
-          fraudFlags: result.fraudFlags,
-          extractedOCRData: result.extractedOCRData,
-        },
+        data: kycSnapshotData,
       });
     } catch (error) {
       console.error('[KYC Controller Error]:', error.message);
@@ -1547,6 +1720,40 @@ exports.runCreditAssessmentController = async (req, res) => {
           }
         }
       }
+    }
+
+    // Idempotency check: Reuse existing completed creditAssessment unless forceRefresh is true
+    if (app && app.creditAssessment?.verificationStatus === 'Verified' && app.creditAssessment?.enquiryResultId && !req.body.forceRefresh) {
+      console.log(`[CREDIT Controller] Reusing existing valid creditAssessment for App: ${applicationId}`);
+      return res.status(200).json({
+        success: true,
+        reused: true,
+        data: {
+          verificationStatus: app.creditAssessment.verificationStatus,
+          enquiryId: app.creditAssessment.enquiryId,
+          enquiryResultId: app.creditAssessment.enquiryResultId,
+          matchedConsumers: app.creditAssessment.matchedConsumers,
+          reportReference: app.creditAssessment.reportReference,
+          reportDate: app.creditAssessment.reportDate,
+          searchSuccess: app.creditAssessment.searchSuccess,
+          responseCode: app.creditAssessment.responseCode,
+          underwritingDecision: app.creditAssessment.underwritingDecision,
+          riskSeverity: app.creditAssessment.riskSeverity,
+          eligibilityStatus: app.creditAssessment.eligibilityStatus,
+          workflowRoute: app.creditAssessment.workflowRoute,
+          completedAt: app.creditAssessment.completedAt,
+        }
+      });
+    }
+
+    const tenantId = req.tenantId || req.user?.tenantId || app?.tenantId;
+    if (tenantId) {
+      const idemKey = `idem-credit-search-${applicationId || idNumber}`;
+      await tokenService.charge(tenantId, 'credit_bureau', {
+        actor: initiatedBy,
+        idempotencyKey: idemKey,
+        metadata: { applicationId, idNumber }
+      });
     }
 
     console.log(`[CREDIT Controller] Starting consumer credit search — ID: ${idNumber}`);
@@ -2545,5 +2752,151 @@ exports.downloadBankReportController = async (req, res) => {
       message: 'Error downloading bank verification report PDF.'
     });
   }
+};
+
+/**
+ * @desc    Securely stream the KYC verification PDF
+ * @route   GET /api/verification/kyc-report-pdf/:applicationId
+ * @access  Private (Admin, Staff, Underwriter, Borrower)
+ */
+exports.getKycReportPdfController = async (req, res) => {
+  const { applicationId } = req.params;
+
+  try {
+    const app = await LoanApplication.findById(applicationId);
+    if (!app || !app.kycVerification) {
+      return res.status(404).json({
+        success: false,
+        code: 'REPORT_NOT_FOUND',
+        message: 'No KYC verification record found for this application.'
+      });
+    }
+
+    const pdfBuffer = await reportDocumentService.resolveKycReportPdf(app);
+    if (!pdfBuffer || pdfBuffer.length === 0) {
+      return res.status(404).json({
+        success: false,
+        code: 'REPORT_FILE_MISSING',
+        message: 'KYC PDF report file could not be retrieved or generated.'
+      });
+    }
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', 'inline; filename="kyc_verification_report.pdf"');
+    res.setHeader('Content-Length', pdfBuffer.length);
+
+    return res.status(200).send(pdfBuffer);
+  } catch (error) {
+    console.error('[STREAM KYC PDF ERROR]:', error.message);
+    return res.status(500).json({
+      success: false,
+      code: 'REPORT_GENERATION_FAILED',
+      message: 'Error streaming KYC report PDF.'
+    });
+  }
+};
+
+/**
+ * @desc    Securely download the KYC verification PDF
+ * @route   GET /api/verification/download-kyc-report/:applicationId
+ * @access  Private (Admin, Staff, Underwriter, Borrower)
+ */
+exports.downloadKycReportController = async (req, res) => {
+  const { applicationId } = req.params;
+
+  try {
+    const app = await LoanApplication.findById(applicationId);
+    if (!app || !app.kycVerification) {
+      return res.status(404).json({
+        success: false,
+        code: 'REPORT_NOT_FOUND',
+        message: 'No KYC verification record found for download.'
+      });
+    }
+
+    const pdfBuffer = await reportDocumentService.resolveKycReportPdf(app);
+    if (!pdfBuffer || pdfBuffer.length === 0) {
+      return res.status(404).json({
+        success: false,
+        code: 'REPORT_FILE_MISSING',
+        message: 'KYC PDF report file could not be retrieved or generated for download.'
+      });
+    }
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', 'attachment; filename="kyc-verification-report.pdf"');
+    res.setHeader('Content-Length', pdfBuffer.length);
+
+    return res.status(200).send(pdfBuffer);
+  } catch (error) {
+    console.error('[DOWNLOAD KYC PDF ERROR]:', error.message);
+    return res.status(500).json({
+      success: false,
+      code: 'REPORT_GENERATION_FAILED',
+      message: 'Error downloading KYC report PDF.'
+    });
+  }
+};
+
+/**
+ * @desc    Check if a borrower has reusable verified KYC within the current tenant
+ * @route   GET /api/verification/reusable-kyc/:borrowerId
+ * @access  Private
+ */
+exports.getReusableKycController = async (req, res) => {
+  const { borrowerId } = req.params;
+  const { idNumber } = req.query;
+  const tenantId = req.tenantId || req.user?.tenantId;
+
+  return tenantContext.runWithTenant(tenantId, async () => {
+    try {
+      let borrower = null;
+      if (borrowerId) {
+        borrower = await Borrower.findById(borrowerId);
+      }
+      if (!borrower && idNumber) {
+        borrower = await Borrower.findOne({ idNumber });
+      }
+
+      if (!borrower || borrower.kycStatus !== 'VERIFIED') {
+        return res.status(200).json({
+          success: true,
+          reusable: false,
+          message: 'Borrower does not have a verified KYC profile.',
+        });
+      }
+
+      if (idNumber && borrower.kycVerifiedIdNumber && borrower.kycVerifiedIdNumber !== idNumber) {
+        return res.status(200).json({
+          success: true,
+          reusable: false,
+          message: 'Borrower ID number changed. Re-verification required.',
+        });
+      }
+
+      return res.status(200).json({
+        success: true,
+        reusable: true,
+        data: {
+          kycStatus: borrower.kycStatus,
+          kycVerifiedAt: borrower.kycVerifiedAt,
+          kycProvider: borrower.kycProvider,
+          kycProviderReference: borrower.kycProviderReference,
+          kycVerifiedIdNumber: borrower.kycVerifiedIdNumber,
+          kycPhotoUrl: borrower.kycPhotoUrl,
+          kycReportPdfUrl: borrower.kycReportPdfUrl,
+          kycReportReference: borrower.kycReportReference,
+          kycFaceMatchScore: borrower.kycFaceMatchScore,
+          kycExtractedData: borrower.kycExtractedData,
+        },
+      });
+    } catch (err) {
+      console.error('[GET REUSABLE KYC ERROR]:', err.message);
+      return res.status(500).json({
+        success: false,
+        message: 'Failed to retrieve reusable KYC profile.',
+      });
+    }
+  });
 };
 

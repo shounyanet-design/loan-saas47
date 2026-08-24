@@ -91,6 +91,33 @@ const generateAgreement = async (loanId, adminId) => {
     logoUrl: companyProfile.logoUrl || (tenant && tenant.brandLogo) || ''
   };
 
+  // Authoritative Financial Snapshot for Agreement
+  const { calculateLoanFinances } = require('../../../services/loanFinancialCalculator');
+  const SystemSettings = require('../../../models/SystemSettings');
+  const settings = await SystemSettings.findOne();
+  const activeProducts = settings?.loanProducts || [];
+  const selectedProduct = activeProducts.find(p => p.name === application.loanType);
+
+  const amount = Number(application.approvedAmount || application.requestedAmount || 0);
+  const duration = Number(application.adminDecision?.finalDuration || application.requestedDuration || 1);
+  const rate = Number(application.adminDecision?.interestOverride || application.interestRate || 12.5);
+
+  const finances = calculateLoanFinances({
+    amount,
+    duration,
+    interestRate: rate,
+    interestType: selectedProduct?.interestType || application.financialSnapshot?.interestType || 'Reducing Balance',
+    settings,
+    selectedProduct
+  });
+
+  application.financialSnapshot = finances;
+  application.agreementFinancialSnapshot = finances;
+  application.approvedAmount = finances.principalAmount;
+  application.processingFee = finances.initiationFeeAmount;
+  application.estimatedMonthlyEMI = finances.monthlyInstallmentAmount;
+  application.totalRepayment = finances.totalRepaymentAmount;
+
   // Update application status and agreement metadata
   application.status = 'AGREEMENT_PENDING_VERIFICATION';
   
@@ -258,6 +285,16 @@ const signAgreement = async (loanApplicationId, otpCode, ip = '', userAgent = ''
   const addr = snapshot.registeredAddress || {};
   const formattedAddress = `${addr.addressLine1 || ''}${addr.addressLine2 ? ', ' + addr.addressLine2 : ''}, ${addr.city || ''}, ${addr.province || ''}, ${addr.postalCode || ''}, ${addr.country || ''}`;
 
+  const finSnap = (application.agreementFinancialSnapshot && application.agreementFinancialSnapshot.principalAmount)
+    ? application.agreementFinancialSnapshot
+    : (application.financialSnapshot && application.financialSnapshot.principalAmount ? application.financialSnapshot : null);
+
+  const approvedPrincipal = finSnap?.principalAmount ?? Number(application.approvedAmount || application.requestedAmount || 0);
+  const durationMonths = finSnap?.durationMonths ?? Number(application.adminDecision?.finalDuration || application.requestedDuration || 1);
+  const monthlyEmi = finSnap?.monthlyInstallmentAmount ?? Number(application.estimatedMonthlyEMI || 0);
+  const annualInterest = finSnap?.annualInterestRate ?? Number(application.interestRate || 12.5);
+  const totalRepay = finSnap?.totalRepaymentAmount ?? Number(application.totalRepayment || (monthlyEmi * durationMonths));
+
   const signedAtDate = new Date();
   const documentText = `========================================================================
 LOAN AGREEMENT & SIGNATURE RECEIPT
@@ -277,17 +314,18 @@ Email: ${snapshot.email}
 Registered Address: ${formattedAddress}
 
 LOAN PRINCIPAL DETAILS:
-Approved Amount: R ${Number(application.requestedAmount || 0).toLocaleString()}
-Duration: ${application.requestedDuration} Months
-Estimated EMI: R ${Math.round(application.estimatedMonthlyEMI || 0).toLocaleString()}
-Interest Rate: ${application.interestRate || '12'}% per annum
+Approved Amount: R ${approvedPrincipal.toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+Duration: ${durationMonths} Months
+Estimated EMI: R ${monthlyEmi.toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+Interest Rate: ${annualInterest.toFixed(2)}% per annum
+Total Repayable: R ${totalRepay.toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
 
 DIGITAL VERIFICATION & CONSENT RECORD:
 Signing Method: Multi-Factor Secure OTP Consent
 Consent Status: VERIFIED & COMPLETED
 Agreement Status: SIGNED
-Generated At: ${application.agreementGeneratedAt ? new Date(application.agreementGeneratedAt).toLocaleString() : new Date().toLocaleString()}
-Signed At: ${signedAtDate.toLocaleString()}
+Generated At: ${application.agreementGeneratedAt ? new Date(application.agreementGeneratedAt).toLocaleString('en-ZA') : new Date().toLocaleString('en-ZA')}
+Signed At: ${signedAtDate.toLocaleString('en-ZA')}
 
 SIGNATURE CREDIT PROVIDER:
 Authorized Signatory: ${snapshot.authorizedSignatory?.fullName || 'Aander'}

@@ -178,8 +178,79 @@ async function resolveBankReportPdf(app) {
   }
 }
 
+/**
+ * Resolves an authoritative KYC & Biometric Verification PDF Buffer
+ * Order of Resolution:
+ * 1. ImageKit Cloud Storage (if available)
+ * 2. Local Container Disk (if available)
+ * 3. Dynamic Snapshot Reconstruction via stored MongoDB metadata
+ *
+ * @param {Object} app - LoanApplication document or plain object
+ * @returns {Promise<Buffer|null>}
+ */
+async function resolveKycReportPdf(app) {
+  if (!app) return null;
+  const kyc = app.kycVerification;
+  if (!kyc) return null;
+
+  const appId = (app._id || app.applicationId || 'unknown').toString();
+
+  // 1. Try ImageKit Cloud URL if previously archived
+  if (kyc.reportPdfUrl) {
+    try {
+      const response = await axios.get(kyc.reportPdfUrl, { responseType: 'arraybuffer', timeout: 10000 });
+      if (response.data && response.data.length > 0) {
+        return Buffer.from(response.data);
+      }
+    } catch (err) {
+      console.warn(`[REPORT STORAGE] ImageKit fetch for KYC failed, falling back: ${err.message}`);
+    }
+  }
+
+  // 2. Try Local File on Disk
+  if (kyc.reportPdfPath) {
+    try {
+      const localPath = path.isAbsolute(kyc.reportPdfPath)
+        ? kyc.reportPdfPath
+        : path.join(__dirname, '..', '..', kyc.reportPdfPath);
+
+      if (fsSync.existsSync(localPath)) {
+        const fileBuf = await fs.readFile(localPath);
+        if (fileBuf && fileBuf.length > 0) {
+          return fileBuf;
+        }
+      }
+    } catch (err) {
+      console.warn(`[REPORT STORAGE] Local disk read for KYC failed, falling back: ${err.message}`);
+    }
+  }
+
+  // 3. Dynamic Self-Healing Reconstruction from Structured DB Snapshot
+  try {
+    const generatedPdfBuffer = await compliancePdfGenerator.generateKycReportPdf(app);
+
+    // Asynchronously archive to ImageKit to ensure future persistence
+    const folder = `/compliance-reports/${appId}/kyc`;
+    uploadReportToImageKit(generatedPdfBuffer, 'kyc_report.pdf', folder).then(uploadRes => {
+      if (uploadRes && app.save) {
+        if (app.kycVerification) {
+          app.kycVerification.reportPdfUrl = uploadRes.url;
+          app.kycVerification.reportPdfFileId = uploadRes.fileId;
+        }
+        app.save().catch(saveErr => console.warn(`[REPORT STORAGE] Could not persist KYC ImageKit URL: ${saveErr.message}`));
+      }
+    }).catch(() => {});
+
+    return generatedPdfBuffer;
+  } catch (err) {
+    console.error(`[REPORT STORAGE] Dynamic KYC generation failed: ${err.message}`);
+    return null;
+  }
+}
+
 module.exports = {
   uploadReportToImageKit,
   resolveAmlReportPdf,
   resolveBankReportPdf,
+  resolveKycReportPdf,
 };

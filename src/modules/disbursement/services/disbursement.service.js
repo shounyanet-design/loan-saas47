@@ -43,34 +43,45 @@ async function disburseLoan(applicationId, context) {
       return { existing: true, activeLoan };
     }
 
-    // Compute EMI schedule (reuse same logic as agreement signing)
-    const loanAmount = application.approvedAmount || application.requestedAmount;
-    const duration = application.adminDecision?.finalDuration || application.requestedDuration;
-    const rate = application.interestRate || application.adminDecision?.interestOverride || 0;
-    const monthlyRate = rate / 12 / 100;
-    const emiAmount = Math.round((loanAmount * monthlyRate) / (1 - Math.pow(1 + monthlyRate, -duration)));
-    const emiSchedule = [];
-    let remainingBal = loanAmount;
-    const startDate = new Date();
-    startDate.setMonth(startDate.getMonth() + 1);
-    for (let i = 1; i <= duration; i++) {
-      const interest = Math.round(remainingBal * monthlyRate);
-      const principal = emiAmount - interest;
-      remainingBal -= principal;
-      const dueDate = new Date(startDate);
-      dueDate.setMonth(dueDate.getMonth() + i - 1);
-      emiSchedule.push({
-        installmentNumber: i,
-        dueDate,
-        emiAmount,
-        principalAmount: principal,
-        interestAmount: interest,
-        paymentStatus: 'Pending'
+    // Resolve authoritative financial snapshot
+    const { calculateLoanFinances, generateRepaymentSchedule } = require('../../../services/loanFinancialCalculator');
+    let finSnap = (application.agreementFinancialSnapshot && application.agreementFinancialSnapshot.principalAmount)
+      ? application.agreementFinancialSnapshot
+      : (application.financialSnapshot && application.financialSnapshot.principalAmount ? application.financialSnapshot : null);
+
+    if (!finSnap) {
+      // Safe fallback for legacy records
+      const SystemSettings = require('../../../models/SystemSettings');
+      const settings = await SystemSettings.findOne().session(session);
+      const activeProducts = settings?.loanProducts || [];
+      const selectedProduct = activeProducts.find(p => p.name === application.loanType);
+
+      finSnap = calculateLoanFinances({
+        amount: application.approvedAmount || application.requestedAmount,
+        duration: application.adminDecision?.finalDuration || application.requestedDuration,
+        interestRate: application.interestRate || application.adminDecision?.interestOverride,
+        interestType: selectedProduct?.interestType || 'Reducing Balance',
+        settings,
+        selectedProduct
       });
     }
 
+    const loanAmount = finSnap.principalAmount;
+    const duration = finSnap.durationMonths;
+    const rate = finSnap.annualInterestRate;
+    const totalRepaymentAmount = finSnap.totalRepaymentAmount;
+    const totalPayableAmount = totalRepaymentAmount;
+    const emiAmount = finSnap.monthlyInstallmentAmount;
+
+    // Generate schedule with remainder absorption (guaranteed sum === totalPayableAmount)
+    const emiSchedule = generateRepaymentSchedule({
+      totalRepaymentAmount,
+      durationMonths: duration,
+      startDate: new Date()
+    });
+
     // Create ActiveLoan
-    activeLoan = await ActiveLoan.create([
+    activeLoan = (await ActiveLoan.create([
       {
         tenantId: context.tenantId,
         borrowerId: application.borrowerId,
@@ -84,8 +95,10 @@ async function disburseLoan(applicationId, context) {
         interestRate: rate,
         loanDurationMonths: duration,
         emiAmount,
-        totalPayableAmount: emiAmount * duration,
-        remainingBalance: emiAmount * duration,
+        totalPayableAmount,
+        remainingBalance: totalPayableAmount,
+        financialSnapshot: finSnap,
+        agreementFinancialSnapshot: finSnap,
         nextDueDate: emiSchedule[0].dueDate,
         repaymentSchedule: emiSchedule,
         disbursementStatus: 'DISBURSED',
@@ -94,9 +107,9 @@ async function disburseLoan(applicationId, context) {
         agreementStatus: 'SIGNED',
         disbursementReady: true
       }
-    ], { session })[0];
+    ], { session }))[0];
 
-    // Populate RepaymentSchedule collection for reporting
+    // Populate RepaymentSchedule collection for reporting & collection queries
     const repaymentEntries = emiSchedule.map(e => ({
       loanId: activeLoan._id,
       borrowerId: application.borrowerId,

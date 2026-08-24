@@ -82,8 +82,12 @@ const systemSettingsSchema = new mongoose.Schema({
   loanProducts: { type: [loanProductSchema], default: defaultProducts },
 
   // 2. NCR FEE CONFIGURATION ENGINE
-  initiationFeeType: { type: String, enum: ['Fixed Amount', 'Percentage'], default: 'Percentage' },
-  initiationFeeValue: { type: Number, default: 10 }, // 10% initiation fee
+  initiationFeeType: { type: String, enum: ['Fixed Amount', 'Percentage', 'NCR_STANDARD'], default: 'NCR_STANDARD' },
+  initiationFeeValue: { type: Number, default: 10 }, // legacy fallback
+  initiationFeeBaseFee: { type: Number, default: 165 }, // NCR R165 statutory base fee
+  initiationFeeThreshold: { type: Number, default: 1000 }, // NCR R1,000 statutory threshold
+  initiationFeeExcessPercentage: { type: Number, default: 10 }, // NCR 10% statutory excess rate
+  initiationFeeCap: { type: Number, default: 1050 }, // NCR R1,050 statutory maximum cap
   monthlyServiceFee: { type: Number, default: 60 },
   vatPercentage: { type: Number, default: 15 }, // 15% VAT in South Africa
   creditLifeInsuranceRate: { type: Number, default: 1.2 }, // 1.2% p.a.

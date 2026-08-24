@@ -44,65 +44,29 @@ exports.getLoanEstimate = asyncHandler(async (req, res, next) => {
   const activeProducts = settings?.loanProducts || defaultProducts;
   const selectedProduct = activeProducts.find(p => p.name === loanType) || activeProducts[0];
   
-  const interestRate = Number(selectedProduct.defaultInterestRate ?? 12.5);
-  
-  // 1. Calculate Initiation Fee
-  let initiationFee = 0;
-  if (selectedProduct.processingFeeEnabled !== false && pAmount > 0) {
-    const feeType = settings?.initiationFeeType || 'Percentage';
-    const feeValue = Number(settings?.initiationFeeValue ?? 10);
-    if (feeType === 'Percentage') {
-      initiationFee = (pAmount * feeValue) / 100;
-    } else {
-      initiationFee = feeValue;
-    }
-  }
-
-  // 2. Monthly Service Fee
-  const serviceFeeRate = Number(settings?.monthlyServiceFee ?? 60);
-  const monthlyServiceFee = pAmount > 0 ? serviceFeeRate : 0;
-
-  // 3. Base EMI (Principal + Interest)
-  let baseEmi = 0;
-  if (selectedProduct.interestType === 'Flat Rate') {
-    const totalInterest = pAmount * (interestRate / 100);
-    baseEmi = (pAmount + totalInterest) / pDuration;
-  } else {
-    const monthlyRate = (interestRate / 100) / 12;
-    if (monthlyRate === 0) {
-      baseEmi = pAmount / pDuration;
-    } else {
-      baseEmi = (pAmount * monthlyRate * Math.pow(1 + monthlyRate, pDuration)) / (Math.pow(1 + monthlyRate, pDuration) - 1);
-    }
-  }
-
-  // 4. Credit Life Insurance
-  let creditLifeInsurance = 0;
-  if (selectedProduct.insuranceEnabled !== false && pAmount > 0) {
-    const insuranceRate = Number(settings?.creditLifeInsuranceRate ?? 1.2);
-    creditLifeInsurance = (pAmount * insuranceRate) / 100;
-  }
-
-  // 5. VAT on fees
-  let vatOnFees = 0;
-  if (selectedProduct.vatEnabled !== false && pAmount > 0) {
-    const vatRate = Number(settings?.vatPercentage ?? 15);
-    vatOnFees = (initiationFee + (monthlyServiceFee * pDuration)) * (vatRate / 100);
-  }
-
-  const totalRepayment = (baseEmi * pDuration) + initiationFee + (monthlyServiceFee * pDuration) + creditLifeInsurance + vatOnFees;
-  const estimatedMonthlyEMI = pDuration > 0 ? (totalRepayment / pDuration) : 0;
+  const { calculateLoanFinances } = require('../services/loanFinancialCalculator');
+  const finances = calculateLoanFinances({
+    amount: pAmount,
+    duration: pDuration,
+    interestRate: selectedProduct?.defaultInterestRate,
+    interestType: selectedProduct?.interestType,
+    settings,
+    selectedProduct
+  });
 
   sendSuccess(res, 'Loan estimate generated', {
-    requestedAmount: amount,
-    processingFee: initiationFee,
-    interestRate,
-    estimatedMonthlyEMI,
-    totalRepayment,
-    duration,
-    creditLifeInsurance,
-    vatOnFees,
-    monthlyServiceFee: monthlyServiceFee * pDuration
+    requestedAmount: finances.principalAmount,
+    processingFee: finances.initiationFeeAmount,
+    interestRate: finances.annualInterestRate,
+    estimatedMonthlyEMI: finances.monthlyInstallmentAmount,
+    totalRepayment: finances.totalRepaymentAmount,
+    duration: finances.durationMonths,
+    creditLifeInsurance: finances.insuranceAmount,
+    vatOnFees: finances.vatAmount,
+    monthlyServiceFee: finances.totalServiceFeeAmount,
+    pureInterestAmount: finances.pureInterestAmount,
+    totalCostOfCredit: finances.totalCostOfCreditAmount,
+    financialSnapshot: finances
   });
 });
 
@@ -154,10 +118,10 @@ exports.createDraftApplication = asyncHandler(async (req, res, next) => {
     });
   }
 
-  // Block if there is already a live (non-Draft, non-Rejected) application
+  // Block if there is already a live pending application
   const conflict = await LoanApplication.findOne({
     idNumber,
-    status: { $nin: ['Rejected', 'Draft'] },
+    status: { $nin: ['Rejected', 'Draft', 'Settled', 'Closed', 'COMPLETED', 'Disbursed', 'DISBURSED', 'SETTLED'] },
   });
   if (conflict) {
     return sendError(res, 'An active application with this ID Number already exists', 400);
@@ -231,8 +195,11 @@ exports.submitFullApplication = asyncHandler(async (req, res, next) => {
     return sendError(res, 'Invalid South Africa phone format', 400);
   }
 
-  // Unique ID Check — exclude Draft status so pre-created drafts don't block submission
-  const existingApp = await LoanApplication.findOne({ idNumber: personal.idNumber, status: { $nin: ['Rejected', 'Draft'] } });
+  // Unique ID Check — exclude Draft, Settled and Disbursed statuses
+  const existingApp = await LoanApplication.findOne({
+    idNumber: personal.idNumber,
+    status: { $nin: ['Rejected', 'Draft', 'Settled', 'Closed', 'COMPLETED', 'Disbursed', 'DISBURSED', 'SETTLED'] },
+  });
   if (existingApp) {
     return sendError(res, 'An active application with this ID Number already exists', 400);
   }
@@ -254,56 +221,20 @@ exports.submitFullApplication = asyncHandler(async (req, res, next) => {
   const activeProducts = settings?.loanProducts || defaultProducts;
   const selectedProduct = activeProducts.find(p => p.name === loanType) || activeProducts[0];
   
-  const interestRate = Number(selectedProduct.defaultInterestRate ?? 12.5);
-  
-  // 1. Calculate Initiation Fee
-  let initiationFee = 0;
-  if (selectedProduct.processingFeeEnabled !== false && amount > 0) {
-    const feeType = settings?.initiationFeeType || 'Percentage';
-    const feeValue = Number(settings?.initiationFeeValue ?? 10);
-    if (feeType === 'Percentage') {
-      initiationFee = (amount * feeValue) / 100;
-    } else {
-      initiationFee = feeValue;
-    }
-  }
+  const { calculateLoanFinances } = require('../services/loanFinancialCalculator');
+  const finances = calculateLoanFinances({
+    amount,
+    duration,
+    interestRate: banking.interestRate || selectedProduct?.defaultInterestRate,
+    interestType: selectedProduct?.interestType,
+    settings,
+    selectedProduct
+  });
 
-  // 2. Monthly Service Fee
-  const serviceFeeRate = Number(settings?.monthlyServiceFee ?? 60);
-  const monthlyServiceFee = amount > 0 ? serviceFeeRate : 0;
-
-  // 3. Base EMI (Principal + Interest)
-  let baseEmi = 0;
-  if (selectedProduct.interestType === 'Flat Rate') {
-    const totalInterest = amount * (interestRate / 100);
-    baseEmi = (amount + totalInterest) / duration;
-  } else {
-    const monthlyRate = (interestRate / 100) / 12;
-    if (monthlyRate === 0) {
-      baseEmi = amount / duration;
-    } else {
-      baseEmi = (amount * monthlyRate * Math.pow(1 + monthlyRate, duration)) / (Math.pow(1 + monthlyRate, duration) - 1);
-    }
-  }
-
-  // 4. Credit Life Insurance
-  let creditLifeInsurance = 0;
-  if (selectedProduct.insuranceEnabled !== false && amount > 0) {
-    const insuranceRate = Number(settings?.creditLifeInsuranceRate ?? 1.2);
-    creditLifeInsurance = (amount * insuranceRate) / 100;
-  }
-
-  // 5. VAT on fees
-  let vatOnFees = 0;
-  if (selectedProduct.vatEnabled !== false && amount > 0) {
-    const vatRate = Number(settings?.vatPercentage ?? 15);
-    vatOnFees = (initiationFee + (monthlyServiceFee * duration)) * (vatRate / 100);
-  }
-
-  const totalRepayment = (baseEmi * duration) + initiationFee + (monthlyServiceFee * duration) + creditLifeInsurance + vatOnFees;
-  const estimatedMonthlyEMI = duration > 0 ? (totalRepayment / duration) : 0;
-  
-  const processingFee = initiationFee;
+  const interestRate = finances.annualInterestRate;
+  const processingFee = finances.initiationFeeAmount;
+  const estimatedMonthlyEMI = finances.monthlyInstallmentAmount;
+  const totalRepayment = finances.totalRepaymentAmount;
 
   // Compute credit-risk readiness fields
   const REQUIRED_DOC_TYPES = ['ID Document', 'Payslip', 'Bank Statement', 'Proof Of Address'];
@@ -335,6 +266,22 @@ exports.submitFullApplication = asyncHandler(async (req, res, next) => {
     if (isAutoReject || isHighRisk || isOfacMatch || isSdnMatch || isTerrorMatch) {
       return sendError(res, 'Application blocked due to compliance restrictions.', 403);
     }
+  }
+
+  const Borrower = require('../models/Borrower');
+  let borrowerProfile = await Borrower.findOne({ idNumber: personal.idNumber });
+  if (!borrowerProfile && req.user._id) {
+    borrowerProfile = await Borrower.findOne({ userId: req.user._id });
+  }
+
+  // Identity Mismatch Gate
+  const verifiedId = borrowerProfile?.kycVerifiedIdNumber || draft?.kycVerification?.extractedOCRData?.IDNumber || (draft?.kycVerification?.verificationStatus === 'Verified' ? draft.idNumber : null);
+  if (verifiedId && verifiedId !== personal.idNumber) {
+    return res.status(400).json({
+      success: false,
+      code: 'IDENTITY_MISMATCH',
+      message: 'IDENTITY_MISMATCH: Borrower identity does not match the verified KYC record.'
+    });
   }
 
   // Calculate final application audit status (Fix 3)
@@ -371,6 +318,8 @@ exports.submitFullApplication = asyncHandler(async (req, res, next) => {
       interestRate,
       estimatedMonthlyEMI,
       totalRepayment,
+      financialSnapshot: finances,
+      agreementFinancialSnapshot: finances,
       status: 'Submitted',
       confirmationAccepted: true,
       submittedAt: new Date(),
@@ -380,6 +329,38 @@ exports.submitFullApplication = asyncHandler(async (req, res, next) => {
       creditRiskReady,
       applicationAuditStatus,
     };
+
+    // Auto-link reusable verified KYC if borrower is verified
+    if (
+      borrowerProfile &&
+      borrowerProfile.kycStatus === 'VERIFIED' &&
+      borrowerProfile.kycVerifiedIdNumber === personal.idNumber &&
+      (!draft?.kycVerification || draft.kycVerification.verificationStatus !== 'Verified')
+    ) {
+      appData.kycVerification = {
+        verificationStatus: 'Verified',
+        responseStatusCode: 1,
+        responseMessage: 'Previously Verified Client (Reused Verification Profile)',
+        faceMatchScore: borrowerProfile.kycFaceMatchScore ?? 100,
+        verificationReference: borrowerProfile.kycProviderReference || `REUSED-${borrowerProfile._id}`,
+        verificationTimestamp: borrowerProfile.kycVerifiedAt || new Date(),
+        fraudFlags: [],
+        extractedOCRData: borrowerProfile.kycExtractedData || {},
+        verifiedPhotoUrl: borrowerProfile.kycPhotoUrl,
+        verifiedPhotoFileId: borrowerProfile.kycPhotoFileId,
+        reportPdfUrl: borrowerProfile.kycReportPdfUrl,
+        reportPdfPath: borrowerProfile.kycReportPdfPath,
+        reportReference: borrowerProfile.kycReportReference || borrowerProfile.kycProviderReference,
+        isReused: true,
+        originalVerifiedAt: borrowerProfile.kycVerifiedAt || new Date(),
+        reusedAt: new Date(),
+        idNumberMatch: true,
+        photoMatch: true,
+        verificationSource: borrowerProfile.kycProvider || 'DATANAMIX',
+        verificationProvider: borrowerProfile.kycProviderProduct || 'Profile Plus ID Photo Match',
+        rawApiResponse: borrowerProfile.kycSnapshot || {},
+      };
+    }
 
     let application;
     if (draft) {

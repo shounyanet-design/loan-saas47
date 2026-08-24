@@ -31,6 +31,46 @@ const loanApplicationSchema = new mongoose.Schema(
     totalRepayment: { type: Number },
     repaymentDate: { type: Date },
 
+    // Authoritative Itemized Financial Snapshots
+    financialSnapshot: {
+      principalAmount: { type: Number, default: 0 },
+      annualInterestRate: { type: Number, default: 0 },
+      monthlyInterestRate: { type: Number, default: 0 },
+      durationMonths: { type: Number, default: 1 },
+      interestType: { type: String, default: 'Reducing Balance' },
+      baseEmi: { type: Number, default: 0 },
+      pureInterestAmount: { type: Number, default: 0 },
+      initiationFeeAmount: { type: Number, default: 0 },
+      monthlyServiceFee: { type: Number, default: 0 },
+      totalServiceFeeAmount: { type: Number, default: 0 },
+      insuranceAmount: { type: Number, default: 0 },
+      vatAmount: { type: Number, default: 0 },
+      totalCostOfCreditAmount: { type: Number, default: 0 },
+      totalRepaymentAmount: { type: Number, default: 0 },
+      monthlyInstallmentAmount: { type: Number, default: 0 },
+      calculatedAt: { type: Date, default: Date.now },
+      calculatorVersion: { type: String, default: '2.0.0' }
+    },
+    agreementFinancialSnapshot: {
+      principalAmount: { type: Number, default: 0 },
+      annualInterestRate: { type: Number, default: 0 },
+      monthlyInterestRate: { type: Number, default: 0 },
+      durationMonths: { type: Number, default: 1 },
+      interestType: { type: String, default: 'Reducing Balance' },
+      baseEmi: { type: Number, default: 0 },
+      pureInterestAmount: { type: Number, default: 0 },
+      initiationFeeAmount: { type: Number, default: 0 },
+      monthlyServiceFee: { type: Number, default: 0 },
+      totalServiceFeeAmount: { type: Number, default: 0 },
+      insuranceAmount: { type: Number, default: 0 },
+      vatAmount: { type: Number, default: 0 },
+      totalCostOfCreditAmount: { type: Number, default: 0 },
+      totalRepaymentAmount: { type: Number, default: 0 },
+      monthlyInstallmentAmount: { type: Number, default: 0 },
+      calculatedAt: { type: Date },
+      calculatorVersion: { type: String }
+    },
+
     // Status Tracking
     status: {
       type: String,
@@ -181,6 +221,16 @@ const loanApplicationSchema = new mongoose.Schema(
       fraudFlags: [{ type: String }],
       extractedOCRData: { type: mongoose.Schema.Types.Mixed, default: {} },
       verificationPdf: { type: String },
+      verifiedPhotoUrl: { type: String },
+      verifiedPhotoFileId: { type: String },
+      reportPdfUrl: { type: String },
+      reportPdfPath: { type: String },
+      reportReference: { type: String },
+      isReused: { type: Boolean, default: false },
+      originalVerifiedAt: { type: Date },
+      reusedAt: { type: Date },
+      idNumberMatch: { type: Boolean },
+      photoMatch: { type: Boolean },
       rawApiResponse: { type: mongoose.Schema.Types.Mixed, default: {} },
       verifiedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
       overrideReason: { type: String },
@@ -601,12 +651,14 @@ const loanApplicationSchema = new mongoose.Schema(
 loanApplicationSchema.pre('validate', async function () {
   if (this.isNew && !this.applicationId) {
     try {
-      const lastApplication = await mongoose.model('LoanApplication').findOne({}, {}, { sort: { createdAt: -1 } });
+      const lastApplication = await mongoose
+        .model('LoanApplication')
+        .findOne({ applicationId: /^LAPP-\d+$/ }, {}, { sort: { applicationId: -1 } });
       let nextId = 1001;
       if (lastApplication && lastApplication.applicationId) {
-        const lastIdMatch = lastApplication.applicationId.match(/LAPP-(\d+)/);
+        const lastIdMatch = lastApplication.applicationId.match(/^LAPP-(\d+)$/);
         if (lastIdMatch) {
-          nextId = parseInt(lastIdMatch[1]) + 1;
+          nextId = parseInt(lastIdMatch[1], 10) + 1;
         }
       }
       this.applicationId = `LAPP-${nextId}`;

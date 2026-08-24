@@ -134,6 +134,57 @@ const borrowerSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
     },
+
+    // REUSABLE KYC & IDENTITY VERIFICATION PROFILE
+    kycStatus: {
+      type: String,
+      enum: ['UNVERIFIED', 'VERIFIED', 'FAILED', 'OVERRIDDEN', 'EXPIRED'],
+      default: 'UNVERIFIED',
+    },
+    kycVerifiedAt: {
+      type: Date,
+    },
+    kycProvider: {
+      type: String,
+      default: 'DATANAMIX',
+    },
+    kycProviderProduct: {
+      type: String,
+      default: 'Profile Plus ID Photo Match',
+    },
+    kycProviderReference: {
+      type: String,
+    },
+    kycVerifiedIdNumber: {
+      type: String,
+    },
+    kycPhotoUrl: {
+      type: String,
+    },
+    kycPhotoFileId: {
+      type: String,
+    },
+    kycReportPdfUrl: {
+      type: String,
+    },
+    kycReportPdfPath: {
+      type: String,
+    },
+    kycReportReference: {
+      type: String,
+    },
+    kycFaceMatchScore: {
+      type: Number,
+    },
+    kycExtractedData: {
+      type: mongoose.Schema.Types.Mixed,
+      default: {},
+    },
+    kycSnapshot: {
+      type: mongoose.Schema.Types.Mixed,
+      default: {},
+    },
+
     userId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',

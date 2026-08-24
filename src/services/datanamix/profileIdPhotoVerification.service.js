@@ -60,6 +60,32 @@ const normalizeResponse = (raw) => {
   // ── Determine verified status ─────────────────────────────────────────────────
   const verificationStatus = (isApiSuccess && statusCode === 1) ? 'Verified' : 'Failed';
 
+  // ── Client Verified Photo (base64 string if returned by HANIS/Biometrics) ──
+  const photoBase64 =
+    biometric?.ImageBase64 ??
+    biometric?.Photo ??
+    biometric?.Image ??
+    idvr?.ImageBase64 ??
+    idvr?.Photo ??
+    idvr?.IDPhoto ??
+    idvr?.Image ??
+    idvr?.VerifiedPhoto ??
+    idvr?.BiometricPhoto ??
+    vr?.ImageBase64 ??
+    vr?.Photo ??
+    vr?.IDPhoto ??
+    raw?.Photo ??
+    raw?.Image ??
+    raw?.IDPhoto ??
+    null;
+
+  const verificationReference =
+    raw?.Header?.ReportReference ??
+    vr?.ReportReference ??
+    vr?.HanisReference ??
+    biometric?.ReportReference ??
+    null;
+
   return {
     // ── Core result ──────────────────────────────────────────────────────────
     responseStatusCode: statusCode,
@@ -72,12 +98,12 @@ const normalizeResponse = (raw) => {
     // ── Biometric score ──────────────────────────────────────────────────────
     faceMatchScore,
 
-    // ── Report reference (sandbox: "DX-0-0") ─────────────────────────────────
-    verificationReference:
-      vr?.ReportReference ??
-      vr?.HanisReference ??
-      biometric?.ReportReference ??
-      null,
+    // ── Report reference (e.g. "DX-148-75147940") ────────────────────────────
+    verificationReference,
+
+    // ── Verified Client Photo & PDF ──────────────────────────────────────────
+    verifiedPhotoBase64: photoBase64,
+    verificationPdf: raw?.PDFReport ?? null,
 
     // ── OCR / ID-extracted identity fields ───────────────────────────────────
     // Maps BOTH new (Names/Surname) and legacy (FirstNames/LastName) field names
@@ -88,15 +114,14 @@ const normalizeResponse = (raw) => {
       DateOfBirth:         vr?.DateOfBirth                              ?? null,
       HanisStatus:         vr?.HanisStatus                              ?? null,
       IDNumberMatchStatus: vr?.IDNumberMatchStatus                      ?? null,
-      HanisIDMatch:        vr?.HanisIDMatch                             ?? null,
+      HanisIDMatch:        biometric?.HanisIDMatch ?? vr?.HanisIDMatch  ?? null,
       FaceMatchStatus:     biometric?.FaceMatchStatus                   ?? null,
-      ReportReference:     vr?.ReportReference ?? vr?.HanisReference   ?? null,
+      DeceasedStatus:      vr?.DeceasedStatus                           ?? null,
+      MarriageStatus:      vr?.MarriageStatus                           ?? null,
+      ReportReference:     verificationReference,
     },
 
     fraudFlags: [],
-
-    // ── PDF report (base64 string at root level) ─────────────────────────────
-    verificationPdf: raw?.PDFReport ?? null,
 
     // ── Preserved top-level fields ────────────────────────────────────────────
     header:       raw?.Header       ?? {},
@@ -134,7 +159,7 @@ const callProfileIdPhotoMatch = async ({
     ClientReference: reference,
     PDFEncryptionPassword: '0123456789',
     EnvironmentType: (process.env.DATANAMIX_ENVIRONMENT === 'PRODUCTION' || process.env.DATANAMIX_ENVIRONMENT === 'LIVE') ? 'LIVE' : 'SANDBOX',
-    OutputFormat: 'JSON',
+    OutputFormat: 'JSON_AND_PDF',
     CaptureImage: captureImage,
   };
 

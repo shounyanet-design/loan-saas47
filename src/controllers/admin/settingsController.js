@@ -44,6 +44,13 @@ const updateGeneralSettings = asyncHandler(async (req, res) => {
     maximumLoanAmount
   } = req.body;
 
+  if (processingFeeValue !== undefined) {
+    const pFee = Number(processingFeeValue);
+    if (isNaN(pFee) || pFee < 0 || pFee > 1050) {
+      return sendError(res, 'NCR Compliance Error: Processing fee cannot exceed statutory cap of R1,050.00 or be negative', 400);
+    }
+  }
+
   let settings = await getOrInitSettings();
 
   settings.defaultInterestRate = defaultInterestRate;
@@ -142,6 +149,42 @@ const resetSettings = asyncHandler(async (req, res) => {
 const updateBulkSettings = asyncHandler(async (req, res) => {
   let settings = await getOrInitSettings();
 
+  // Regulatory compliance checks for South African NCR statutory limits
+  if (req.body.initiationFeeBaseFee !== undefined) {
+    const base = Number(req.body.initiationFeeBaseFee);
+    if (isNaN(base) || base < 0 || base > 165) {
+      return sendError(res, 'NCR Compliance Error: Initiation fee base cannot exceed R165.00', 400);
+    }
+  }
+
+  if (req.body.initiationFeeThreshold !== undefined) {
+    const threshold = Number(req.body.initiationFeeThreshold);
+    if (isNaN(threshold) || threshold < 0) {
+      return sendError(res, 'NCR Compliance Error: Initiation fee threshold cannot be negative', 400);
+    }
+  }
+
+  if (req.body.initiationFeeExcessPercentage !== undefined) {
+    const excess = Number(req.body.initiationFeeExcessPercentage);
+    if (isNaN(excess) || excess < 0 || excess > 10) {
+      return sendError(res, 'NCR Compliance Error: Excess percentage above threshold cannot exceed 10%', 400);
+    }
+  }
+
+  if (req.body.initiationFeeCap !== undefined) {
+    const cap = Number(req.body.initiationFeeCap);
+    if (isNaN(cap) || cap < 0 || cap > 1050) {
+      return sendError(res, 'NCR Compliance Error: Maximum initiation fee cannot exceed statutory cap of R1,050.00', 400);
+    }
+  }
+
+  if (req.body.monthlyServiceFee !== undefined) {
+    const fee = Number(req.body.monthlyServiceFee);
+    if (isNaN(fee) || fee < 0 || fee > 60) {
+      return sendError(res, 'NCR Compliance Error: Monthly service fee cannot exceed statutory cap of R60.00/month', 400);
+    }
+  }
+
   Object.keys(req.body).forEach(key => {
     // If the key is a valid field on the document, update it
     if (key !== '_id' && key !== '__v') {
@@ -166,50 +209,24 @@ const calculateLivePreview = asyncHandler(async (req, res) => {
   const N = 12;
   const rate = Number(temp.defaultInterestRate || 12.5);
   
-  // 1. Calculate Initiation Fee
-  let initiationFee = 0;
-  const initType = temp.initiationFeeType || 'Percentage';
-  const initVal = Number(temp.initiationFeeValue || 10);
-  if (initType === 'Percentage') {
-    initiationFee = (P * initVal) / 100;
-  } else {
-    initiationFee = initVal;
-  }
-  
-  // 2. Monthly Service Fee
-  const monthlyServiceFee = Number(temp.monthlyServiceFee || 60);
-  
-  // 3. Insurance Fee (Credit Life Insurance)
-  const insuranceRate = Number(temp.creditLifeInsuranceRate || 1.2);
-  const insuranceFee = (P * insuranceRate) / 100;
-  
-  // 4. Base EMI (Principal + Interest)
-  let baseEmi = 0;
-  if (temp.interestType === 'Flat Rate') {
-    const totalInterest = P * (rate / 100);
-    baseEmi = (P + totalInterest) / N;
-  } else {
-    const monthlyRate = (rate / 100) / 12;
-    if (monthlyRate === 0) {
-      baseEmi = P / N;
-    } else {
-      baseEmi = (P * monthlyRate * Math.pow(1 + monthlyRate, N)) / (Math.pow(1 + monthlyRate, N) - 1);
+  const { calculateLoanFinances } = require('../../services/loanFinancialCalculator');
+  const finances = calculateLoanFinances({
+    amount: P,
+    duration: N,
+    interestRate: rate,
+    interestType: temp.interestType || 'Reducing Balance',
+    settings: temp,
+    selectedProduct: {
+      processingFeeEnabled: true,
+      insuranceEnabled: true,
+      vatEnabled: true,
+      interestType: temp.interestType || 'Reducing Balance'
     }
-  }
-  
-  // 5. Monthly EMI (EMI + Service Fee + Insurance / N)
-  const totalRepaymentBase = baseEmi * N + initiationFee + (monthlyServiceFee * N) + insuranceFee;
-  
-  // VAT on fees
-  const vatRate = Number(temp.vatPercentage || 15);
-  const vatOnFees = (initiationFee + (monthlyServiceFee * N)) * (vatRate / 100);
-  
-  const totalRepayment = totalRepaymentBase + vatOnFees;
-  const monthlyRepayment = totalRepayment / N;
+  });
 
   // Formulate response matching frontend expectations
   const response = {
-    monthlyRepayment: Math.round(monthlyRepayment),
+    monthlyRepayment: finances.monthlyInstallmentAmount,
     minPrincipal: temp.eligibleMinimumPrincipal || 1000,
     maxPrincipal: temp.eligibleMaximumPrincipal || 50000,
     baseInterest: `${rate}%`,
@@ -223,12 +240,15 @@ const calculateLivePreview = asyncHandler(async (req, res) => {
       penaltyBasis: temp.autoApplyLateFee ? 'Automated Overdue Run' : 'Manual Verification Trigger',
       reviewFlow: temp.enableAutoApprovalLogic ? 'Instant Automated Desk' : 'Manual Verification Gate'
     },
-    // New NCR parameters
-    initiationFee: Math.round(initiationFee),
-    monthlyServiceFee: Math.round(monthlyServiceFee),
-    insuranceFee: Math.round(insuranceFee),
-    vatOnFees: Math.round(vatOnFees),
-    totalRepayment: Math.round(totalRepayment)
+    // NCR parameters
+    initiationFee: finances.initiationFeeAmount,
+    monthlyServiceFee: finances.monthlyServiceFee,
+    insuranceFee: finances.insuranceAmount,
+    vatOnFees: finances.vatAmount,
+    totalRepayment: finances.totalRepaymentAmount,
+    pureInterestAmount: finances.pureInterestAmount,
+    totalCostOfCredit: finances.totalCostOfCreditAmount,
+    financialSnapshot: finances
   };
 
   sendSuccess(res, 'Live preview calculated', response);

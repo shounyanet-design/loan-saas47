@@ -26,6 +26,9 @@ const {
   resetCreditAssessmentController,
   getBankReportPdfController,
   downloadBankReportController,
+  getKycReportPdfController,
+  downloadKycReportController,
+  getReusableKycController,
 } = require('../controllers/verification.controller');
 
 const {
@@ -313,5 +316,26 @@ router.get('/aml-report-pdf/:applicationId', authorizeRoles('admin', 'staff'), g
  * @access  Private (Admin/Staff only)
  */
 router.get('/download-aml-report/:applicationId', authorizeRoles('admin', 'staff'), downloadAmlReportController);
+
+/**
+ * @route   GET /api/verification/kyc-report-pdf/:applicationId
+ * @desc    Securely stream the KYC verification PDF
+ * @access  Private
+ */
+router.get('/kyc-report-pdf/:applicationId', getKycReportPdfController);
+
+/**
+ * @route   GET /api/verification/download-kyc-report/:applicationId
+ * @desc    Securely download the KYC verification PDF
+ * @access  Private
+ */
+router.get('/download-kyc-report/:applicationId', downloadKycReportController);
+
+/**
+ * @route   GET /api/verification/reusable-kyc/:borrowerId
+ * @desc    Check reusable KYC status for a borrower
+ * @access  Private
+ */
+router.get('/reusable-kyc/:borrowerId', getReusableKycController);
 
 module.exports = router;

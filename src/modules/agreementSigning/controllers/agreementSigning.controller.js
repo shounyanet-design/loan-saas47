@@ -223,8 +223,18 @@ const getAgreementDocument = asyncHandler(async (req, res) => {
     const addr = snapshot.registeredAddress || {};
     const formattedAddress = `${addr.addressLine1 || ''}${addr.addressLine2 ? ', ' + addr.addressLine2 : ''}, ${addr.city || ''}, ${addr.province || ''}, ${addr.postalCode || ''}, ${addr.country || ''}`;
 
-    const documentText = application.signedAgreement || `========================================================================
-LOAN AGREEMENT & SIGNATURE RECEIPT
+    const finSnap = (application.agreementFinancialSnapshot && application.agreementFinancialSnapshot.principalAmount)
+      ? application.agreementFinancialSnapshot
+      : (application.financialSnapshot && application.financialSnapshot.principalAmount ? application.financialSnapshot : null);
+
+    const approvedPrincipal = finSnap?.principalAmount ?? Number(application.approvedAmount || application.requestedAmount || 0);
+    const durationMonths = finSnap?.durationMonths ?? Number(application.adminDecision?.finalDuration || application.requestedDuration || 1);
+    const monthlyEmi = finSnap?.monthlyInstallmentAmount ?? Number(application.estimatedMonthlyEMI || 0);
+    const annualInterest = finSnap?.annualInterestRate ?? Number(application.interestRate || 12.5);
+    const totalRepay = finSnap?.totalRepaymentAmount ?? Number(application.totalRepayment || (monthlyEmi * durationMonths));
+
+    const documentText = `========================================================================
+LOAN AGREEMENT & STATEMENT OF ACCOUNT
 ========================================================================
 Application ID: ${application.applicationId}
 Borrower Name: ${application.fullName}
@@ -241,17 +251,18 @@ Email: ${snapshot.email}
 Registered Address: ${formattedAddress}
 
 LOAN PRINCIPAL DETAILS:
-Approved Amount: R ${Number(application.requestedAmount || 0).toLocaleString()}
-Duration: ${application.requestedDuration} Months
-Estimated EMI: R ${Math.round(application.estimatedMonthlyEMI || 0).toLocaleString()}
-Interest Rate: ${application.interestRate || '12'}% per annum
+Approved Amount: R ${approvedPrincipal.toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+Duration: ${durationMonths} Months
+Estimated EMI: R ${monthlyEmi.toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+Interest Rate: ${annualInterest.toFixed(2)}% per annum
+Total Repayable: R ${totalRepay.toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
 
 DIGITAL VERIFICATION & CONSENT RECORD:
 Signing Method: Multi-Factor Secure OTP Consent
 Consent Status: ${application.borrowerConsentVerified ? 'VERIFIED & COMPLETED' : 'PENDING BORROWER SIGNATURE'}
 Agreement Status: ${application.agreementStatus || 'Not Generated'}
-Generated At: ${application.agreementGeneratedAt ? new Date(application.agreementGeneratedAt).toLocaleString() : '—'}
-Signed At: ${application.agreementSignedAt ? new Date(application.agreementSignedAt).toLocaleString() : '—'}
+Generated At: ${application.agreementGeneratedAt ? new Date(application.agreementGeneratedAt).toLocaleString('en-ZA') : '—'}
+Signed At: ${application.agreementSignedAt ? new Date(application.agreementSignedAt).toLocaleString('en-ZA') : '—'}
 
 Thank you for choosing ${snapshot.legalName}.
 ========================================================================`;
