@@ -103,30 +103,6 @@ exports.createDraftApplication = asyncHandler(async (req, res, next) => {
     ? borrowerId
     : req.user._id;
 
-  // Return existing draft for this borrower + idNumber without creating a duplicate
-  const existing = await LoanApplication.findOne({
-    borrowerId: targetBorrowerId,
-    idNumber,
-    status: 'Draft',
-  });
-
-  if (existing) {
-    console.log(`[APPLICATION] Using existing draft: ${existing._id}`);
-    return sendSuccess(res, 'Existing draft found', {
-      applicationId: existing._id,
-      applicationRef: existing.applicationId,
-    });
-  }
-
-  // Block if there is already a live pending application
-  const conflict = await LoanApplication.findOne({
-    idNumber,
-    status: { $nin: ['Rejected', 'Draft', 'Settled', 'Closed', 'COMPLETED', 'Disbursed', 'DISBURSED', 'SETTLED'] },
-  });
-  if (conflict) {
-    return sendError(res, 'An active application with this ID Number already exists', 400);
-  }
-
   let initialKycVerification = undefined;
   
   // Inherit reusable KYC profile if it exists
@@ -160,6 +136,34 @@ exports.createDraftApplication = asyncHandler(async (req, res, next) => {
       verificationProvider: borrowerRecord.kycProviderProduct || 'Profile Plus ID Photo Match',
       rawApiResponse: borrowerRecord.kycSnapshot || {},
     };
+  }
+
+  // Return existing draft for this borrower + idNumber without creating a duplicate
+  const existing = await LoanApplication.findOne({
+    borrowerId: targetBorrowerId,
+    idNumber,
+    status: 'Draft',
+  });
+
+  if (existing) {
+    if (initialKycVerification && (!existing.kycVerification || existing.kycVerification.verificationStatus !== 'Verified')) {
+      existing.kycVerification = initialKycVerification;
+      await existing.save();
+    }
+    console.log(`[APPLICATION] Using existing draft: ${existing._id}`);
+    return sendSuccess(res, 'Existing draft found', {
+      applicationId: existing._id,
+      applicationRef: existing.applicationId,
+    });
+  }
+
+  // Block if there is already a live pending application
+  const conflict = await LoanApplication.findOne({
+    idNumber,
+    status: { $nin: ['Rejected', 'Draft', 'Settled', 'Closed', 'COMPLETED', 'Disbursed', 'DISBURSED', 'SETTLED'] },
+  });
+  if (conflict) {
+    return sendError(res, 'An active application with this ID Number already exists', 400);
   }
 
   const draft = await LoanApplication.create({
