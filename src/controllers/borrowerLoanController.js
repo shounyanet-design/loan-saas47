@@ -131,7 +131,10 @@ exports.createDraftApplication = asyncHandler(async (req, res, next) => {
   
   // Inherit reusable KYC profile if it exists
   const Borrower = require('../models/Borrower');
-  const borrowerRecord = await Borrower.findOne({ _id: targetBorrowerId, idNumber });
+  const borrowerRecord = await Borrower.findOne({
+    $or: [{ _id: targetBorrowerId }, { userId: targetBorrowerId }],
+    idNumber
+  });
   if (borrowerRecord && borrowerRecord.kycStatus === 'VERIFIED') {
     initialKycVerification = {
       verificationStatus: 'Verified',
