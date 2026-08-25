@@ -135,13 +135,12 @@ exports.fetchConsumerCreditReportController = async (req, res) => {
       });
     }
 
-    const basicSalary = application.affordabilityOutcome?.income?.basicSalary || borrower.monthlyNetSalary || 0;
-    if (basicSalary <= 0) {
-      return res.status(400).json({
-        success: false,
-        message: 'Affordability details must be completed before fetching report.'
-      });
-    }
+    const basicSalary = 
+      application.affordabilityOutcome?.income?.basicSalary ||
+      application.affordabilityOutcome?.income?.totalIncome ||
+      application.affordabilityOutcome?.incomeAssessed ||
+      borrower.monthlyNetSalary ||
+      0;
 
     // 4. Fetch Admin Lending Settings
     const settings = (await SystemSettings.findOne()) || {};
@@ -217,7 +216,12 @@ exports.fetchConsumerCreditReportController = async (req, res) => {
     });
 
     // 6. Run UNDERWRITING RULE ENGINE
-    const borrowerIncome = borrower.monthlyNetSalary || 0;
+    const borrowerIncome = 
+      application.affordabilityOutcome?.income?.totalIncome ||
+      application.affordabilityOutcome?.income?.basicSalary ||
+      application.affordabilityOutcome?.incomeAssessed ||
+      borrower.monthlyNetSalary ||
+      0;
     const maxDti = settings.maxDtiPercentage || 40;
     const warningDti = settings.affordabilityWarningThreshold || 35;
     const minSalary = settings.minSalaryRequirement || 5000;
@@ -363,6 +367,7 @@ exports.fetchConsumerCreditReportController = async (req, res) => {
 
     // 9. Store COMPLETE bureau report & outcomes inside DB
     const affordabilityOutcome = {
+      ...(application.affordabilityOutcome || {}),
       incomeAssessed: borrowerIncome,
       bureauMonthlyDebt: totalMonthlyInstallment,
       dtiCalculated: dti,
