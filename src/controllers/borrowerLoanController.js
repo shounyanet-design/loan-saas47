@@ -127,6 +127,38 @@ exports.createDraftApplication = asyncHandler(async (req, res, next) => {
     return sendError(res, 'An active application with this ID Number already exists', 400);
   }
 
+  let initialKycVerification = undefined;
+  
+  // Inherit reusable KYC profile if it exists
+  const Borrower = require('../models/Borrower');
+  const borrowerRecord = await Borrower.findOne({ _id: targetBorrowerId, idNumber });
+  if (borrowerRecord && borrowerRecord.kycStatus === 'VERIFIED') {
+    initialKycVerification = {
+      verificationStatus: 'Verified',
+      responseStatusCode: 1,
+      responseMessage: 'Previously Verified Client (Reused Verification Profile)',
+      faceMatchScore: borrowerRecord.kycFaceMatchScore ?? 100,
+      verificationReference: borrowerRecord.kycProviderReference || `REUSED-${borrowerRecord._id}`,
+      verificationTimestamp: borrowerRecord.kycVerifiedAt || new Date(),
+      fraudFlags: [],
+      extractedOCRData: borrowerRecord.kycExtractedData || {},
+      verifiedPhotoUrl: borrowerRecord.kycPhotoUrl,
+      verifiedPhotoFileId: borrowerRecord.kycPhotoFileId,
+      reportPdfUrl: borrowerRecord.kycReportPdfUrl,
+      reportPdfPath: borrowerRecord.kycReportPdfPath,
+      reportReference: borrowerRecord.kycReportReference || borrowerRecord.kycProviderReference,
+      isReused: true,
+      originalVerifiedAt: borrowerRecord.kycVerifiedAt || new Date(),
+      reusedAt: new Date(),
+      idNumberMatch: true,
+      photoMatch: true,
+      verifiedBy: targetBorrowerId,
+      verificationSource: borrowerRecord.kycProvider || 'DATANAMIX',
+      verificationProvider: borrowerRecord.kycProviderProduct || 'Profile Plus ID Photo Match',
+      rawApiResponse: borrowerRecord.kycSnapshot || {},
+    };
+  }
+
   const draft = await LoanApplication.create({
     borrowerId:          targetBorrowerId,
     fullName:            fullName            || 'Draft',
@@ -136,6 +168,7 @@ exports.createDraftApplication = asyncHandler(async (req, res, next) => {
     dateOfBirth:         dateOfBirth         ? new Date(dateOfBirth) : new Date('1990-01-01'),
     residentialAddress:  residentialAddress  || 'Draft Address',
     status:              'Draft',
+    kycVerification:     initialKycVerification
   });
 
   console.log(`[APPLICATION] Draft created: ${draft._id}`);
