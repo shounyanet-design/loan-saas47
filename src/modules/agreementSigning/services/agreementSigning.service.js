@@ -262,28 +262,47 @@ const signAgreement = async (loanApplicationId, otpCode, ip = '', userAgent = ''
   await verifyOTP(application.borrowerId, application._id, otpCode);
   console.log(`[AgreementService] OTP verified successfully for agreement ${application.applicationId} by borrower.`);
 
-  const hasSnapshot = application.agreementCreditProviderSnapshot && application.agreementCreditProviderSnapshot.legalName;
-  const snapshot = hasSnapshot ? application.agreementCreditProviderSnapshot : {
-    legalName: 'Point.47 Finance Pty Ltd',
-    cipcRegistrationNumber: '2021/098765/07',
-    ncrRegistrationNumber: 'NCRCP12345',
-    telephone: '+27 11 456 7890',
-    email: 'info@point47.co.za',
-    registeredAddress: {
-      addressLine1: 'Platform default office address',
-      city: 'Johannesburg',
-      province: 'Gauteng',
-      postalCode: '2000',
-      country: 'South Africa'
-    },
-    authorizedSignatory: {
-      fullName: 'Aander',
-      designation: 'Authorized Signatory'
-    }
-  };
+  let snapshot = (application.agreementCreditProviderSnapshot && application.agreementCreditProviderSnapshot.legalName)
+    ? application.agreementCreditProviderSnapshot
+    : null;
+
+  if (!snapshot) {
+    const Tenant = require('../../../models/Tenant');
+    const tenantContext = require('../../../tenancy/tenantContext');
+    const tenant = await tenantContext.runAsSystem(() => Tenant.findById(application.tenantId).lean());
+    const cp = tenant?.companyProfile || {};
+    snapshot = {
+      legalName: cp.legalName || tenant?.companyName || 'Credit Provider',
+      cipcRegistrationNumber: cp.cipcRegistrationNumber || '',
+      ncrRegistrationNumber: cp.ncrRegistrationNumber || '',
+      telephone: cp.telephone || tenant?.phone || '',
+      email: cp.email || tenant?.email || '',
+      registeredAddress: cp.registeredAddress || {
+        addressLine1: '',
+        city: '',
+        province: '',
+        postalCode: '',
+        country: ''
+      },
+      authorizedSignatory: cp.authorizedSignatory || {
+        fullName: 'Authorized Signatory',
+        designation: 'Authorized Signatory'
+      }
+    };
+    // Save snapshot on application
+    application.agreementCreditProviderSnapshot = snapshot;
+  }
 
   const addr = snapshot.registeredAddress || {};
-  const formattedAddress = `${addr.addressLine1 || ''}${addr.addressLine2 ? ', ' + addr.addressLine2 : ''}, ${addr.city || ''}, ${addr.province || ''}, ${addr.postalCode || ''}, ${addr.country || ''}`;
+  const addressParts = [
+    addr.addressLine1,
+    addr.addressLine2,
+    addr.city,
+    addr.province,
+    addr.postalCode,
+    addr.country
+  ].filter(Boolean);
+  const formattedAddress = addressParts.length > 0 ? addressParts.join(', ') : 'Registered Address';
 
   const finSnap = (application.agreementFinancialSnapshot && application.agreementFinancialSnapshot.principalAmount)
     ? application.agreementFinancialSnapshot

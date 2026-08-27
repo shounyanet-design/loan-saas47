@@ -119,6 +119,17 @@ const getAgreementStatus = asyncHandler(async (req, res) => {
           : 'Not Generated'
     );
 
+    // Resolve tenant credit provider details
+    let creditProviderProfile = application.agreementCreditProviderSnapshot;
+    if (!creditProviderProfile || !creditProviderProfile.legalName) {
+      const Tenant = require('../../../models/Tenant');
+      const tenantContext = require('../../../tenancy/tenantContext');
+      const tenant = await tenantContext.runAsSystem(() => Tenant.findById(application.tenantId).lean());
+      if (tenant && tenant.companyProfile) {
+        creditProviderProfile = tenant.companyProfile;
+      }
+    }
+
     return sendSuccess(res, 'Agreement status fetched successfully', {
       status: application.status,
       agreementGenerated: Boolean(application.agreementGenerated || application.agreementGeneratedAt),
@@ -128,6 +139,8 @@ const getAgreementStatus = asyncHandler(async (req, res) => {
       borrowerConsentVerified: Boolean(application.borrowerConsentVerified),
       otpVerificationStatus: application.otpVerificationStatus || 'Pending',
       otpHistory,
+      creditProviderProfile: creditProviderProfile || null,
+      agreementCreditProviderSnapshot: creditProviderProfile || null,
     });
   } catch (error) {
     return sendError(res, error.message, 500);
@@ -200,28 +213,45 @@ const getAgreementDocument = asyncHandler(async (req, res) => {
       return sendError(res, 'Loan application not found', 404);
     }
 
-    const hasSnapshot = application.agreementCreditProviderSnapshot && application.agreementCreditProviderSnapshot.legalName;
-    const snapshot = hasSnapshot ? application.agreementCreditProviderSnapshot : {
-      legalName: 'Point.47 Finance Pty Ltd',
-      cipcRegistrationNumber: '2021/098765/07',
-      ncrRegistrationNumber: 'NCRCP12345',
-      telephone: '+27 11 456 7890',
-      email: 'info@point47.co.za',
-      registeredAddress: {
-        addressLine1: 'Platform default office address',
-        city: 'Johannesburg',
-        province: 'Gauteng',
-        postalCode: '2000',
-        country: 'South Africa'
-      },
-      authorizedSignatory: {
-        fullName: 'Aander',
-        designation: 'Authorized Signatory'
-      }
-    };
+    let snapshot = (application.agreementCreditProviderSnapshot && application.agreementCreditProviderSnapshot.legalName)
+      ? application.agreementCreditProviderSnapshot
+      : null;
+
+    if (!snapshot) {
+      const Tenant = require('../../../models/Tenant');
+      const tenantContext = require('../../../tenancy/tenantContext');
+      const tenant = await tenantContext.runAsSystem(() => Tenant.findById(application.tenantId).lean());
+      const cp = tenant?.companyProfile || {};
+      snapshot = {
+        legalName: cp.legalName || tenant?.companyName || 'Credit Provider',
+        cipcRegistrationNumber: cp.cipcRegistrationNumber || '',
+        ncrRegistrationNumber: cp.ncrRegistrationNumber || '',
+        telephone: cp.telephone || tenant?.phone || '',
+        email: cp.email || tenant?.email || '',
+        registeredAddress: cp.registeredAddress || {
+          addressLine1: '',
+          city: '',
+          province: '',
+          postalCode: '',
+          country: ''
+        },
+        authorizedSignatory: cp.authorizedSignatory || {
+          fullName: 'Authorized Signatory',
+          designation: 'Authorized Signatory'
+        }
+      };
+    }
 
     const addr = snapshot.registeredAddress || {};
-    const formattedAddress = `${addr.addressLine1 || ''}${addr.addressLine2 ? ', ' + addr.addressLine2 : ''}, ${addr.city || ''}, ${addr.province || ''}, ${addr.postalCode || ''}, ${addr.country || ''}`;
+    const addressParts = [
+      addr.addressLine1,
+      addr.addressLine2,
+      addr.city,
+      addr.province,
+      addr.postalCode,
+      addr.country
+    ].filter(Boolean);
+    const formattedAddress = addressParts.length > 0 ? addressParts.join(', ') : 'Registered Address';
 
     const finSnap = (application.agreementFinancialSnapshot && application.agreementFinancialSnapshot.principalAmount)
       ? application.agreementFinancialSnapshot

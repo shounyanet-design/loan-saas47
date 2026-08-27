@@ -316,11 +316,29 @@ const getApplicationDetails = asyncHandler(async (req, res) => {
   );
   const instalmentSimulationAvailable = realPaySimulationAvailable && isMandateSimCompleted && hasGenuineInstalmentSeq;
 
+  let resolvedCreditProvider = (application.agreementCreditProviderSnapshot && application.agreementCreditProviderSnapshot.legalName)
+    ? application.agreementCreditProviderSnapshot
+    : null;
+
+  if (!resolvedCreditProvider && application.tenantId) {
+    const Tenant = require('../models/Tenant');
+    const tenantContext = require('../tenancy/tenantContext');
+    const tenant = await tenantContext.runAsSystem(() => Tenant.findById(application.tenantId).lean());
+    if (tenant && tenant.companyProfile && tenant.companyProfile.legalName) {
+      resolvedCreditProvider = {
+        ...tenant.companyProfile,
+        registeredAddress: tenant.companyProfile.registeredAddress || {},
+        authorizedSignatory: tenant.companyProfile.authorizedSignatory || {}
+      };
+    }
+  }
+
   // Combine data and fix field name mismatches for frontend
   const fullApplication = {
     ...employment,
     ...banking,
     ...application, // Spread application last to preserve its _id, createdAt, etc.
+    agreementCreditProviderSnapshot: resolvedCreditProvider || application.agreementCreditProviderSnapshot,
     realPaySimulationAvailable,
     instalmentSimulationAvailable,
     yearsOfService: employment?.employmentDuration,

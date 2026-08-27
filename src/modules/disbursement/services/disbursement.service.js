@@ -80,6 +80,24 @@ async function disburseLoan(applicationId, context) {
       startDate: new Date()
     });
 
+    let creditProviderSnapshot = (application.agreementCreditProviderSnapshot && application.agreementCreditProviderSnapshot.legalName)
+      ? application.agreementCreditProviderSnapshot
+      : null;
+
+    if (!creditProviderSnapshot && context.tenantId) {
+      const Tenant = require('../../../models/Tenant');
+      const tenantContext = require('../../../tenancy/tenantContext');
+      const tenant = await tenantContext.runAsSystem(() => Tenant.findById(context.tenantId).lean());
+      if (tenant && tenant.companyProfile && tenant.companyProfile.legalName) {
+        creditProviderSnapshot = {
+          tenantId: context.tenantId,
+          ...tenant.companyProfile,
+          registeredAddress: tenant.companyProfile.registeredAddress || {},
+          authorizedSignatory: tenant.companyProfile.authorizedSignatory || {}
+        };
+      }
+    }
+
     // Create ActiveLoan
     activeLoan = (await ActiveLoan.create([
       {
@@ -102,7 +120,7 @@ async function disburseLoan(applicationId, context) {
         nextDueDate: emiSchedule[0].dueDate,
         repaymentSchedule: emiSchedule,
         disbursementStatus: 'DISBURSED',
-        agreementCreditProviderSnapshot: application.agreementCreditProviderSnapshot,
+        agreementCreditProviderSnapshot: creditProviderSnapshot || application.agreementCreditProviderSnapshot,
         agreementSignedAt: application.agreementSignedAt || new Date(),
         agreementStatus: 'SIGNED',
         disbursementReady: true

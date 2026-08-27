@@ -143,7 +143,10 @@ exports.getMyLoans = asyncHandler(async (req, res) => {
       verificationIp,
       verificationUserAgent,
       processingFee,
-      agreementDocumentUrl
+      agreementDocumentUrl,
+      financialSnapshot: loan.financialSnapshot || loan.agreementFinancialSnapshot,
+      agreementFinancialSnapshot: loan.agreementFinancialSnapshot || loan.financialSnapshot,
+      agreementCreditProviderSnapshot: loan.agreementCreditProviderSnapshot
     };
   }));
 
@@ -199,7 +202,7 @@ exports.getMyLoans = asyncHandler(async (req, res) => {
     borrowerId: userId,
     status: { $nin: ['Draft'] }
   })
-    .select('applicationId requestedAmount requestedDuration status reviewStatus rejectionReason submittedAt loanType estimatedMonthlyEMI staffReview fullName phoneNumber emailAddress idNumber interestRate approvedAmount processingFee totalRepayment agreementGeneratedAt agreementSignedAt agreementStatus borrowerConsentVerified verificationIp verificationUserAgent')
+    .select('applicationId requestedAmount requestedDuration status reviewStatus rejectionReason submittedAt loanType estimatedMonthlyEMI staffReview fullName phoneNumber emailAddress idNumber interestRate approvedAmount processingFee totalRepayment agreementGeneratedAt agreementSignedAt agreementStatus borrowerConsentVerified verificationIp verificationUserAgent financialSnapshot agreementFinancialSnapshot agreementCreditProviderSnapshot')
     .sort({ createdAt: -1 });
 
   // 5. Fetch recent activities
@@ -236,6 +239,9 @@ exports.getMyLoans = asyncHandler(async (req, res) => {
     borrowerConsentVerified: app.borrowerConsentVerified,
     verificationIp: app.verificationIp,
     verificationUserAgent: app.verificationUserAgent,
+    financialSnapshot: app.financialSnapshot,
+    agreementFinancialSnapshot: app.agreementFinancialSnapshot,
+    agreementCreditProviderSnapshot: app.agreementCreditProviderSnapshot,
   }));
 
   sendSuccess(res, 'My loans retrieved successfully', {
