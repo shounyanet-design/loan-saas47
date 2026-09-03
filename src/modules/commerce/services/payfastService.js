@@ -29,7 +29,7 @@ function getPayfastConfig() {
     passphrase: process.env.PAYFAST_PASSPHRASE || '',
     baseUrl,
     validateUrl,
-    notifyUrl: process.env.PAYFAST_NOTIFY_URL || 'https://point47.co.za/api/v1/commerce/payfast/notify',
+    notifyUrl: process.env.PAYFAST_NOTIFY_URL || 'https://loan-saas47-production.up.railway.app/api/v1/commerce/payfast/notify',
     returnUrl: process.env.PAYFAST_RETURN_URL || 'https://point47.co.za/admin/payment/success',
     cancelUrl: process.env.PAYFAST_CANCEL_URL || 'https://point47.co.za/admin/payment/cancel',
     isSandbox,
