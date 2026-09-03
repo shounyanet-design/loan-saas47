@@ -14,6 +14,7 @@ router.use(protect, authorize('admin'));
 // Subscription
 router.get('/subscription', sub.mySubscription);
 router.patch('/subscription/auto-renew', sub.setAutoRenew);
+router.post('/subscription/checkout', sub.checkoutSubscription);
 
 // Usage
 router.get('/usage', cfg.getUsage);

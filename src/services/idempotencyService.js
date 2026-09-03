@@ -72,7 +72,7 @@ class IdempotencyInProgressError extends Error {
  * @param {object}   opts
  * @param {string}   opts.key      deterministic idempotency key (required)
  * @param {object}   opts.request  the request payload (hashed for replay protection)
- * @param {string}   [opts.scope]  grouping label, e.g. 'nupay'
+ * @param {string}   [opts.scope]  grouping label, e.g. 'realpay'
  * @param {string}   [opts.action] action label, e.g. 'initiateMandate'
  * @param {ObjectId} [opts.tenantId]
  * @param {number}   [opts.staleMs]

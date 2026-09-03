@@ -70,7 +70,7 @@ paymentSchema.pre('validate', async function() {
 
 paymentSchema.plugin(tenantPlugin);
 
-// Tenant-scoped uniqueness (each tenant has its own NuPay merchant account).
+// Tenant-scoped uniqueness (each tenant has its own merchant account).
 paymentSchema.index({ tenantId: 1, transactionId: 1 }, { unique: true });
 // Hot-path: payment verification queues and per-loan/borrower payment history.
 paymentSchema.index({ tenantId: 1, paymentStatus: 1, createdAt: -1 });

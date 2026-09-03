@@ -77,6 +77,7 @@ async function checkout(tenantId, { items = [], couponCode, provider = 'manual',
     const payment = await billingService.createPayment(tenantId, {
       invoiceId: invoice._id, orderId: order._id, amount: total, provider, providerRef: charge.providerRef,
       status: charge.status === 'succeeded' ? 'succeeded' : 'pending', idempotencyKey: idempotencyKey ? `${idempotencyKey}:pay` : undefined,
+      metadata: charge.payfastPayload ? { redirectUrl: charge.redirectUrl, payfastPayload: charge.payfastPayload } : undefined,
     });
 
     await MarketplaceOrder.updateOne({ _id: order._id }, { $set: { invoiceId: invoice._id, paymentId: payment._id } });
@@ -86,12 +87,19 @@ async function checkout(tenantId, { items = [], couponCode, provider = 'manual',
     // OR the caller requested auto-settlement (e.g. internal token top-ups with no
     // live gateway). Otherwise the order stays pending for manual/gateway settlement.
     let fulfillment = null;
-    if (charge.status === 'succeeded' || total === 0 || autoSettle) {
+    if ((charge.status === 'succeeded' || total === 0 || autoSettle) && provider !== 'payfast') {
       fulfillment = await confirmPayment(tenantId, payment._id, { actor });
     }
 
     const fresh = await MarketplaceOrder.findById(order._id);
-    return { order: fresh, invoice, payment, requiresAction: !fulfillment && !!charge.requiresExternalAction && total > 0, fulfillment };
+    return {
+      order: fresh,
+      invoice,
+      payment,
+      requiresAction: !fulfillment && !!charge.requiresExternalAction && total > 0,
+      action: charge.requiresExternalAction ? { redirectUrl: charge.redirectUrl, payfastPayload: charge.payfastPayload } : undefined,
+      fulfillment,
+    };
   });
 }
 

@@ -550,11 +550,11 @@ test('RealPay Idempotency - REJECTED mandate + explicit reinitiate starts a NEW 
   const clientRef = 'LAPP-1038';
 
   // Build attempt 1 key
-  const attempt1Key = idempotencyService.buildKey('nupay', tenantId, 'initiateMandate', appId, clientRef, 'attempt_1000');
+  const attempt1Key = idempotencyService.buildKey('realpay', tenantId, 'initiateMandate', appId, clientRef, 'attempt_1000');
   assert.ok(attempt1Key.includes('attempt_1000'));
 
   // Build attempt 2 key after explicit reinitiate
-  const attempt2Key = idempotencyService.buildKey('nupay', tenantId, 'initiateMandate', appId, clientRef, 'attempt_2000');
+  const attempt2Key = idempotencyService.buildKey('realpay', tenantId, 'initiateMandate', appId, clientRef, 'attempt_2000');
   assert.ok(attempt2Key.includes('attempt_2000'));
   assert.notEqual(attempt1Key, attempt2Key, 'Re-initiation MUST produce a new attempt key');
 

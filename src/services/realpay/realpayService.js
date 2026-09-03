@@ -94,7 +94,7 @@ class RealPayService {
   }
 
   /**
-   * Map bank name or NuPay ID to RealPay Bank Code.
+   * Map bank name or legacy ID to RealPay Bank Code.
    */
   mapBankNameToRealPayCode(bankName = '', defaultCode = 6) {
     const lower = String(bankName || '').toLowerCase();
@@ -108,10 +108,10 @@ class RealPayService {
     if (lower.includes('discovery')) return 63;
 
     const num = Number(defaultCode);
-    if (num === 10) return 8; // NuPay Capitec (10) -> RealPay Capitec (8)
-    if (num === 16) return 6; // NuPay ABSA (16) -> RealPay ABSA (6)
-    if (num === 3) return 4;  // NuPay FNB (3) -> RealPay FNB (4)
-    if (num === 1) return 5;  // NuPay Standard Bank (1) -> RealPay Standard Bank (5)
+    if (num === 10) return 8; // Legacy Capitec (10) -> RealPay Capitec (8)
+    if (num === 16) return 6; // Legacy ABSA (16) -> RealPay ABSA (6)
+    if (num === 3) return 4;  // Legacy FNB (3) -> RealPay FNB (4)
+    if (num === 1) return 5;  // Legacy Standard Bank (1) -> RealPay Standard Bank (5)
     if (num === 2) return 2;  // Nedbank -> 2
     return num || 6;
   }

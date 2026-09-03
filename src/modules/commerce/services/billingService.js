@@ -36,7 +36,7 @@ async function createInvoice(tenantId, { type = 'marketplace', items = [], disco
   });
 }
 
-async function createPayment(tenantId, { invoiceId, orderId, amount, currency = 'ZAR', provider = 'manual', providerRef = '', status = 'pending', idempotencyKey } = {}) {
+async function createPayment(tenantId, { invoiceId, orderId, amount, currency = 'ZAR', provider = 'manual', providerRef = '', status = 'pending', idempotencyKey, metadata } = {}) {
   return tenantContext.runAsSystem(async () => {
     const prior = idempotencyKey
       ? await CommercePayment.findOne({ idempotencyKey })
@@ -44,7 +44,7 @@ async function createPayment(tenantId, { invoiceId, orderId, amount, currency = 
     if (prior) return prior;
     return CommercePayment.create({
       tenantId, invoiceId, orderId, amount, currency, provider, providerRef, status,
-      idempotencyKey, history: [{ status, note: 'created' }],
+      idempotencyKey, metadata, history: [{ status, note: 'created' }],
     });
   });
 }

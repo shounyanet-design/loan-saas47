@@ -19,7 +19,7 @@ const commercePaymentSchema = new mongoose.Schema(
   {
     invoiceId: { type: mongoose.Schema.Types.ObjectId, ref: 'Invoice', required: true },
     orderId: { type: mongoose.Schema.Types.ObjectId, ref: 'MarketplaceOrder' },
-    provider: { type: String, default: 'manual' }, // manual | nupay | netcash | stripe | payfast | ozow
+    provider: { type: String, default: 'manual' }, // manual | netcash | stripe | payfast | ozow
     providerRef: { type: String, default: '' },
     amount: { type: Number, required: true },
     currency: { type: String, default: 'ZAR' },

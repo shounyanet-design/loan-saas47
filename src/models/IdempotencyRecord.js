@@ -2,7 +2,7 @@ const mongoose = require('mongoose');
 
 /**
  * IdempotencyRecord — durable "exactly-once" guard for outbound financial /
- * provider requests (e.g. NuPay/Webfin mandates & instalment actions).
+ * provider requests (e.g. RealPay mandates & instalment actions).
  *
  * Deliberately NOT tenant-plugin scoped: it is written from singleton service
  * paths that may run outside an async tenant context. The `key` is globally
@@ -18,7 +18,7 @@ const mongoose = require('mongoose');
 const idempotencyRecordSchema = new mongoose.Schema(
   {
     key: { type: String, required: true, unique: true },
-    scope: { type: String, default: 'generic' },     // e.g. 'nupay'
+    scope: { type: String, default: 'generic' },     // e.g. 'realpay'
     action: { type: String, default: '' },           // e.g. 'initiateMandate'
     requestHash: { type: String, required: true },    // sha256 of canonical request
     status: { type: String, enum: ['pending', 'completed', 'failed'], default: 'pending', index: true },

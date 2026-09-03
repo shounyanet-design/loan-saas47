@@ -29,7 +29,6 @@ const activeLoanRoutes = require('./routes/admin/activeLoanRoutes');
 const disbursementRoutes = require('./routes/admin/disbursementRoutes');
 const paymentRoutes = require('./routes/admin/paymentRoutes');
 const duePaymentRoutes = require('./routes/admin/duePaymentRoutes');
-const nupayRoutes = require('./routes/admin/nupayRoutes');
 const reportRoutes = require('./routes/admin/reportRoutes');
 const communicationRoutes = require('./routes/admin/communicationRoutes');
 const settingsRoutes = require('./routes/admin/settingsRoutes');
@@ -133,12 +132,9 @@ app.use('/api/admin/loans', disbursementRoutes);
 app.use('/api/admin/active-loans', activeLoanRoutes);
 app.use('/api/admin/payments', paymentRoutes);
 app.use('/api/admin/due-payments', duePaymentRoutes);
-const nupayRoutesApi = require('./routes/nupayRoutes');
 const realpayRoutesApi = require('./routes/realpayRoutes');
 const realpayAdminRoutes = require('./routes/admin/realpayRoutes');
-app.use('/api/v1/nupay', nupayRoutesApi);
 app.use('/api/v1/realpay', realpayRoutesApi);
-app.use('/api/admin/nupay', nupayRoutes);
 app.use('/api/admin/realpay', realpayAdminRoutes);
 
 app.use('/api/admin/reports', reportRoutes);
@@ -184,6 +180,9 @@ app.use('/api/tenant', tenantSaasRoutes);
 app.use('/api/public', publicSaasRoutes);
 // SaaS Commerce (Milestone 2.3): tenant wallet / marketplace / billing.
 app.use('/api/commerce', tenantCommerceRoutes);
+app.use('/api/v1/commerce/payfast', require('./modules/commerce/routes/payfastRoutes'));
+app.use('/api/commerce/payfast', require('./modules/commerce/routes/payfastRoutes'));
+
 // Enterprise Ops (Milestone 2.4): public health + onboarding, tenant self-ops.
 app.use('/api/health', healthRoutes);
 app.use('/api/onboarding', onboardingRoutes);

@@ -43,7 +43,7 @@ function integrationConfigured() {
     datanamix: { configured: has('DATANAMIX_CLIENT_ID', 'DATANAMIX_CLIENT_SECRET') },
     bulksms: { configured: has('BULKSMS_BASE_URL') && (has('SMS_AUTH_TOKEN') || has('BULKSMS_TOKEN_ID')) },
     email: { configured: has('EMAILJS_SERVICE_ID') || has('SMTP_HOST') },
-    nupay: { configured: has('WEBFIN_USERNAME', 'WEBFIN_PASSWORD') },
+    realpay: { configured: has('REALPAY_CLIENT_ID', 'REALPAY_CLIENT_SECRET') || has('REALPAY_MERCHANT_NUMBER') },
     imagekit: { configured: has('IMAGEKIT_PUBLIC_KEY', 'IMAGEKIT_PRIVATE_KEY') },
     redis: { configured: has('REDIS_URL') },
   };

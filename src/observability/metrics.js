@@ -73,7 +73,7 @@ new client.Gauge({
     const map = {
       datanamix: !!process.env.DATANAMIX_CLIENT_ID,
       facetec: !!process.env.FACETEC_DEVICE_KEY_IDENTIFIER,
-      webfin_nupay: !!process.env.WEBFIN_USERNAME,
+      realpay: !!(process.env.REALPAY_CLIENT_ID || process.env.REALPAY_MERCHANT_NUMBER),
       bulksms: !!(process.env.SMS_AUTH_TOKEN || process.env.BULKSMS_TOKEN_ID),
       emailjs: !!process.env.EMAILJS_SERVICE_ID,
       imagekit: !!process.env.IMAGEKIT_PUBLIC_KEY,

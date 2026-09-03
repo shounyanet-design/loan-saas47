@@ -34,15 +34,14 @@ class GatewayAdapter extends IPaymentProvider {
   }
 }
 
-class NuPayProvider extends GatewayAdapter { constructor() { super('nupay'); } }
+const PayFastProvider = require('./PayFastProvider');
+
 class NetCashProvider extends GatewayAdapter { constructor() { super('netcash'); } }
 class StripeProvider extends GatewayAdapter { constructor() { super('stripe'); } }
-class PayFastProvider extends GatewayAdapter { constructor() { super('payfast'); } }
 class OzowProvider extends GatewayAdapter { constructor() { super('ozow'); } }
 
 const registry = {
   manual: new ManualPaymentProvider(),
-  nupay: new NuPayProvider(),
   netcash: new NetCashProvider(),
   stripe: new StripeProvider(),
   payfast: new PayFastProvider(),

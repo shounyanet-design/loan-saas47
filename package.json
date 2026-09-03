@@ -13,11 +13,11 @@
     "doctor": "node src/scripts/doctor.js",
     "repair": "node src/scripts/repair.js",
     "check": "find src -name '*.js' -print0 | xargs -0 -n1 node --check",
-    "test": "NODE_ENV=test node --test tests/unit/creditReportSearchAudit.test.js tests/unit/kycReusableFlow.test.js tests/unit/loanFinancialCalculator.test.js tests/unit/nupayService.test.js tests/unit/realpayService.test.js tests/unit/agreementWorkflow.test.js tests/unit/reportDocument.test.js tests/unit/multiTenantIsolation.test.js tests/unit/saasSync.test.js tests/unit/saasIntegration.test.js tests/unit/saasAgreementSync.test.js tests/unit/activeLoanServicing.test.js tests/unit/servicingSyncEngine.test.js tests/integration/realpay.test.js",
+    "test": "NODE_ENV=test node --test tests/unit/creditReportSearchAudit.test.js tests/unit/kycReusableFlow.test.js tests/unit/loanFinancialCalculator.test.js tests/unit/realpayService.test.js tests/unit/agreementWorkflow.test.js tests/unit/reportDocument.test.js tests/unit/multiTenantIsolation.test.js tests/unit/saasSync.test.js tests/unit/saasIntegration.test.js tests/unit/saasAgreementSync.test.js tests/unit/activeLoanServicing.test.js tests/unit/servicingSyncEngine.test.js tests/unit/payfastService.test.js tests/integration/realpay.test.js",
+    "test:payfast": "NODE_ENV=test node --test tests/unit/payfastService.test.js",
     "test:credit": "NODE_ENV=test node --test tests/unit/creditReportSearchAudit.test.js",
     "test:kyc": "NODE_ENV=test node --test tests/unit/kycReusableFlow.test.js",
     "test:financial": "NODE_ENV=test node --test tests/unit/loanFinancialCalculator.test.js",
-    "test:nupay": "NODE_ENV=test node --test tests/unit/nupayService.test.js",
     "test:realpay": "NODE_ENV=test node --test tests/unit/realpayService.test.js tests/integration/realpay.test.js",
     "test:agreement": "NODE_ENV=test node --test tests/unit/agreementWorkflow.test.js",
     "test:report": "NODE_ENV=test node --test tests/unit/reportDocument.test.js",
@@ -51,6 +51,7 @@
     "socket.io": "^4.8.3"
   },
   "devDependencies": {
+    "mongodb-memory-server": "^11.2.0",
     "nodemon": "^3.1.14"
   }
 }

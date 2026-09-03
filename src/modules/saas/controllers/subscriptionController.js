@@ -143,4 +143,24 @@ exports.setAutoRenew = asyncHandler(async (req, res) => {
   return sendSuccess(res, 'Auto-renew updated', { autoRenew: s.autoRenew });
 });
 
+// @route POST /api/tenant/subscription/checkout  { planId, billingCycle }
+exports.checkoutSubscription = asyncHandler(async (req, res) => {
+  const { planId, billingCycle } = req.body;
+  if (!planId) return sendError(res, 'planId is required', 400);
+  const cycle = billingCycle === 'yearly' ? 'yearly' : 'monthly';
+  const payfastService = require('../../commerce/services/payfastService');
+
+  try {
+    const checkoutData = await payfastService.createSubscriptionPaymentRequest(req.tenantId, {
+      planId,
+      billingCycle: cycle,
+      userRef: req.user?.email,
+    });
+    return sendSuccess(res, 'Payfast subscription checkout created', checkoutData, 201);
+  } catch (e) {
+    return sendError(res, e.message, e.status || 500);
+  }
+});
+
 exports.assignPlan = assignPlan; // exported for migrations/tests
+

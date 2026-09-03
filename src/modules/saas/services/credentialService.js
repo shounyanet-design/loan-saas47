@@ -15,7 +15,6 @@ const { encrypt, decrypt, mask } = require('../utils/crypto');
 
 // Maps a provider's logical credential keys to global .env fallbacks.
 const ENV_FALLBACK = {
-  nupay: { username: 'NUPAY_USERNAME', password: 'NUPAY_PASSWORD', cardAcceptor: 'NUPAY_CARD_ACCEPTOR', baseUrl: 'NUPAY_BASE_URL' },
   realpay: {
     clientId: 'REALPAY_CLIENT_ID',
     clientSecret: 'REALPAY_CLIENT_SECRET',
@@ -50,17 +49,6 @@ const PROVIDER_REGISTRY = {
       { key: 'swaggerPassword', label: 'Swagger Password', type: 'password', placeholder: 'Swagger Password' },
       { key: 'product', label: 'Product Code', type: 'text', placeholder: 'ABSADC' },
       { key: 'webhookUrl', label: 'Webhook URL', type: 'text', placeholder: 'https://loan-saas47-production.up.railway.app/api/v1/realpay/webhook' }
-    ]
-  },
-  nupay: {
-    label: 'NuPay DebiCheck',
-    description: 'NuPay DebiCheck & Direct Debit integration provider',
-    testCapability: true,
-    fields: [
-      { key: 'username', label: 'Username', type: 'text' },
-      { key: 'password', label: 'Password', type: 'password' },
-      { key: 'cardAcceptor', label: 'Card Acceptor / Merchant Number', type: 'text' },
-      { key: 'baseUrl', label: 'Base API Endpoint', type: 'text' }
     ]
   },
   datanamix: {
@@ -219,7 +207,6 @@ async function resolve(tenantId, provider) {
  * Test a provider's resolved credentials. Perform non-financial connectivity test.
  */
 const REQUIRED_KEYS = {
-  nupay: ['username', 'password'],
   realpay: ['merchantNumber'],
   webfin: ['username', 'password', 'baseUrl'],
   bulksms: ['baseUrl'], imagekit: ['publicKey', 'privateKey', 'urlEndpoint'],

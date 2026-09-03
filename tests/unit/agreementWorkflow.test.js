@@ -38,7 +38,6 @@ function createMockApplication(overrides = {}) {
     borrowerConsentVerified: false,
     debicheckMandateStatus: '',
     realPayMandate: { status: '' },
-    nupayMandate: { outcome: '' },
     amlVerification: { isBlocked: false },
     statusHistory: [],
     save: async function() { return this; }
