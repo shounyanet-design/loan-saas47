@@ -195,6 +195,16 @@ const borrowerSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
     },
+
+    // COLLECTION PROFILE
+    collectionProfile: {
+      collectionMethod: { type: String, enum: ['DEBICHECK', 'PAYFAST_CARD', 'MANUAL'], default: 'DEBICHECK' },
+      authorizationStatus: { type: String, enum: ['NOT_CONFIGURED', 'PENDING', 'ACTIVE', 'FAILED', 'CANCELLED', 'EXPIRED'], default: 'NOT_CONFIGURED' },
+      tokenStatus: { type: String, enum: ['NOT_CONFIGURED', 'PENDING', 'ACTIVE', 'FAILED', 'CANCELLED', 'EXPIRED'], default: 'NOT_CONFIGURED' },
+      debicheckMandateReference: { type: String },
+      payfastTokenReference: { type: String },
+      authorizedAt: { type: Date }
+    },
   },
   {
     timestamps: true,

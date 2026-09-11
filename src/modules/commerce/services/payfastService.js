@@ -113,8 +113,16 @@ async function verifyItnWithHost(body, validateUrl) {
  */
 function calculateSplit(amount, platformFeePercent = 10) {
   const numAmount = Number(amount);
-  if (isNaN(numAmount) || numAmount <= 0) {
+  if (isNaN(numAmount) || numAmount < 0) {
     throw new Error('Invalid amount for split calculation');
+  }
+  if (numAmount === 0) {
+    return {
+      platformAmount: 0,
+      sellerAmount: 0,
+      platformFee: 0,
+      sellerId: 'PLATFORM',
+    };
   }
   const platformAmount = Math.round(numAmount * (platformFeePercent / 100) * 100) / 100;
   const sellerAmount = Math.round((numAmount - platformAmount) * 100) / 100;
@@ -296,6 +304,17 @@ async function processItnNotification(body) {
 
   if (!tenantId) {
     throw Object.assign(new Error('Missing tenant context reference in ITN'), { status: 400 });
+  }
+
+  // Isolated Routing for Loan Collection Engine (Phase 4)
+  if (paymentType === 'LOAN_TOKENIZATION' || paymentType === 'loan_tokenization') {
+    const payFastTokenizationService = require('../../loanCollection/payFastTokenizationService');
+    return payFastTokenizationService.handleTokenizationCallback(body);
+  }
+
+  if (paymentType === 'LOAN_COLLECTION' || paymentType === 'loan_collection') {
+    const loanCollectionService = require('../../loanCollection/loanCollectionService');
+    return loanCollectionService.handlePayFastLoanWebhook(body);
   }
 
   // Lazy load marketplaceService to prevent circular dependency

@@ -151,7 +151,14 @@ const systemSettingsSchema = new mongoose.Schema({
   enableSandboxWatermark: { type: Boolean, default: false },
   enablePdfHashValidation: { type: Boolean, default: true },
   pdfRetentionPeriod: { type: Number, default: 60 },
-  allowVersionHistory: { type: Boolean, default: true }
+  allowVersionHistory: { type: Boolean, default: true },
+
+  // 8. COLLECTION ENGINE SETTINGS
+  primaryCollectionMethod: { type: String, enum: ['DEBICHECK', 'PAYFAST_CARD', 'MANUAL'], default: 'DEBICHECK' },
+  fallbackCollectionEnabled: { type: Boolean, default: true },
+  maxDebiCheckRetries: { type: Number, default: 2 },
+  arrearsCollectionEnabled: { type: Boolean, default: true },
+  firstPaymentPayfastEnabled: { type: Boolean, default: false }
 }, { timestamps: true });
 
 module.exports = mongoose.model('SystemSettings', systemSettingsSchema);

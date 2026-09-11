@@ -135,6 +135,8 @@ app.use('/api/admin/due-payments', duePaymentRoutes);
 const realpayRoutesApi = require('./routes/realpayRoutes');
 const realpayAdminRoutes = require('./routes/admin/realpayRoutes');
 app.use('/api/v1/realpay', realpayRoutesApi);
+const loanCollectionAdminRoutes = require('./routes/admin/loanCollectionAdminRoutes');
+app.use('/api/admin/loan-collections', loanCollectionAdminRoutes);
 app.use('/api/admin/realpay', realpayAdminRoutes);
 
 app.use('/api/admin/reports', reportRoutes);

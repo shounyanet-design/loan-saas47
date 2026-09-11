@@ -117,14 +117,98 @@ const handleRealPayWebhook = asyncHandler(async (req, res) => {
     });
   }
 
+  const CollectionAttempt = require('../models/CollectionAttempt');
+  const loanCollectionService = require('../modules/loanCollection/loanCollectionService');
+
   let outcome = 'ACCEPTED';
   const cleanStatus = rawStatusCode.toUpperCase();
-  if (['REJECTED', 'FAILED', 'CANCELLED', 'F', 'R', 'AREJ', 'FAIL', '900002'].includes(cleanStatus)) {
+  if (['REJECTED', 'FAILED', 'UNSUCCESSFUL', 'CANCELLED', 'F', 'R', 'AREJ', 'FAIL', '900002'].includes(cleanStatus)) {
     outcome = 'REJECTED';
-  } else if (['PENDING', 'AUTH_PENDING', 'P', 'APEN', 'PEND', '900001'].includes(cleanStatus)) {
+  } else if (['PENDING', 'TRACKING', 'AUTH_PENDING', 'P', 'APEN', 'PEND', '900001'].includes(cleanStatus)) {
     outcome = 'PENDING';
-  } else if (['ACCEPTED', 'SUCCESS', 'SUCC', 'S', '00', 'AAUT'].includes(cleanStatus)) {
+  } else if (['ACCEPTED', 'SUCCESSFUL', 'SUCCESS', 'SUCC', 'S', '00', 'AAUT'].includes(cleanStatus)) {
     outcome = 'ACCEPTED';
+  }
+
+  const mongoose = require('mongoose');
+
+  // 1. First check if this webhook matches an active Loan CollectionAttempt
+  const collectionAttemptMatch = await tenantContext.runAsSystem(async () => {
+    if (mongoose.connection.readyState !== 1) return null;
+    const collQueries = [];
+    if (clientRef) collQueries.push({ idempotencyKey: clientRef }, { providerReference: clientRef });
+    if (mandateId) collQueries.push({ providerReference: mandateId });
+    if (contractSeq) collQueries.push({ providerReference: contractSeq });
+
+    if (collQueries.length === 0) return null;
+    return CollectionAttempt.findOne({ $or: collQueries });
+  });
+
+  if (collectionAttemptMatch) {
+    const tenantId = collectionAttemptMatch.tenantId;
+
+    // Validate Tenant, Loan, and EMI integrity
+    const RepaymentSchedule = require('../models/RepaymentSchedule');
+    const ActiveLoan = require('../models/ActiveLoan');
+
+    const validSchedule = await tenantContext.runWithTenant(tenantId, () =>
+      RepaymentSchedule.findOne({ _id: collectionAttemptMatch.repaymentScheduleId, tenantId })
+    );
+    const validLoan = await tenantContext.runWithTenant(tenantId, () =>
+      ActiveLoan.findOne({ _id: collectionAttemptMatch.loanId, tenantId })
+    );
+
+    if (!validSchedule || !validLoan) {
+      return res.status(400).json({
+        success: false,
+        code: 'COLLECTION_ENTITY_MISMATCH',
+        message: 'CollectionAttempt loan or schedule does not match active tenant records'
+      });
+    }
+
+    // Amount Validation (Section 18)
+    const receivedAmount = parseFloat(
+      req.body.InstalmentAmount ?? req.body.instalmentAmount ??
+      req.body.Amount ?? req.body.amount ??
+      extracted.payload?.InstalmentAmount ?? extracted.payload?.amount ?? 0
+    );
+
+    if (receivedAmount > 0 && Math.abs(receivedAmount - collectionAttemptMatch.requestedAmount) > 0.01) {
+      console.warn(`[REALPAY_AMOUNT_MISMATCH] Expected R${collectionAttemptMatch.requestedAmount}, received R${receivedAmount}. Rejecting.`);
+      collectionAttemptMatch.metadata = {
+        ...collectionAttemptMatch.metadata,
+        amountMismatch: { expected: collectionAttemptMatch.requestedAmount, received: receivedAmount }
+      };
+      await collectionAttemptMatch.save();
+      return res.status(400).json({
+        success: false,
+        code: 'COLLECTION_AMOUNT_MISMATCH',
+        message: `Amount mismatch: expected R${collectionAttemptMatch.requestedAmount}, received R${receivedAmount}`
+      });
+    }
+
+    if (['TRACKING', 'PENDING', '900001', 'P', 'APEN'].includes(cleanStatus)) {
+      const resTrack = await loanCollectionService.handleWebhookTracking(collectionAttemptMatch, req.body, tenantId);
+      return res.status(200).json({
+        success: true,
+        message: 'RealPay loan collection webhook: TRACKING state acknowledged',
+        data: { attemptId: collectionAttemptMatch._id, status: 'TRACKING', resTrack }
+      });
+    } else if (['ACCEPTED', 'SUCCESSFUL', 'SUCCESS', 'SUCC', 'S', '00', 'AAUT'].includes(cleanStatus)) {
+      const resSucc = await loanCollectionService.handleWebhookSuccess(collectionAttemptMatch, req.body, tenantId);
+      return res.status(200).json({
+        success: true,
+        message: 'RealPay loan collection webhook: SUCCESSFUL state reconciled',
+        data: { attemptId: collectionAttemptMatch._id, status: 'SUCCESSFUL', resSucc }
+      });
+    } else if (['REJECTED', 'FAILED', 'UNSUCCESSFUL', 'CANCELLED', 'F', 'R', 'AREJ', 'FAIL', '900002'].includes(cleanStatus)) {
+      const resFail = await loanCollectionService.handleWebhookUnsuccessful(collectionAttemptMatch, req.body, tenantId);
+      return res.status(200).json({
+        success: true,
+        message: 'RealPay loan collection webhook: UNSUCCESSFUL state processed; PayFast fallback evaluated',
+        data: { attemptId: collectionAttemptMatch._id, status: 'UNSUCCESSFUL', resFail }
+      });
+    }
   }
 
   const result = await tenantContext.runAsSystem(async () => {

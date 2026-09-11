@@ -33,6 +33,9 @@ const initCronJobs = () => {
         }
       }
 
+      const collectionWorker = require('../modules/loanCollection/collectionWorker');
+      await collectionWorker.runDailyCollectionJob();
+
       for (const tenant of activeTenants) {
         try {
           await tenantContext.runWithTenant(tenant._id, async () => {
