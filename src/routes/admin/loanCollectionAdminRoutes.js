@@ -6,7 +6,7 @@ const {
   getCollectionDashboardStats,
   initiateBorrowerCardAuth
 } = require('../../controllers/admin/loanCollectionAdminController');
-const { protect } = require('../../middleware/auth');
+const { protect } = require('../../middleware/auth.middleware');
 
 router.use(protect);
 
