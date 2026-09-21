@@ -4,7 +4,7 @@ const collectionRules = require('./collectionRules');
 const collectionReconciliation = require('./collectionReconciliation');
 const collectionDispatcher = require('./collectionDispatcher');
 const collectionWorker = require('./collectionWorker');
-const realPayCollectionProvider = require('./providers/realPayCollectionProvider');
+const debitOrderProvider = require('../../services/payments/debitOrderProvider');
 const payFastLoanFallbackProvider = require('./providers/payFastLoanFallbackProvider');
 
 module.exports = {
@@ -14,6 +14,7 @@ module.exports = {
   collectionReconciliation,
   collectionDispatcher,
   collectionWorker,
-  realPayCollectionProvider,
+  debitOrderProvider,
   payFastLoanFallbackProvider
 };
+

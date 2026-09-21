@@ -37,7 +37,7 @@ function createMockApplication(overrides = {}) {
     otpVerificationStatus: 'Pending',
     borrowerConsentVerified: false,
     debicheckMandateStatus: '',
-    realPayMandate: { status: '' },
+    nupayMandate: { outcome: 'ACCEPTED', mandateId: 'NUP-123' },
     amlVerification: { isBlocked: false },
     statusHistory: [],
     save: async function() { return this; }
@@ -166,7 +166,7 @@ test('Agreement Workflow - 4. Borrower Consent alone cannot disburse', async () 
   }
 });
 
-test('Agreement Workflow - 5. SIGNED agreement + RealPay DebiCheck ACCEPTED + AML clear can mark ready', async () => {
+test('Agreement Workflow - 5. SIGNED agreement + NuPay DebiCheck ACCEPTED + AML clear can mark ready', async () => {
   const origFindById = LoanApplication.findById;
   const mockApp = createMockApplication({
     status: 'APPROVED',
@@ -177,7 +177,7 @@ test('Agreement Workflow - 5. SIGNED agreement + RealPay DebiCheck ACCEPTED + AM
     otpVerificationStatus: 'VERIFIED',
     borrowerConsentVerified: true,
     debicheckMandateStatus: 'ACCEPTED',
-    realPayMandate: { status: 'ACCEPTED', contractSequence: '1011268615' },
+    nupayMandate: { outcome: 'ACCEPTED', mandateId: '1011268615' },
     amlVerification: { isBlocked: false }
   });
   LoanApplication.findById = async () => mockApp;
@@ -193,14 +193,14 @@ test('Agreement Workflow - 5. SIGNED agreement + RealPay DebiCheck ACCEPTED + AM
   }
 });
 
-test('Agreement Workflow - 6. RealPay DebiCheck rejected blocks disbursement', async () => {
+test('Agreement Workflow - 6. NuPay DebiCheck rejected blocks disbursement', async () => {
   const origFindById = LoanApplication.findById;
   const mockApp = createMockApplication({
     status: 'APPROVED',
     agreementStatus: 'SIGNED',
     agreementSignedAt: new Date(),
     debicheckMandateStatus: 'REJECTED',
-    realPayMandate: { status: 'REJECTED' }
+    nupayMandate: { outcome: 'REJECTED' }
   });
   LoanApplication.findById = async () => mockApp;
 
@@ -219,14 +219,14 @@ test('Agreement Workflow - 6. RealPay DebiCheck rejected blocks disbursement', a
   }
 });
 
-test('Agreement Workflow - 7. RealPay ACCEPTED + unsigned agreement still blocks disbursement', async () => {
+test('Agreement Workflow - 7. NuPay ACCEPTED + unsigned agreement still blocks disbursement', async () => {
   const origFindById = LoanApplication.findById;
   const mockApp = createMockApplication({
     status: 'AGREEMENT_PENDING_VERIFICATION',
     agreementStatus: 'PENDING SIGNATURE',
     agreementSignedAt: null,
     debicheckMandateStatus: 'ACCEPTED',
-    realPayMandate: { status: 'ACCEPTED', contractSequence: '1011268615' }
+    nupayMandate: { outcome: 'ACCEPTED', mandateId: '1011268615' }
   });
   LoanApplication.findById = async () => mockApp;
 
@@ -252,7 +252,7 @@ test('Agreement Workflow - 8. AML blocked application blocks disbursement even i
     agreementStatus: 'SIGNED',
     agreementSignedAt: new Date(),
     debicheckMandateStatus: 'ACCEPTED',
-    realPayMandate: { status: 'ACCEPTED' },
+    nupayMandate: { outcome: 'ACCEPTED' },
     amlVerification: { isBlocked: true }
   });
   LoanApplication.findById = async () => mockApp;
@@ -279,7 +279,7 @@ test('Agreement Workflow - 9. Idempotency: Duplicate ready-disbursement action i
     agreementStatus: 'SIGNED',
     agreementSignedAt: new Date('2026-08-16T16:55:15.333Z'),
     debicheckMandateStatus: 'ACCEPTED',
-    realPayMandate: { status: 'ACCEPTED' }
+    nupayMandate: { outcome: 'ACCEPTED' }
   });
   LoanApplication.findById = async () => mockApp;
 
@@ -303,7 +303,7 @@ test('Agreement Workflow - 10. Signed agreement state persists across document m
     otpVerificationStatus: 'VERIFIED',
     borrowerConsentVerified: true,
     debicheckMandateStatus: 'ACCEPTED',
-    realPayMandate: { status: 'ACCEPTED', contractSequence: '1011268615' }
+    nupayMandate: { outcome: 'ACCEPTED', mandateId: '1011268615' }
   });
   LoanApplication.findById = async () => mockApp;
 

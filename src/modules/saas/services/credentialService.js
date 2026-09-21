@@ -15,16 +15,12 @@ const { encrypt, decrypt, mask } = require('../utils/crypto');
 
 // Maps a provider's logical credential keys to global .env fallbacks.
 const ENV_FALLBACK = {
-  realpay: {
-    clientId: 'REALPAY_CLIENT_ID',
-    clientSecret: 'REALPAY_CLIENT_SECRET',
-    merchantNumber: 'REALPAY_MERCHANT_NUMBER',
-    baseUrl: 'REALPAY_BASE_URL',
-    swaggerUsername: 'REALPAY_SWAGGER_USERNAME',
-    swaggerPassword: 'REALPAY_SWAGGER_PASSWORD',
-    product: 'REALPAY_PRODUCT',
-    webhookUrl: 'REALPAY_WEBHOOK_URL',
-    environment: 'REALPAY_ENVIRONMENT'
+  nupay: {
+    username: 'NUPAY_USERNAME',
+    password: 'NUPAY_PASSWORD',
+    cardAcceptor: 'NUPAY_CARD_ACCEPTOR',
+    merchantId: 'NUPAY_MERCHANT_ID',
+    baseUrl: 'NUPAY_BASE_URL'
   },
   webfin: { username: 'WEBFIN_USERNAME', password: 'WEBFIN_PASSWORD', baseUrl: 'WEBFIN_BASE_URL', appName: 'WEBFIN_APP_NAME' },
   bulksms: { token: 'SMS_AUTH_TOKEN', tokenId: 'BULKSMS_TOKEN_ID', tokenSecret: 'BULKSMS_TOKEN_SECRET', baseUrl: 'BULKSMS_BASE_URL' },
@@ -36,19 +32,15 @@ const ENV_FALLBACK = {
 };
 
 const PROVIDER_REGISTRY = {
-  realpay: {
-    label: 'RealPay Debit Orders',
-    description: 'RealPay OMNI Channel / DebiCheck TT1 & TT2 payment & mandate provider',
+  nupay: {
+    label: 'NuPay Debit Orders',
+    description: 'NuPay BTM / DebiCheck TT1 payment & mandate provider',
     testCapability: true,
     fields: [
-      { key: 'clientId', label: 'Client ID', type: 'text', placeholder: 'Enter RealPay Client ID' },
-      { key: 'clientSecret', label: 'Client Secret', type: 'password', placeholder: 'Enter RealPay Client Secret' },
-      { key: 'merchantNumber', label: 'Merchant Number', type: 'text', placeholder: 'e.g. 23118' },
-      { key: 'baseUrl', label: 'Base URL', type: 'text', placeholder: 'https://uat.realpaycollect.com:4448' },
-      { key: 'swaggerUsername', label: 'Swagger Username', type: 'text', placeholder: 'chanainvint' },
-      { key: 'swaggerPassword', label: 'Swagger Password', type: 'password', placeholder: 'Swagger Password' },
-      { key: 'product', label: 'Product Code', type: 'text', placeholder: 'ABSADC' },
-      { key: 'webhookUrl', label: 'Webhook URL', type: 'text', placeholder: 'https://loan-saas47-production.up.railway.app/api/v1/realpay/webhook' }
+      { key: 'username', label: 'Username', type: 'text', placeholder: 'Enter NuPay Username' },
+      { key: 'password', label: 'Password', type: 'password', placeholder: 'Enter NuPay Password' },
+      { key: 'cardAcceptor', label: 'Card Acceptor Number', type: 'text', placeholder: 'Enter Card Acceptor Number' },
+      { key: 'baseUrl', label: 'Base URL', type: 'text', placeholder: 'https://btm.nupay.co.za' }
     ]
   },
   datanamix: {
@@ -207,7 +199,7 @@ async function resolve(tenantId, provider) {
  * Test a provider's resolved credentials. Perform non-financial connectivity test.
  */
 const REQUIRED_KEYS = {
-  realpay: ['merchantNumber'],
+  nupay: ['username', 'password', 'cardAcceptor'],
   webfin: ['username', 'password', 'baseUrl'],
   bulksms: ['baseUrl'], imagekit: ['publicKey', 'privateKey', 'urlEndpoint'],
   datanamix: ['clientId', 'clientSecret', 'baseUrl'], emailjs: ['serviceId', 'publicKey'],
@@ -215,18 +207,12 @@ const REQUIRED_KEYS = {
 };
 
 async function testConnection(tenantId, provider) {
-  if (provider === 'realpay') {
+  if (provider === 'nupay') {
     try {
-      const realpayService = require('../../../services/realpay/realpayService');
-      const result = await realpayService.testConnection(tenantId);
-      if (result.ok && result.source === 'tenant') {
-        await tenantContext.runAsSystem(async () => {
-          const doc = await getSettings(tenantId);
-          const p = doc.providers.get(provider);
-          if (p) { p.status = 'valid'; p.lastTestedAt = new Date(); p.lastTestResult = result.result; doc.providers.set(provider, p); await doc.save(); }
-        });
-      }
-      return result;
+      const nupayService = require('../../../services/nupayService');
+      const creds = await nupayService.getCredentials(tenantId);
+      const ok = Boolean(creds.username && creds.password && creds.rawCardAcceptor);
+      return { provider, ok, source: creds.cardAcceptorSource || 'env', mode: 'production', result: ok ? 'NuPay credentials verified' : 'NuPay credentials missing' };
     } catch (e) {
       return { provider, ok: false, source: 'unknown', mode: 'production', result: `Connection test failed: ${e.message}` };
     }

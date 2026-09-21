@@ -71,10 +71,10 @@ test('5. Billing Separation - SaaS Invoices are isolated from Loan Repayments', 
     transactionId: 'TXN-889900',
     amount: 850,
     paymentStatus: 'Completed',
-    paymentMethod: 'RealPay Debit Order'
+    paymentMethod: 'NuPay Debit Order'
   });
   assert.equal(loanPmt.transactionId, 'TXN-889900');
-  assert.equal(loanPmt.paymentMethod, 'RealPay Debit Order');
+  assert.equal(loanPmt.paymentMethod, 'NuPay Debit Order');
 });
 
 test('6. Multi-Tenant Background Cron Isolation - Validates tenantContext execution wrapping', async () => {

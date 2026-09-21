@@ -13,7 +13,7 @@ const tenantContext = require('../../src/tenancy/tenantContext');
 const loanCollectionService = require('../../src/modules/loanCollection/loanCollectionService');
 const collectionDispatcher = require('../../src/modules/loanCollection/collectionDispatcher');
 const collectionWorker = require('../../src/modules/loanCollection/collectionWorker');
-const realPayCollectionProvider = require('../../src/modules/loanCollection/providers/realPayCollectionProvider');
+const debitOrderProvider = require('../../src/services/payments/debitOrderProvider');
 
 describe('Phase 2 Loan Collection Engine Suite (21 Verification Criteria)', () => {
   let mongoServer;
@@ -77,7 +77,7 @@ describe('Phase 2 Loan Collection Engine Suite (21 Verification Criteria)', () =
     });
   }
 
-  it('Criterion 1 & 2 & 3: Due first installment creates RealPay DebiCheck collection as primary', async () => {
+  it('Criterion 1 & 2 & 3: Due first installment creates NuPay DebiCheck collection as primary', async () => {
     const tenantId = new mongoose.Types.ObjectId();
     const { schedule } = await createTestFixtures(tenantId, { emiNumber: 1, amount: 1500 });
 
@@ -85,13 +85,13 @@ describe('Phase 2 Loan Collection Engine Suite (21 Verification Criteria)', () =
       const res = await loanCollectionService.submitPrimaryCollection(schedule._id, tenantId);
       assert.strictEqual(res.success, true);
       assert.strictEqual(res.collectionAttempt.collectionMethod, 'DEBICHECK');
-      assert.strictEqual(res.collectionAttempt.provider, 'REALPAY');
+      assert.strictEqual(res.collectionAttempt.provider, 'NUPAY');
       assert.strictEqual(res.collectionAttempt.attemptNumber, 1);
       assert.strictEqual(res.collectionAttempt.status, 'SUBMITTED');
     });
   });
 
-  it('Criterion 4 & 5: RealPay TRACKING status does NOT trigger PayFast & does NOT mark Paid', async () => {
+  it('Criterion 4 & 5: NuPay TRACKING status does NOT trigger PayFast & does NOT mark Paid', async () => {
     const tenantId = new mongoose.Types.ObjectId();
     const { schedule } = await createTestFixtures(tenantId);
 
@@ -113,7 +113,7 @@ describe('Phase 2 Loan Collection Engine Suite (21 Verification Criteria)', () =
     });
   });
 
-  it('Criterion 6: Successful RealPay notification marks installment Paid & creates Payment', async () => {
+  it('Criterion 6: Successful NuPay notification marks installment Paid & creates Payment', async () => {
     const tenantId = new mongoose.Types.ObjectId();
     const { schedule } = await createTestFixtures(tenantId, { amount: 1200 });
 
@@ -135,7 +135,7 @@ describe('Phase 2 Loan Collection Engine Suite (21 Verification Criteria)', () =
     });
   });
 
-  it('Criterion 7 & 8: Unsuccessful RealPay notification triggers PayFast fallback immediately', async () => {
+  it('Criterion 7 & 8: Unsuccessful NuPay notification triggers PayFast fallback immediately', async () => {
     const tenantId = new mongoose.Types.ObjectId();
     const { schedule } = await createTestFixtures(tenantId, { payfastToken: 'PF-TOKEN-VALID-123' });
 
@@ -280,7 +280,7 @@ describe('Phase 2 Loan Collection Engine Suite (21 Verification Criteria)', () =
     });
   });
 
-  it('Criterion 18, 19, 20, 21: Existing loan calculations, RealPay mandates, PayFast marketplace & SaaS remain intact', async () => {
+  it('Criterion 18, 19, 20, 21: Existing loan calculations, NuPay mandates, PayFast marketplace & SaaS remain intact', async () => {
     assert.strictEqual(typeof loanCollectionService.submitPrimaryCollection, 'function');
     assert.strictEqual(typeof collectionWorker.runDailyCollectionJob, 'function');
   });

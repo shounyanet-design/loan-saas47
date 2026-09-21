@@ -298,24 +298,6 @@ const getApplicationDetails = asyncHandler(async (req, res) => {
 
   const activeLoanExists = await ActiveLoan.exists({ loanApplicationId: application._id, isDeleted: false });
 
-  const realpayEnv = String(process.env.REALPAY_ENVIRONMENT || '').toUpperCase();
-  const realpaySimEnabled = String(process.env.REALPAY_SIMULATION_ENABLED || '').toLowerCase() === 'true';
-  const hasGenuineContractSeq = Boolean(
-    application.realPayMandate?.contractSequence &&
-    !String(application.realPayMandate.contractSequence).startsWith('RPM-') &&
-    !String(application.realPayMandate.contractSequence).includes('LOCAL')
-  );
-  const realPaySimulationAvailable = realpayEnv === 'UAT' && realpaySimEnabled && hasGenuineContractSeq;
-
-  const hasGenuineInstalmentSeq = Boolean(
-    (application.realPayMandate?.instalmentSequence || application.realPaySimulation?.instalment?.instalmentSequence) &&
-    String(application.realPayMandate?.instalmentSequence || application.realPaySimulation?.instalment?.instalmentSequence).trim() !== ''
-  );
-  const isMandateSimCompleted = Boolean(
-    application.realPaySimulation?.mandate?.result === 'ACCEPTED' || application.realPayMandate?.status === 'ACCEPTED'
-  );
-  const instalmentSimulationAvailable = realPaySimulationAvailable && isMandateSimCompleted && hasGenuineInstalmentSeq;
-
   let resolvedCreditProvider = (application.agreementCreditProviderSnapshot && application.agreementCreditProviderSnapshot.legalName)
     ? application.agreementCreditProviderSnapshot
     : null;
@@ -339,8 +321,6 @@ const getApplicationDetails = asyncHandler(async (req, res) => {
     ...banking,
     ...application, // Spread application last to preserve its _id, createdAt, etc.
     agreementCreditProviderSnapshot: resolvedCreditProvider || application.agreementCreditProviderSnapshot,
-    realPaySimulationAvailable,
-    instalmentSimulationAvailable,
     yearsOfService: employment?.employmentDuration,
     accountHolder: banking?.accountHolderName,
     documents: formattedDocs,

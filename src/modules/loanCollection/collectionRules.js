@@ -42,10 +42,10 @@ class CollectionRules {
       throw new Error(`ActiveLoan ${schedule.loanId} not found`);
     }
 
-    // Must have active RealPay / DebiCheck mandate reference
-    const mandateRef = borrower.collectionProfile?.debicheckMandateReference || loan.debicheckMandateReference;
+    // Must have active NuPay / DebiCheck mandate reference
+    const mandateRef = borrower.collectionProfile?.debicheckMandateReference || loan.debicheckMandateReference || loan.nupayMandate?.mandateId;
     if (!mandateRef) {
-      return { eligible: false, reason: 'MISSING_REALPAY_MANDATE', schedule, borrower, loan };
+      return { eligible: false, reason: 'MISSING_DEBICHECK_MANDATE', schedule, borrower, loan };
     }
 
     return {

@@ -1,7 +1,7 @@
 const CollectionAttempt = require('../../models/CollectionAttempt');
 const RepaymentSchedule = require('../../models/RepaymentSchedule');
 const collectionRules = require('./collectionRules');
-const realPayCollectionProvider = require('./providers/realPayCollectionProvider');
+const debitOrderProvider = require('../../services/payments/debitOrderProvider');
 const payFastLoanFallbackProvider = require('./providers/payFastLoanFallbackProvider');
 const collectionReconciliation = require('./collectionReconciliation');
 
@@ -44,7 +44,7 @@ class LoanCollectionService {
       installmentIdentifier: `EMI-${schedule.emiNumber}`,
       emiNumber: schedule.emiNumber,
       collectionMethod: 'DEBICHECK',
-      provider: 'REALPAY',
+      provider: 'NUPAY',
       attemptNumber,
       status: 'SUBMITTED',
       requestedAmount: amount,
@@ -55,31 +55,30 @@ class LoanCollectionService {
 
     console.log(`[COLLECTION_CREATED] Attempt ${attempt._id} created for schedule ${schedule._id} (Tenant: ${tenantId})`);
 
-    // 3. Submit collection to RealPay
-    const result = await realPayCollectionProvider.submitCollection({
+    // 3. Submit collection to NuPay
+    const result = await debitOrderProvider.createCollection({
       mandateId: mandateRef,
       amount,
-      clientReference: idempotencyKey,
-      tenantId
-    });
+      clientReference: idempotencyKey
+    }, tenantId);
 
-    if (result.success) {
-      attempt.providerReference = result.providerReference;
+    if (result.outcome === 'ACCEPTED' || result.success || result.status === 'SUBMITTED') {
+      attempt.providerReference = result.providerReference || result.mandateId || result.clientReference;
       await attempt.save();
-      console.log(`[COLLECTION_SUBMITTED] Submitted attempt ${attempt._id} to RealPay (Ref: ${result.providerReference})`);
+      console.log(`[COLLECTION_SUBMITTED] Submitted attempt ${attempt._id} to NuPay (Ref: ${attempt.providerReference})`);
       return { success: true, collectionAttempt: attempt };
     } else {
       attempt.status = 'FAILED';
-      attempt.failureReason = result.failureReason;
+      attempt.failureReason = result.failureReason || result.providerMessage || 'NuPay submission failed';
       attempt.completedAt = new Date();
       await attempt.save();
-      console.error(`[COLLECTION_FAILED] Attempt ${attempt._id} submission failed: ${result.failureReason}`);
-      return { success: false, collectionAttempt: attempt, reason: result.failureReason };
+      console.error(`[COLLECTION_FAILED] Attempt ${attempt._id} submission failed: ${attempt.failureReason}`);
+      return { success: false, collectionAttempt: attempt, reason: attempt.failureReason };
     }
   }
 
   /**
-   * Handle Webhook TRACKING status notification from RealPay.
+   * Handle Webhook TRACKING status notification from NuPay.
    */
   async handleWebhookTracking(collectionAttempt, payload = {}, tenantId) {
     if (collectionAttempt.status === 'SUCCESSFUL' || collectionAttempt.status === 'SUCCESS') {
@@ -91,12 +90,12 @@ class LoanCollectionService {
     collectionAttempt.metadata = { ...collectionAttempt.metadata, trackingWebhook: payload };
     await collectionAttempt.save();
 
-    console.log(`[REALPAY_TRACKING] CollectionAttempt ${collectionAttempt._id} set to TRACKING state. Waiting for final outcome.`);
+    console.log(`[NUPAY_TRACKING] CollectionAttempt ${collectionAttempt._id} set to TRACKING state. Waiting for final outcome.`);
     return { updated: true, collectionAttempt };
   }
 
   /**
-   * Handle Webhook SUCCESSFUL status notification from RealPay.
+   * Handle Webhook SUCCESSFUL status notification from NuPay.
    */
   async handleWebhookSuccess(collectionAttempt, payload = {}, tenantId) {
     if (collectionAttempt.status === 'SUCCESSFUL' || collectionAttempt.status === 'SUCCESS') {
@@ -109,7 +108,7 @@ class LoanCollectionService {
     collectionAttempt.metadata = { ...collectionAttempt.metadata, successWebhook: payload };
     await collectionAttempt.save();
 
-    console.log(`[REALPAY_SUCCESSFUL] CollectionAttempt ${collectionAttempt._id} marked SUCCESSFUL.`);
+    console.log(`[NUPAY_SUCCESSFUL] CollectionAttempt ${collectionAttempt._id} marked SUCCESSFUL.`);
 
     // Reconcile installment
     const reconc = await collectionReconciliation.reconcileSuccessfulCollection({
@@ -122,7 +121,7 @@ class LoanCollectionService {
   }
 
   /**
-   * Handle Webhook UNSUCCESSFUL status notification from RealPay.
+   * Handle Webhook UNSUCCESSFUL status notification from NuPay.
    * THIS IS THE ONLY TRIGGER FOR PAYFAST FALLBACK.
    */
   async handleWebhookUnsuccessful(collectionAttempt, payload = {}, tenantId) {
@@ -130,7 +129,7 @@ class LoanCollectionService {
       return { updated: false, isDuplicate: true, collectionAttempt };
     }
 
-    const failureReason = payload.reason || payload.description || 'RealPay collection unsuccessful';
+    const failureReason = payload.reason || payload.description || 'NuPay collection unsuccessful';
 
     collectionAttempt.status = 'UNSUCCESSFUL';
     collectionAttempt.failureReason = failureReason;
@@ -140,7 +139,7 @@ class LoanCollectionService {
     collectionAttempt.metadata = { ...collectionAttempt.metadata, failureWebhook: payload };
     await collectionAttempt.save();
 
-    console.log(`[REALPAY_UNSUCCESSFUL] CollectionAttempt ${collectionAttempt._id} marked UNSUCCESSFUL. Triggering PayFast fallback.`);
+    console.log(`[NUPAY_UNSUCCESSFUL] CollectionAttempt ${collectionAttempt._id} marked UNSUCCESSFUL. Triggering PayFast fallback.`);
 
     // Immediately trigger isolated PayFast fallback
     const fallbackResult = await this.triggerPayFastFallback(collectionAttempt._id, tenantId);
@@ -149,16 +148,16 @@ class LoanCollectionService {
   }
 
   /**
-   * Initiate isolated PayFast fallback for a failed RealPay collection attempt.
+   * Initiate isolated PayFast fallback for a failed primary collection attempt.
    */
-  async triggerPayFastFallback(realPayAttemptId, tenantId) {
-    const realPayAttempt = await CollectionAttempt.findOne({ _id: realPayAttemptId, tenantId });
-    if (!realPayAttempt) {
-      throw new Error(`RealPay CollectionAttempt ${realPayAttemptId} not found`);
+  async triggerPayFastFallback(primaryAttemptId, tenantId) {
+    const primaryAttempt = await CollectionAttempt.findOne({ _id: primaryAttemptId, tenantId });
+    if (!primaryAttempt) {
+      throw new Error(`CollectionAttempt ${primaryAttemptId} not found`);
     }
 
     // Confirm schedule is still unpaid
-    const schedule = await RepaymentSchedule.findOne({ _id: realPayAttempt.repaymentScheduleId, tenantId });
+    const schedule = await RepaymentSchedule.findOne({ _id: primaryAttempt.repaymentScheduleId, tenantId });
     if (!schedule || schedule.status === 'Paid') {
       return { triggered: false, reason: 'INSTALLMENT_ALREADY_PAID' };
     }
@@ -166,49 +165,49 @@ class LoanCollectionService {
     // Check if fallback already created (prevent double fallback)
     const existingFallback = await CollectionAttempt.findOne({
       tenantId,
-      originalAttemptId: realPayAttempt._id,
+      originalAttemptId: primaryAttempt._id,
       collectionMethod: 'PAYFAST_CARD'
     });
 
     if (existingFallback) {
-      console.warn(`[PAYFAST_FALLBACK_DUPLICATE] Fallback attempt already exists for RealPay attempt ${realPayAttempt._id}`);
+      console.warn(`[PAYFAST_FALLBACK_DUPLICATE] Fallback attempt already exists for attempt ${primaryAttempt._id}`);
       return { triggered: false, isDuplicate: true, fallbackAttempt: existingFallback };
     }
 
     const Borrower = require('../../models/Borrower');
-    const borrower = await Borrower.findOne({ _id: realPayAttempt.borrowerId, tenantId });
+    const borrower = await Borrower.findOne({ _id: primaryAttempt.borrowerId, tenantId });
 
     // Create PayFast fallback CollectionAttempt
     const fallbackAttempt = await CollectionAttempt.create({
       tenantId,
-      borrowerId: realPayAttempt.borrowerId,
-      loanId: realPayAttempt.loanId,
-      activeLoanId: realPayAttempt.activeLoanId || realPayAttempt.loanId,
-      repaymentScheduleId: realPayAttempt.repaymentScheduleId,
-      installmentIdentifier: realPayAttempt.installmentIdentifier,
-      emiNumber: realPayAttempt.emiNumber,
+      borrowerId: primaryAttempt.borrowerId,
+      loanId: primaryAttempt.loanId,
+      activeLoanId: primaryAttempt.activeLoanId || primaryAttempt.loanId,
+      repaymentScheduleId: primaryAttempt.repaymentScheduleId,
+      installmentIdentifier: primaryAttempt.installmentIdentifier,
+      emiNumber: primaryAttempt.emiNumber,
       collectionMethod: 'PAYFAST_CARD',
       provider: 'PAYFAST',
       attemptNumber: 1,
       status: 'SUBMITTED',
-      requestedAmount: realPayAttempt.requestedAmount,
-      amount: realPayAttempt.requestedAmount,
-      originalAttemptId: realPayAttempt._id,
+      requestedAmount: primaryAttempt.requestedAmount,
+      amount: primaryAttempt.requestedAmount,
+      originalAttemptId: primaryAttempt._id,
       submittedAt: new Date()
     });
 
-    // Link fallback attempt to realPayAttempt
-    realPayAttempt.fallbackStatus = 'TRIGGERED';
-    realPayAttempt.fallbackAttemptId = fallbackAttempt._id;
-    await realPayAttempt.save();
+    // Link fallback attempt to primaryAttempt
+    primaryAttempt.fallbackStatus = 'TRIGGERED';
+    primaryAttempt.fallbackAttemptId = fallbackAttempt._id;
+    await primaryAttempt.save();
 
-    console.log(`[PAYFAST_FALLBACK_TRIGGERED] Created PayFast fallback attempt ${fallbackAttempt._id} for failed attempt ${realPayAttempt._id}`);
+    console.log(`[PAYFAST_FALLBACK_TRIGGERED] Created PayFast fallback attempt ${fallbackAttempt._id} for failed attempt ${primaryAttempt._id}`);
 
     // Process PayFast fallback charge
     const fallbackRes = await payFastLoanFallbackProvider.processFallback({
       borrower,
-      amount: realPayAttempt.requestedAmount,
-      repaymentScheduleId: realPayAttempt.repaymentScheduleId,
+      amount: primaryAttempt.requestedAmount,
+      repaymentScheduleId: primaryAttempt.repaymentScheduleId,
       tenantId
     });
 

@@ -521,7 +521,8 @@ const markReadyForDisbursement = async (loanApplicationId, adminId) => {
 
   // 2. DebiCheck Mandate Gate
   const mandateAccepted = application.debicheckMandateStatus === 'ACCEPTED'
-    || application.realPayMandate?.status === 'ACCEPTED';
+    || application.nupayMandate?.outcome === 'ACCEPTED'
+    || application.nupayMandate?.status === 'Accepted';
 
   if (!mandateAccepted) {
     throw new Error('Cannot mark loan ready for disbursement: DebiCheck mandate status is not ACCEPTED.');

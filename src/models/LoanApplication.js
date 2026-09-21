@@ -582,53 +582,6 @@ const loanApplicationSchema = new mongoose.Schema(
       callbackReceivedAt: { type: Date },
       updatedAt: { type: Date }
     },
-    realPayMandate: {
-      providerReference: { type: String, default: '' },
-      mandateId: { type: String, default: '' },
-      contractSequence: { type: String, default: '' },
-      instalmentSequence: { type: String, default: '' },
-      status: { type: String, default: '' },
-      statusCode: { type: String, default: '' },
-      statusDescription: { type: String, default: '' },
-      product: { type: String, default: '' },
-      clientReference: { type: String, default: '' },
-      contractReference: { type: String, default: '' },
-      createdAt: { type: Date },
-      updatedAt: { type: Date },
-      lastWebhookAt: { type: Date }
-    },
-    realPayClient: {
-      clientNumber: { type: String, default: '' },
-      registered: { type: Boolean, default: false },
-      providerReference: { type: String, default: '' },
-      status: { type: String, default: '' },
-      statusCode: { type: String, default: '' },
-      statusDescription: { type: String, default: '' },
-      registeredAt: { type: Date },
-      lastCheckedAt: { type: Date }
-    },
-    realPaySimulation: {
-      environment: { type: String, default: 'UAT' },
-      mandate: {
-        requestedAt: { type: Date },
-        contractSequence: { type: String, default: '' },
-        statusCode: { type: String, default: '' },
-        result: { type: String, default: '' },
-        providerStatus: { type: String, default: '' },
-        providerMessage: { type: String, default: '' },
-        completedAt: { type: Date }
-      },
-      instalment: {
-        requestedAt: { type: Date },
-        contractSequence: { type: String, default: '' },
-        instalmentSequence: { type: String, default: '' },
-        statusCode: { type: String, default: '' },
-        result: { type: String, default: '' },
-        providerStatus: { type: String, default: '' },
-        providerMessage: { type: String, default: '' },
-        completedAt: { type: Date }
-      }
-    },
 
     // ── Consumer Credit Report Result (Datanamix — Dynamic Underwriting) ──
     consumerCreditReportRaw: { type: mongoose.Schema.Types.Mixed, default: {} },

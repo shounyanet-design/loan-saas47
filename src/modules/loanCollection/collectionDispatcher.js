@@ -4,7 +4,7 @@ const loanCollectionService = require('./loanCollectionService');
 
 class CollectionDispatcher {
   /**
-   * Dispatch primary RealPay collections for all due schedules within a tenant context.
+   * Dispatch primary NuPay collections for all due schedules within a tenant context.
    */
   async dispatchDueCollectionsForTenant(tenantId, targetDate = new Date()) {
     const startOfDay = new Date(targetDate);

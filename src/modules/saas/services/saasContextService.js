@@ -72,7 +72,7 @@ async function getSaasContext(tenantId) {
         creditBureauAllowed: featureList.includes('CREDIT_BUREAU') || true,
         amlAllowed: featureList.includes('AML') || true,
         bankAvsAllowed: featureList.includes('BANK_VERIFICATION') || true,
-        realpayAllowed: featureList.includes('REALPAY') || true,
+        nupayAllowed: featureList.includes('NUPAY') || true,
       },
       branding: settings?.branding || {},
       customDomain: domain?.domain || null,

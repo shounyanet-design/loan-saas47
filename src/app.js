@@ -132,12 +132,12 @@ app.use('/api/admin/loans', disbursementRoutes);
 app.use('/api/admin/active-loans', activeLoanRoutes);
 app.use('/api/admin/payments', paymentRoutes);
 app.use('/api/admin/due-payments', duePaymentRoutes);
-const realpayRoutesApi = require('./routes/realpayRoutes');
-const realpayAdminRoutes = require('./routes/admin/realpayRoutes');
-app.use('/api/v1/realpay', realpayRoutesApi);
+const nupayRoutesApi = require('./routes/nupayRoutes');
+const nupayAdminRoutes = require('./routes/admin/nupayRoutes');
+app.use('/api/v1/nupay', nupayRoutesApi);
 const loanCollectionAdminRoutes = require('./routes/admin/loanCollectionAdminRoutes');
 app.use('/api/admin/loan-collections', loanCollectionAdminRoutes);
-app.use('/api/admin/realpay', realpayAdminRoutes);
+app.use('/api/admin/nupay', nupayAdminRoutes);
 
 app.use('/api/admin/reports', reportRoutes);
 app.use('/api/admin/communications', communicationRoutes);
@@ -193,6 +193,7 @@ app.use('/api/ops', tenantOpsRoutes);
 app.use('/api/public', publicCustomerRoutes);
 app.use('/api/docs', docsRoutes);
 app.use('/api/customer', customerRoutes);
+
 
 // Prometheus metrics scrape endpoint (additive).
 app.use('/metrics', metricsRoutes);

@@ -10,7 +10,7 @@ const collectionAttemptSchema = new mongoose.Schema({
   emiNumber: { type: Number },
   
   collectionMethod: { type: String, enum: ['DEBICHECK', 'PAYFAST_CARD', 'MANUAL'], required: true },
-  provider: { type: String, enum: ['REALPAY', 'PAYFAST', 'OFFLINE'], required: true },
+  provider: { type: String, enum: ['NUPAY', 'PAYFAST', 'OFFLINE'], required: true },
   
   attemptNumber: { type: Number, default: 1 },
   

@@ -35,7 +35,7 @@ describe('CollectionAttempt Model Tests', () => {
         repaymentScheduleId,
         installmentIdentifier: 'EMI-1',
         collectionMethod: 'DEBICHECK',
-        provider: 'REALPAY',
+        provider: 'NUPAY',
         requestedAmount: 1500,
         providerReference: 'RPM-12345'
       });
@@ -43,7 +43,7 @@ describe('CollectionAttempt Model Tests', () => {
       assert.strictEqual(attempt.status, 'PENDING');
       assert.strictEqual(attempt.attemptNumber, 1);
       assert.strictEqual(attempt.collectionMethod, 'DEBICHECK');
-      assert.strictEqual(attempt.provider, 'REALPAY');
+      assert.strictEqual(attempt.provider, 'NUPAY');
       assert.strictEqual(attempt.fallbackStatus, 'NOT_ELIGIBLE');
       assert.ok(attempt.tenantId.equals(tenantId));
     });
@@ -59,7 +59,7 @@ describe('CollectionAttempt Model Tests', () => {
         loanId: new mongoose.Types.ObjectId(),
         repaymentScheduleId: new mongoose.Types.ObjectId(),
         collectionMethod: 'DEBICHECK',
-        provider: 'REALPAY',
+        provider: 'NUPAY',
         requestedAmount: 500
       });
     });
@@ -80,7 +80,7 @@ describe('CollectionAttempt Model Tests', () => {
         loanId: new mongoose.Types.ObjectId(),
         repaymentScheduleId: new mongoose.Types.ObjectId(),
         collectionMethod: 'DEBICHECK',
-        provider: 'REALPAY',
+        provider: 'NUPAY',
         requestedAmount: 500,
         idempotencyKey
       });
@@ -91,7 +91,7 @@ describe('CollectionAttempt Model Tests', () => {
           loanId: new mongoose.Types.ObjectId(),
           repaymentScheduleId: new mongoose.Types.ObjectId(),
           collectionMethod: 'DEBICHECK',
-          provider: 'REALPAY',
+          provider: 'NUPAY',
           requestedAmount: 500,
           idempotencyKey
         });
