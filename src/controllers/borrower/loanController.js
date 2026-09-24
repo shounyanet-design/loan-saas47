@@ -4,6 +4,7 @@ const LoanActivity = require('../../models/LoanActivity');
 const LoanApplication = require('../../models/LoanApplication');
 const Borrower = require('../../models/Borrower');
 const SystemSettings = require('../../models/SystemSettings');
+const tenantContext = require('../../tenancy/tenantContext');
 const asyncHandler = require('../../utils/asyncHandler');
 const { sendSuccess, sendError } = require('../../utils/responseHandler');
 
@@ -59,7 +60,9 @@ exports.getMyLoans = asyncHandler(async (req, res) => {
     // Check if migration is needed for this loan
     let scheduleCount = await RepaymentSchedule.countDocuments({ loanId: loan._id });
     if (scheduleCount === 0 && loan.repaymentSchedule && loan.repaymentSchedule.length > 0) {
+      const targetTenantId = loan.tenantId || req.tenantId;
       const migrationData = loan.repaymentSchedule.map(emi => ({
+        tenantId: targetTenantId,
         loanId: loan._id,
         borrowerId: loan.borrowerId,
         emiNumber: emi.installmentNumber,
@@ -69,7 +72,22 @@ exports.getMyLoans = asyncHandler(async (req, res) => {
         paidAt: emi.paidDate || null,
         penaltyAmount: emi.lateFee || 0
       }));
-      await RepaymentSchedule.insertMany(migrationData);
+      try {
+        await RepaymentSchedule.insertMany(migrationData, { ordered: false });
+      } catch (insertErr) {
+        if (insertErr.code === 11000 || insertErr.name === 'MongoBulkWriteError') {
+          if (targetTenantId) {
+            await tenantContext.runAsSystem(() =>
+              RepaymentSchedule.updateMany(
+                { loanId: loan._id, tenantId: { $in: [null, undefined] } },
+                { $set: { tenantId: targetTenantId } }
+              )
+            );
+          }
+        } else {
+          console.warn('[borrower/loanController] RepaymentSchedule insertMany warning:', insertErr.message);
+        }
+      }
     }
 
     // Find next unpaid EMI
@@ -282,7 +300,20 @@ exports.getEmiSchedule = asyncHandler(async (req, res) => {
   }
 
   // 2. Fetch schedule
-  const schedule = await RepaymentSchedule.find({ loanId }).sort({ emiNumber: 1 });
+  let schedule = await RepaymentSchedule.find({ loanId }).sort({ emiNumber: 1 });
+  if ((!schedule || schedule.length === 0) && loan.repaymentSchedule && loan.repaymentSchedule.length > 0) {
+    schedule = (loan.repaymentSchedule || []).map(emi => ({
+      _id: emi._id,
+      loanId: loan._id,
+      borrowerId: loan.borrowerId,
+      emiNumber: emi.installmentNumber,
+      dueDate: emi.dueDate,
+      amount: emi.emiAmount,
+      status: emi.paymentStatus === 'Paid' ? 'Paid' : (emi.paymentStatus === 'Overdue' ? 'Overdue' : 'Pending'),
+      paidAt: emi.paidDate || null,
+      penaltyAmount: emi.lateFee || 0
+    }));
+  }
 
   // 3. Calculate summary for modal
   const totalRepayment = schedule.reduce((acc, curr) => acc + curr.amount, 0);

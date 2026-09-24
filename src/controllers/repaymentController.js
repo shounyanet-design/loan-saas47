@@ -2,6 +2,7 @@ const asyncHandler = require('express-async-handler');
 const RepaymentSchedule = require('../models/RepaymentSchedule');
 const ActiveLoan = require('../models/ActiveLoan');
 const Borrower = require('../models/Borrower');
+const tenantContext = require('../tenancy/tenantContext');
 const { sendSuccess, sendError } = require('../utils/responseHandler');
 
 /**
@@ -37,22 +38,72 @@ const getLoanRepaymentSchedule = asyncHandler(async (req, res) => {
   let schedule = await RepaymentSchedule.find(schedQuery).sort({ emiNumber: 1 });
 
   // FALLBACK & AUTO-MIGRATION:
-  // If the centralized RepaymentSchedule collection is empty for this loan,
-  // we migrate the embedded schedule from the ActiveLoan document.
-  if (schedule.length === 0 && loan.repaymentSchedule && loan.repaymentSchedule.length > 0) {
-    const migrationData = loan.repaymentSchedule.map(emi => ({
-      loanId: loan._id,
-      borrowerId: loan.borrowerId,
-      emiNumber: emi.installmentNumber,
-      dueDate: emi.dueDate,
-      amount: emi.emiAmount,
-      status: emi.paymentStatus === 'Paid' ? 'Paid' : (emi.paymentStatus === 'Overdue' ? 'Overdue' : 'Pending'),
-      paidAt: emi.paidDate || null,
-      penaltyAmount: emi.lateFee || 0
-    }));
-    
-    // Bulk insert into new collection
-    schedule = await RepaymentSchedule.insertMany(migrationData);
+  // If the centralized RepaymentSchedule collection is empty for this tenant query,
+  // check if legacy records exist without tenantId, or migrate the embedded schedule.
+  if (schedule.length === 0) {
+    const targetTenantId = loan.tenantId || req.tenantId;
+
+    // Check if schedules already exist un-scoped in the database (e.g. missing tenantId)
+    const existingRaw = await tenantContext.runAsSystem(() =>
+      RepaymentSchedule.find({ loanId }).sort({ emiNumber: 1 })
+    );
+
+    if (existingRaw.length > 0) {
+      if (targetTenantId) {
+        await tenantContext.runAsSystem(() =>
+          RepaymentSchedule.updateMany(
+            { loanId, tenantId: { $in: [null, undefined] } },
+            { $set: { tenantId: targetTenantId } }
+          )
+        );
+      }
+      schedule = await RepaymentSchedule.find(schedQuery).sort({ emiNumber: 1 });
+    } else if (loan.repaymentSchedule && loan.repaymentSchedule.length > 0) {
+      const migrationData = loan.repaymentSchedule.map(emi => ({
+        tenantId: targetTenantId,
+        loanId: loan._id,
+        borrowerId: loan.borrowerId,
+        emiNumber: emi.installmentNumber,
+        dueDate: emi.dueDate,
+        amount: emi.emiAmount,
+        status: emi.paymentStatus === 'Paid' ? 'Paid' : (emi.paymentStatus === 'Overdue' ? 'Overdue' : 'Pending'),
+        paidAt: emi.paidDate || null,
+        penaltyAmount: emi.lateFee || 0
+      }));
+
+      try {
+        schedule = await RepaymentSchedule.insertMany(migrationData, { ordered: false });
+      } catch (insertErr) {
+        if (insertErr.code === 11000 || insertErr.name === 'MongoBulkWriteError') {
+          if (targetTenantId) {
+            await tenantContext.runAsSystem(() =>
+              RepaymentSchedule.updateMany(
+                { loanId, tenantId: { $in: [null, undefined] } },
+                { $set: { tenantId: targetTenantId } }
+              )
+            );
+          }
+          schedule = await RepaymentSchedule.find(schedQuery).sort({ emiNumber: 1 });
+        } else {
+          throw insertErr;
+        }
+      }
+    }
+
+    // Graceful fallback to avoid 400/500 if DB insert failed or collection empty
+    if (!schedule || schedule.length === 0) {
+      schedule = (loan.repaymentSchedule || []).map(emi => ({
+        _id: emi._id,
+        loanId: loan._id,
+        borrowerId: loan.borrowerId,
+        emiNumber: emi.installmentNumber,
+        dueDate: emi.dueDate,
+        amount: emi.emiAmount,
+        status: emi.paymentStatus === 'Paid' ? 'Paid' : (emi.paymentStatus === 'Overdue' ? 'Overdue' : 'Pending'),
+        paidAt: emi.paidDate || null,
+        penaltyAmount: emi.lateFee || 0
+      }));
+    }
   }
 
   sendSuccess(res, 'Repayment schedule fetched successfully', schedule);
@@ -77,7 +128,9 @@ const getUpcomingEMIs = asyncHandler(async (req, res) => {
     for (const loan of activeLoans) {
       const scheduleCount = await RepaymentSchedule.countDocuments({ loanId: loan._id });
       if (scheduleCount === 0 && loan.repaymentSchedule && loan.repaymentSchedule.length > 0) {
+        const targetTenantId = loan.tenantId || req.tenantId;
         const migrationData = loan.repaymentSchedule.map(emi => ({
+          tenantId: targetTenantId,
           loanId: loan._id,
           borrowerId: loan.borrowerId,
           emiNumber: emi.installmentNumber,
@@ -87,7 +140,22 @@ const getUpcomingEMIs = asyncHandler(async (req, res) => {
           paidAt: emi.paidDate || null,
           penaltyAmount: emi.lateFee || 0
         }));
-        await RepaymentSchedule.insertMany(migrationData);
+        try {
+          await RepaymentSchedule.insertMany(migrationData, { ordered: false });
+        } catch (insertErr) {
+          if (insertErr.code === 11000 || insertErr.name === 'MongoBulkWriteError') {
+            if (targetTenantId) {
+              await tenantContext.runAsSystem(() =>
+                RepaymentSchedule.updateMany(
+                  { loanId: loan._id, tenantId: { $in: [null, undefined] } },
+                  { $set: { tenantId: targetTenantId } }
+                )
+              );
+            }
+          } else {
+            console.warn('[repaymentController] getUpcomingEMIs insertMany warning:', insertErr.message);
+          }
+        }
       }
     }
   } else if (role === 'agent') {
