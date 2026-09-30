@@ -1,7 +1,11 @@
+const mongoose = require('mongoose');
 const asyncHandler = require('express-async-handler');
 const RepaymentSchedule = require('../models/RepaymentSchedule');
 const ActiveLoan = require('../models/ActiveLoan');
 const Borrower = require('../models/Borrower');
+const Payment = require('../models/Payment');
+const DuePayment = require('../models/DuePayment');
+const LoanActivity = require('../models/LoanActivity');
 const tenantContext = require('../tenancy/tenantContext');
 const { sendSuccess, sendError } = require('../utils/responseHandler');
 
@@ -271,10 +275,229 @@ const markDispute = asyncHandler(async (req, res) => {
   sendSuccess(res, 'Dispute marked successfully', repayment);
 });
 
+/**
+ * @desc    Receive manual payment for a specific EMI installment
+ * @route   POST /api/repayments/:id/receive-payment
+ * @access  Private/Admin
+ */
+const receiveManualEmiPayment = asyncHandler(async (req, res) => {
+  if (req.user.role !== 'admin') {
+    return sendError(res, 'Access denied', 403);
+  }
+
+  const { id: scheduleId } = req.params;
+  const { paymentAmount, paymentDate, paymentMethod = 'Bank Transfer', transactionId, notes } = req.body;
+
+  // 1. Resolve RepaymentSchedule
+  const schedQuery = { _id: scheduleId };
+  if (req.tenantId) schedQuery.tenantId = req.tenantId;
+
+  const schedule = await RepaymentSchedule.findOne(schedQuery);
+  if (!schedule) {
+    return sendError(res, 'Repayment schedule record not found', 404);
+  }
+
+  // 2. Resolve ActiveLoan
+  const loanQuery = { _id: schedule.loanId };
+  if (req.tenantId) loanQuery.tenantId = req.tenantId;
+
+  const activeLoan = await ActiveLoan.findOne(loanQuery);
+  if (!activeLoan) {
+    return sendError(res, 'Associated active loan not found', 404);
+  }
+
+  if (activeLoan.isDeleted || activeLoan.loanStatus === 'Closed') {
+    return sendError(res, 'Cannot record payment for a closed or deleted loan', 400);
+  }
+
+  // 3. Status Guard
+  if (schedule.status === 'Paid') {
+    return sendError(res, `Installment #${schedule.emiNumber} is already fully paid`, 400);
+  }
+
+  // 4. Validate Amount
+  const numAmount = Number(paymentAmount);
+  if (isNaN(numAmount) || numAmount <= 0) {
+    return sendError(res, 'Payment amount must be greater than zero', 400);
+  }
+
+  const effectivePenalty = schedule.penaltyWaived ? 0 : (schedule.penaltyAmount || 0);
+  const totalEmiDue = Number(schedule.amount) + Number(effectivePenalty);
+  const currentAmountPaid = Number(schedule.amountPaid) || 0;
+  const remainingEmiDue = Math.max(0, totalEmiDue - currentAmountPaid);
+
+  // Precision rounding to 2 decimals
+  const roundedRemaining = Math.round(remainingEmiDue * 100) / 100;
+  const roundedPayment = Math.round(numAmount * 100) / 100;
+
+  if (roundedPayment > (roundedRemaining + 0.01)) {
+    return sendError(
+      res,
+      `Payment amount (R ${roundedPayment.toFixed(2)}) exceeds remaining due (R ${roundedRemaining.toFixed(2)}) for Installment #${schedule.emiNumber}`,
+      400
+    );
+  }
+
+  // 5. Validate Payment Method
+  const allowedMethods = ['Bank Transfer', 'EFT', 'Cash Deposit', 'Mobile Payment', 'Debit Order'];
+  const sanitizedMethod = allowedMethods.includes(paymentMethod) ? paymentMethod : 'Bank Transfer';
+
+  // 6. Check unique transactionId if provided
+  const targetTenantId = activeLoan.tenantId || req.tenantId;
+  if (transactionId && String(transactionId).trim()) {
+    const existingPayment = await Payment.findOne({
+      tenantId: targetTenantId,
+      transactionId: String(transactionId).trim(),
+      isDeleted: false
+    });
+    if (existingPayment) {
+      return sendError(res, `Transaction reference "${String(transactionId).trim()}" already exists`, 400);
+    }
+  }
+
+  // 7. Session Transaction Execution
+  let session = null;
+  let useTransaction = false;
+  try {
+    session = await mongoose.startSession();
+    session.startTransaction();
+    useTransaction = true;
+  } catch (_) {
+    session = null;
+    useTransaction = false;
+  }
+
+  const opts = useTransaction && session ? { session } : {};
+
+  try {
+    // a) Update RepaymentSchedule
+    schedule.amountPaid = Math.round((currentAmountPaid + roundedPayment) * 100) / 100;
+    if (schedule.amountPaid >= (totalEmiDue - 0.01)) {
+      schedule.status = 'Paid';
+      schedule.paidAt = paymentDate ? new Date(paymentDate) : new Date();
+    } else {
+      schedule.status = 'Partial';
+    }
+    await schedule.save(opts);
+
+    // b) Create Verified Payment record
+    const paymentDoc = {
+      tenantId: targetTenantId,
+      borrowerId: activeLoan.borrowerId,
+      borrowerName: activeLoan.borrowerName || 'Borrower',
+      borrowerPhone: activeLoan.borrowerPhone,
+      loanId: activeLoan._id,
+      loanCode: activeLoan.loanCode,
+      repaymentScheduleId: schedule._id,
+      emiNumber: schedule.emiNumber,
+      paymentAmount: roundedPayment,
+      paymentDate: paymentDate ? new Date(paymentDate) : new Date(),
+      paymentMethod: sanitizedMethod,
+      paymentStatus: 'Verified',
+      paymentType: 'EMI Payment',
+      verifiedBy: req.user._id,
+      verifiedDate: new Date(),
+      notes: notes || `Manual payment received for EMI #${schedule.emiNumber}`
+    };
+
+    if (transactionId && String(transactionId).trim()) {
+      paymentDoc.transactionId = String(transactionId).trim();
+    }
+
+    const [createdPayment] = await Payment.create([paymentDoc], opts);
+
+    // c) Synchronize embedded activeLoan.repaymentSchedule
+    if (Array.isArray(activeLoan.repaymentSchedule)) {
+      const embeddedEmi = activeLoan.repaymentSchedule.find(s => s.installmentNumber === schedule.emiNumber);
+      if (embeddedEmi) {
+        embeddedEmi.amountPaid = schedule.amountPaid;
+        embeddedEmi.paymentStatus = schedule.status === 'Paid' ? 'Paid' : 'Partial';
+        embeddedEmi.paidDate = schedule.paidAt;
+      }
+    }
+
+    // d) Recalculate remaining balance from authoritative verified payments
+    const verifiedPayments = await Payment.find({
+      loanId: activeLoan._id,
+      paymentStatus: 'Verified',
+      isDeleted: false
+    }).session(session);
+
+    const totalVerifiedPaid = verifiedPayments.reduce((sum, p) => sum + (Number(p.paymentAmount) || 0), 0);
+    const totalPayable = Number(activeLoan.totalPayableAmount) || Number(activeLoan.approvedAmount) || 0;
+    activeLoan.remainingBalance = Math.max(0, Math.round((totalPayable - totalVerifiedPaid) * 100) / 100);
+
+    // e) Stash remaining balance onto payment document
+    createdPayment.remainingBalanceAfterPayment = activeLoan.remainingBalance;
+    await createdPayment.save(opts);
+
+    // f) Update nextDueDate & loan status
+    const allSchedules = await RepaymentSchedule.find({ loanId: activeLoan._id }).sort({ emiNumber: 1 }).session(session);
+    const nextUnpaid = allSchedules.find(s => s.status !== 'Paid' && s.status !== 'Late Paid');
+    activeLoan.nextDueDate = nextUnpaid ? nextUnpaid.dueDate : null;
+
+    const allPaid = allSchedules.every(s => s.status === 'Paid' || s.status === 'Late Paid');
+    if (activeLoan.remainingBalance === 0 && allPaid) {
+      activeLoan.loanStatus = 'Completed';
+      activeLoan.settledAt = new Date();
+      activeLoan.settledBy = req.user._id;
+    }
+
+    await activeLoan.save(opts);
+
+    // g) Synchronize DuePayment if installment became Paid
+    if (schedule.status === 'Paid') {
+      await DuePayment.findOneAndUpdate(
+        { loanId: activeLoan._id, installmentNumber: schedule.emiNumber },
+        { dueStatus: 'Paid', totalDueAmount: 0 },
+        opts
+      );
+    }
+
+    // h) Audit logging via LoanActivity
+    await LoanActivity.create([{
+      tenantId: targetTenantId,
+      loanId: activeLoan._id,
+      borrowerId: activeLoan.borrowerId,
+      title: 'Manual Payment Received',
+      message: `Manual payment of R ${roundedPayment.toFixed(2)} received for EMI #${schedule.emiNumber} via ${sanitizedMethod} (Ref: ${createdPayment.transactionId}).`,
+      type: 'Payment'
+    }], opts);
+
+    if (useTransaction && session) {
+      await session.commitTransaction();
+      session.endSession();
+    }
+
+    // i) Emit real-time updates
+    try {
+      const { getIO } = require('../socket');
+      const io = getIO();
+      if (io) {
+        io.emit('payment:verified', { paymentId: createdPayment._id, loanId: activeLoan._id });
+        io.emit('dashboard:updated', { trigger: 'manual_emi_payment' });
+      }
+    } catch (_) {}
+
+    return sendSuccess(res, 'Payment recorded and verified successfully', {
+      payment: createdPayment,
+      schedule,
+      activeLoan
+    });
+  } catch (err) {
+    if (useTransaction && session) {
+      await session.abortTransaction();
+      session.endSession();
+    }
+    throw err;
+  }
+});
+
 module.exports = {
   getLoanRepaymentSchedule,
   getUpcomingEMIs,
   updateRepayment,
   waivePenalty,
-  markDispute
+  markDispute,
+  receiveManualEmiPayment
 };

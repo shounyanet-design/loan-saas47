@@ -9,6 +9,8 @@ const paymentSchema = new mongoose.Schema({
 
   loanId: { type: mongoose.Schema.Types.ObjectId, ref: 'ActiveLoan', required: true },
   loanCode: { type: String, required: true },
+  repaymentScheduleId: { type: mongoose.Schema.Types.ObjectId, ref: 'RepaymentSchedule' },
+  emiNumber: { type: Number },
 
   transactionId: { type: String, required: true }, // uniqueness enforced per-tenant (see below)
 
@@ -26,7 +28,7 @@ const paymentSchema = new mongoose.Schema({
 
   paymentStatus: { 
     type: String, 
-    enum: ['Pending', 'Verified', 'Rejected'], 
+    enum: ['Pending', 'Verified', 'Rejected', 'Reversed'], 
     default: 'Pending' 
   },
 

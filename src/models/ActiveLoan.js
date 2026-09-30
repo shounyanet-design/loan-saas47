@@ -9,7 +9,7 @@ const repaymentScheduleSchema = new mongoose.Schema({
   interestAmount: { type: Number, required: true },
   paymentStatus: { 
     type: String, 
-    enum: ['Pending', 'Paid', 'Overdue'], 
+    enum: ['Pending', 'Paid', 'Overdue', 'Partial', 'Late Paid'], 
     default: 'Pending' 
   },
   paidDate: { type: Date },
