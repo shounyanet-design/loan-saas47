@@ -391,11 +391,19 @@ const submitReview = asyncHandler(async (req, res) => {
     await createNotification({
       title: 'Loan Application Reviewed',
       message: `Staff member ${req.user.fullName} submitted an assessment for application ${app.applicationId}. Status recommendation: ${recommendation}`,
-      notificationType: 'Loan Application Recommendation',
-      priority: 'Normal',
-      borrowerId: app.borrowerId
+      notificationType: 'ReviewAssigned',
+      type: 'ReviewAssigned',
+      receiverRole: 'admin',
+      priority: 'NORMAL',
+      senderId: req.user._id,
+      senderRole: 'staff',
+      borrowerId: app.borrowerId,
+      loanApplicationId: app._id,
+      tenantId: req.tenantId || app.tenantId
     });
-  } catch (notifErr) {}
+  } catch (notifErr) {
+    console.error('[loanRequestController] Non-fatal error dispatching recommendation notification:', notifErr.message);
+  }
 
   // Emit Socket messages
   try {

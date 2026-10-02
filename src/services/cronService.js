@@ -2,13 +2,46 @@ const cron = require('node-cron');
 const RepaymentSchedule = require('../models/RepaymentSchedule');
 const Notification = require('../models/Notification');
 const LoanActivity = require('../models/LoanActivity');
-const Loan = require('../models/Loan');
+const ActiveLoan = require('../models/ActiveLoan');
 const Borrower = require('../models/Borrower');
 const BorrowerAlert = require('../models/BorrowerAlert');
 const Tenant = require('../models/Tenant');
 const { createNotification } = require('../utils/notificationHelper');
 const { getIO } = require('../socket/socketServer');
 const tenantContext = require('../tenancy/tenantContext');
+
+/**
+ * Utility to diagnose why populate returned null for a schedule reference
+ */
+const diagnoseMissingReference = async (emi) => {
+  let loanStatus = 'Resolved';
+  let borrowerStatus = 'Resolved';
+
+  const rawLoanId = emi._doc?.loanId || emi.loanId;
+  const rawBorrowerId = emi._doc?.borrowerId || emi.borrowerId;
+
+  if (!emi.loanId && rawLoanId) {
+    const rawLoan = await tenantContext.runAsSystem(() => ActiveLoan.findById(rawLoanId).lean());
+    if (!rawLoan) {
+      loanStatus = 'Hard-deleted document';
+    } else if (rawLoan.isDeleted) {
+      loanStatus = 'Soft-deleted document';
+    } else {
+      loanStatus = `Tenant mismatch (Loan tenant: ${rawLoan.tenantId})`;
+    }
+  }
+
+  if (!emi.borrowerId && rawBorrowerId) {
+    const rawBorrower = await tenantContext.runAsSystem(() => Borrower.findById(rawBorrowerId).lean());
+    if (!rawBorrower) {
+      borrowerStatus = 'Hard-deleted document';
+    } else {
+      borrowerStatus = `Tenant mismatch (Borrower tenant: ${rawBorrower.tenantId})`;
+    }
+  }
+
+  return `[Loan: ${loanStatus}, Borrower: ${borrowerStatus}]`;
+};
 
 /**
  * Initialize all cron jobs
@@ -72,8 +105,9 @@ const checkUpcomingEMIs = async () => {
     const io = getIO();
 
     for (const emi of upcomingEmis) {
-      if (!emi.loanId || !emi.borrowerId) {
-        console.warn(`[Cron] Repayment schedule ${emi._id} references missing loan or borrower. Skipping.`);
+      if (!emi.loanId || !emi.borrowerId || emi.loanId.isDeleted) {
+        const diag = await diagnoseMissingReference(emi);
+        console.warn(`[Cron] Repayment schedule ${emi._id} references missing or soft-deleted loan/borrower ${diag}. Skipping financial mutation.`);
         continue;
       }
 
@@ -152,8 +186,9 @@ const checkOverdueEMIs = async () => {
     const io = getIO();
 
     for (const emi of overdueEmis) {
-      if (!emi.loanId || !emi.borrowerId) {
-        console.warn(`[Cron] Overdue repayment schedule ${emi._id} references missing loan or borrower. Skipping.`);
+      if (!emi.loanId || !emi.borrowerId || emi.loanId.isDeleted) {
+        const diag = await diagnoseMissingReference(emi);
+        console.warn(`[Cron] Overdue repayment schedule ${emi._id} references missing or soft-deleted loan/borrower ${diag}. Skipping financial mutation.`);
         continue;
       }
 
@@ -161,13 +196,23 @@ const checkOverdueEMIs = async () => {
       const loan = emi.loanId;
       const borrowerUserId = borrower.userId ? borrower.userId.toString() : null;
 
-      // Update status to Overdue
-      emi.status = 'Overdue';
-      await emi.save();
+      // Atomically claim and update status to Overdue
+      const updatedSchedule = await RepaymentSchedule.findOneAndUpdate(
+        { _id: emi._id, status: 'Pending' },
+        { $set: { status: 'Overdue' } },
+        { new: true }
+      );
+      if (!updatedSchedule) {
+        // Already processed or updated concurrently by another worker
+        continue;
+      }
 
-      // Update Loan status to Overdue if it was Active
+      // Update ActiveLoan status to Overdue if it was Active
       if (loan.loanStatus === 'Active') {
-        await Loan.findByIdAndUpdate(loan._id, { loanStatus: 'Overdue' });
+        await ActiveLoan.findOneAndUpdate(
+          { _id: loan._id, loanStatus: 'Active' },
+          { $set: { loanStatus: 'Overdue' } }
+        );
       }
 
       const message = `Urgent: Your EMI # ${emi.emiNumber} of R ${emi.amount.toLocaleString()} is OVERDUE since ${new Date(emi.dueDate).toLocaleDateString()}.`;

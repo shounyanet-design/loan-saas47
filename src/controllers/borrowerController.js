@@ -7,6 +7,7 @@ const User = require('../models/User');
 const asyncHandler = require('../utils/asyncHandler');
 const { sendSuccess, sendError } = require('../utils/responseHandler');
 const imagekit = require('../config/imagekit');
+const tenantContext = require('../tenancy/tenantContext');
 
 // @desc    Create a new borrower (Admin only)
 // @route   POST /api/admin/borrowers/create
@@ -417,6 +418,46 @@ exports.deleteBorrower = asyncHandler(async (req, res, next) => {
 
   if (!borrower) {
     return sendError(res, 'Borrower not found', 404);
+  }
+
+  const ActiveLoan = require('../models/ActiveLoan');
+  const RepaymentSchedule = require('../models/RepaymentSchedule');
+  const Payment = require('../models/Payment');
+
+  // Deletion Safety Guard — Block borrower deletion if active/existing loans exist
+  const activeLoansCount = await tenantContext.runAsSystem(() =>
+    ActiveLoan.countDocuments({ borrowerId: borrower._id })
+  );
+  if (activeLoansCount > 0) {
+    return sendError(
+      res,
+      'Cannot delete borrower with active or existing loan records. Please process or close loans first.',
+      400
+    );
+  }
+
+  // Deletion Safety Guard — Block borrower deletion if repayment schedule history exists
+  const scheduleCount = await tenantContext.runAsSystem(() =>
+    RepaymentSchedule.countDocuments({ borrowerId: borrower._id })
+  );
+  if (scheduleCount > 0) {
+    return sendError(
+      res,
+      'Cannot delete borrower with linked repayment schedule history.',
+      400
+    );
+  }
+
+  // Deletion Safety Guard — Block borrower deletion if payment transaction history exists
+  const paymentCount = await tenantContext.runAsSystem(() =>
+    Payment.countDocuments({ borrowerId: borrower._id })
+  );
+  if (paymentCount > 0) {
+    return sendError(
+      res,
+      'Cannot delete borrower with linked payment transaction history.',
+      400
+    );
   }
 
   // 1. Delete Profile Photo from ImageKit if it's not the default

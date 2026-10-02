@@ -9,6 +9,7 @@ const AgentAssignment = require('../../models/AgentAssignment');
 const Notification = require('../../models/Notification');
 const { sendSuccess, sendError } = require('../../utils/responseHandler');
 const { getIO } = require('../../socket/socketServer');
+const tenantContext = require('../../tenancy/tenantContext');
 
 /**
  * @desc    Get all active loans with pagination, search, and filters
@@ -614,19 +615,50 @@ const deleteLoan = asyncHandler(async (req, res) => {
   const Commission = require('../../models/Commission');
   const LoanActivity = require('../../models/LoanActivity');
 
+  // Deletion Safety Guard — Block hard deletion if financial or agreement history exists
+  const paymentCount = await tenantContext.runAsSystem(() =>
+    Payment.countDocuments({ loanId: activeLoan._id })
+  );
+  if (paymentCount > 0) {
+    return sendError(
+      res,
+      'Cannot hard-delete loan with existing payment transaction history. Financial records must be preserved.',
+      400
+    );
+  }
+
+  const scheduleCount = await tenantContext.runAsSystem(() =>
+    RepaymentSchedule.countDocuments({ loanId: activeLoan._id })
+  );
+  if (scheduleCount > 0) {
+    return sendError(
+      res,
+      'Cannot hard-delete loan with existing repayment schedule history. Financial records must be preserved.',
+      400
+    );
+  }
+
+  if (activeLoan.agreementStatus === 'SIGNED' || activeLoan.agreementSignedAt) {
+    return sendError(
+      res,
+      'Cannot hard-delete loan with a signed legal agreement.',
+      400
+    );
+  }
+
   const session = await mongoose.startSession();
   session.startTransaction();
 
   try {
-    // Cascade delete: remove all linked repayment schedules
+    // Cascade delete: remove all linked repayment schedules for eligible draft/test loan
     await RepaymentSchedule.deleteMany(
-      { activeLoanId: activeLoan._id },
+      { loanId: activeLoan._id },
       { session }
     );
 
-    // Cascade delete: remove all linked payment records
+    // Cascade delete: remove all linked payment records for eligible draft/test loan
     await Payment.deleteMany(
-      { activeLoanId: activeLoan._id },
+      { loanId: activeLoan._id },
       { session }
     );
 

@@ -78,7 +78,11 @@ const createNotification = async (data) => {
     // Handle role=admin broadcast without receiverId by querying admin user(s)
     if (data.receiverRole === 'admin' && !data.receiverId) {
       try {
-        const admins = await User.find({ role: 'admin' }).select('_id').lean();
+        const adminQuery = { role: 'admin' };
+        if (data.tenantId) {
+          adminQuery.tenantId = data.tenantId;
+        }
+        const admins = await User.find(adminQuery).select('_id').lean();
         if (admins && admins.length > 0) {
           const createdList = [];
           for (const adminUser of admins) {
@@ -89,15 +93,24 @@ const createNotification = async (data) => {
             if (created) createdList.push(created);
           }
           return createdList.length > 0 ? createdList[0] : null;
+        } else {
+          console.warn('[NotificationHelper] No matching admin users found for notification dispatch.');
+          return null;
         }
       } catch (adminLookupErr) {
         console.error('[NotificationHelper] Failed to lookup admin users for notification dispatch:', adminLookupErr.message);
+        return null;
       }
     }
 
     const rawType = data.type || data.notificationType;
     const resolvedType = resolveNotificationType(rawType, data.receiverRole);
     const resolvedPriority = normalizePriority(data.priority);
+
+    if (!data.receiverId || !data.receiverRole) {
+      console.warn(`[NotificationHelper] Cannot create notification with missing receiverId or receiverRole. ReceiverRole: ${data.receiverRole}, ReceiverId: ${data.receiverId}`);
+      return null;
+    }
 
     const notificationData = {
       ...data,
