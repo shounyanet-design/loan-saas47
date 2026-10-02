@@ -23,24 +23,35 @@ const crypto = require('crypto');
 const generateVerificationHash = (app, borrower) => {
   if (!app) return '';
 
-  const borrowerId = app.borrowerId || '';
-  const idNumber = app.idNumber || borrower?.idNumber || '';
-  const phoneNumber = app.phoneNumber || borrower?.phoneNumber || '';
-  const loanAmount = app.requestedAmount || 0;
+  // Handle borrowerId safely whether it is a string ID, an ObjectId, or a populated document object
+  let borrowerId = '';
+  if (app.borrowerId) {
+    if (typeof app.borrowerId === 'object' && app.borrowerId._id) {
+      borrowerId = String(app.borrowerId._id);
+    } else {
+      borrowerId = String(app.borrowerId);
+    }
+  } else if (borrower) {
+    borrowerId = String(borrower._id || borrower.id || '');
+  }
+
+  const idNumber = String(app.idNumber || borrower?.idNumber || '');
+  const phoneNumber = String(app.phoneNumber || borrower?.phoneNumber || '');
+  const loanAmount = Number(app.requestedAmount || 0);
 
   // Retrieve affordability values from affordabilityOutcome
-  const basicSalary = app.affordabilityOutcome?.income?.basicSalary || 0;
-  const allowances = app.affordabilityOutcome?.income?.allowances || 0;
+  const basicSalary = Number(app.affordabilityOutcome?.income?.basicSalary || 0);
+  const allowances = Number(app.affordabilityOutcome?.income?.allowances || 0);
   
   // Sum other income (allowances, overtime, otherIncome)
-  const overtime = app.affordabilityOutcome?.income?.overtime || 0;
-  const otherIncomeVal = app.affordabilityOutcome?.income?.otherIncome || 0;
+  const overtime = Number(app.affordabilityOutcome?.income?.overtime || 0);
+  const otherIncomeVal = Number(app.affordabilityOutcome?.income?.otherIncome || 0);
   const otherIncome = overtime + otherIncomeVal;
 
-  const expenses = app.affordabilityOutcome?.expenses?.totalExpenses || 0;
-  const monthlyInstallment = app.estimatedMonthlyEMI || 0;
-  const applicationProduct = app.loanType || '';
-  const employmentType = borrower?.employmentStatus || '';
+  const expenses = Number(app.affordabilityOutcome?.expenses?.totalExpenses || 0);
+  const monthlyInstallment = Number(app.estimatedMonthlyEMI || 0);
+  const applicationProduct = String(app.loanType || '');
+  const employmentType = String(borrower?.employmentStatus || '');
 
   const hashInputs = [
     String(borrowerId),

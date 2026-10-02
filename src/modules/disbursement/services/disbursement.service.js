@@ -35,6 +35,22 @@ async function disburseLoan(applicationId, context) {
       throw new Error('Pre-disbursement gates not satisfied');
     }
 
+    // Verification Hash Integrity Gate
+    if (application.creditAssessment) {
+      if (!application.creditAssessment.verificationHash) {
+        throw new Error('Disbursement blocked: Credit assessment verification hash is missing.');
+      }
+      const { generateVerificationHash } = require('../../../utils/verificationHashEngine');
+      const Borrower = require('../../../models/Borrower');
+      const borrowerDoc = await Borrower.findOne({
+        $or: [{ _id: application.borrowerId }, { userId: application.borrowerId }]
+      }).session(session);
+      const calculatedHash = generateVerificationHash(application, borrowerDoc);
+      if (calculatedHash !== application.creditAssessment.verificationHash) {
+        throw new Error('Disbursement blocked: Agreement verification hash mismatch detected.');
+      }
+    }
+
     // Ensure idempotency – if ActiveLoan already exists, return it
     let activeLoan = await ActiveLoan.findOne({ tenantId: context.tenantId, loanApplicationId: application._id }).session(session);
     if (activeLoan) {

@@ -143,11 +143,14 @@ const generateAgreement = async (loanId, adminId) => {
       await createNotification({
         title: 'Agreement Ready',
         message: `Your loan agreement for application ${application.applicationId} has been generated. Please review and sign.`,
-        notificationType: 'System Alert',
-        priority: 'Important',
-        receiverId: borrower._id,
+        notificationType: 'BORROWER_ALERT',
+        type: 'BORROWER_ALERT',
+        priority: 'IMPORTANT',
+        receiverId: borrower.userId || borrower._id,
         receiverRole: 'borrower',
-        applicationId: application._id
+        borrowerId: borrower._id,
+        loanApplicationId: application._id,
+        tenantId: application.tenantId
       });
 
       // Socket notification
@@ -425,17 +428,45 @@ Thank you for choosing ${snapshot.legalName}.
       });
     }
 
-    // Trigger real-time notifications & sockets for borrower
+    // Trigger real-time notifications & sockets for borrower and admin
     if (borrower) {
+      const borrowerUserId = (borrower.userId || borrower._id).toString();
+
+      // Borrower Notification
       await createNotification({
         title: 'Agreement Signed',
         message: `Congratulations! Your loan agreement for ${application.applicationId} has been successfully signed and verified via OTP.`,
-        notificationType: 'Approval Alert',
-        priority: 'Important',
-        receiverId: borrower._id,
+        notificationType: 'LOAN_APPROVAL',
+        type: 'LOAN_APPROVAL',
+        priority: 'IMPORTANT',
+        receiverId: borrower.userId || borrower._id,
         receiverRole: 'borrower',
-        applicationId: application._id
+        borrowerId: borrower._id,
+        loanApplicationId: application._id,
+        relatedId: application._id,
+        relatedModel: 'LoanApplication',
+        tenantId: application.tenantId
       });
+
+      // Admin Notification (Notifies admin users that agreement is ready for disbursement)
+      const User = require('../../../models/User');
+      const admins = await User.find({ role: 'admin' }).select('_id').lean();
+      for (const adminUser of admins) {
+        await createNotification({
+          title: 'Agreement Signed — Pending Disbursement',
+          message: `Loan agreement for ${application.applicationId} has been signed by ${application.fullName}. Application is ready for disbursement.`,
+          notificationType: 'ADMIN_ALERT',
+          type: 'ADMIN_ALERT',
+          priority: 'IMPORTANT',
+          receiverId: adminUser._id,
+          receiverRole: 'admin',
+          borrowerId: borrower._id,
+          loanApplicationId: application._id,
+          relatedId: application._id,
+          relatedModel: 'LoanApplication',
+          tenantId: application.tenantId
+        });
+      }
 
       await BorrowerAlert.create({
         borrowerId: borrower._id,
@@ -455,7 +486,6 @@ Thank you for choosing ${snapshot.legalName}.
 
       const io = getIO();
       if (io) {
-        const borrowerUserId = borrower.userId.toString();
         io.to(borrowerUserId).emit('loan-updated', {
           status: 'APPROVED',
           applicationId: application._id,
@@ -477,9 +507,13 @@ Thank you for choosing ${snapshot.legalName}.
         receiverId: borrower.assignedAgent,
         receiverRole: 'agent',
         type: 'LOAN_APPROVAL',
+        notificationType: 'LOAN_APPROVAL',
         title: 'New Loan Signed',
         message: `Your borrower ${borrower.fullName}'s loan application ${application.applicationId} has been signed and is ready for disbursement.`,
-        priority: 'IMPORTANT'
+        priority: 'IMPORTANT',
+        borrowerId: borrower._id,
+        loanApplicationId: application._id,
+        tenantId: application.tenantId
       });
 
       const io = getIO();
@@ -535,6 +569,22 @@ const markReadyForDisbursement = async (loanApplicationId, adminId) => {
   );
   if (isAmlBlocked) {
     throw new Error('Cannot mark loan ready for disbursement: AML compliance check has blocked this application.');
+  }
+
+  // 4. Verification Hash Integrity Gate
+  if (application.creditAssessment) {
+    if (!application.creditAssessment.verificationHash) {
+      throw new Error('Cannot mark loan ready for disbursement: Credit assessment verification hash is missing.');
+    }
+    const { generateVerificationHash } = require('../../../utils/verificationHashEngine');
+    const borrowerIdVal = application.borrowerId;
+    const borrowerDoc = await Borrower.findOne({
+      $or: [{ _id: borrowerIdVal }, { userId: borrowerIdVal }]
+    });
+    const calculatedHash = generateVerificationHash(application, borrowerDoc);
+    if (calculatedHash !== application.creditAssessment.verificationHash) {
+      throw new Error('Cannot mark loan ready for disbursement: Agreement verification hash mismatch detected.');
+    }
   }
 
   // Idempotency: If already in Ready for Disbursement, ensure active loan status and return safely
