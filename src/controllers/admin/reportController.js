@@ -248,6 +248,64 @@ const deleteReport = asyncHandler(async (req, res) => {
   sendSuccess(res, 'Report deleted successfully');
 });
 
+/**
+ * @desc    Export Agreement Report as XLSX
+ * @route   GET /api/admin/reports/agreement/export-xlsx
+ * @access  Private/Admin
+ */
+const exportAgreementReportXlsx = asyncHandler(async (req, res) => {
+  const { generateAgreementReportWorkbook } = require('../../services/excelReportService');
+  const tenantId = req.tenantId || req.user?.tenantId;
+  if (!tenantId) {
+    return sendError(res, 'Tenant context missing', 400);
+  }
+
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const filename = `Agreement_Report_${timestamp}.xlsx`;
+
+  res.setHeader(
+    'Content-Type',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+  );
+  res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+  res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+
+  await generateAgreementReportWorkbook({
+    tenantId,
+    res,
+    filters: req.query
+  });
+});
+
+/**
+ * @desc    Export Installment Report as XLSX
+ * @route   GET /api/admin/reports/installment/export-xlsx
+ * @access  Private/Admin
+ */
+const exportInstallmentReportXlsx = asyncHandler(async (req, res) => {
+  const { generateInstallmentReportWorkbook } = require('../../services/excelReportService');
+  const tenantId = req.tenantId || req.user?.tenantId;
+  if (!tenantId) {
+    return sendError(res, 'Tenant context missing', 400);
+  }
+
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const filename = `Installment_Report_${timestamp}.xlsx`;
+
+  res.setHeader(
+    'Content-Type',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+  );
+  res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+  res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+
+  await generateInstallmentReportWorkbook({
+    tenantId,
+    res,
+    filters: req.query
+  });
+});
+
 module.exports = {
   getReportStats,
   getCollectionsOverview,
@@ -257,5 +315,7 @@ module.exports = {
   getSingleReport,
   generateReport,
   exportReport,
-  deleteReport
+  deleteReport,
+  exportAgreementReportXlsx,
+  exportInstallmentReportXlsx
 };

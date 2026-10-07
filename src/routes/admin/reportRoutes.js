@@ -9,7 +9,9 @@ const {
   getSingleReport,
   generateReport,
   exportReport,
-  deleteReport
+  deleteReport,
+  exportAgreementReportXlsx,
+  exportInstallmentReportXlsx
 } = require('../../controllers/admin/reportController');
 const { protect } = require('../../middlewares/authMiddleware');
 const { authorize } = require('../../middlewares/roleMiddleware');
@@ -21,6 +23,10 @@ router.get('/stats', getReportStats);
 router.get('/collections-overview', getCollectionsOverview);
 router.get('/loan-performance', getLoanPerformance);
 router.get('/borrower-overview', getBorrowerOverview);
+
+// Specific report export endpoints (must be before /:id)
+router.get('/agreement/export-xlsx', exportAgreementReportXlsx);
+router.get('/installment/export-xlsx', exportInstallmentReportXlsx);
 
 router.get('/', getAllReports);
 router.post('/generate', generateReport);
