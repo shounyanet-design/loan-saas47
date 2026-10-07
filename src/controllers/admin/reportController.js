@@ -228,7 +228,8 @@ const exportReport = asyncHandler(async (req, res) => {
   if (!report) return sendError(res, 'Report not found', 404);
 
   if (exportFormat) {
-    report.exportFormat = exportFormat;
+    const normalizedFormat = String(exportFormat).toUpperCase() === 'XLSX' ? 'Excel' : exportFormat;
+    report.exportFormat = normalizedFormat;
     await report.save();
   }
 
