@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const {
   initiateDebiCheckMandate,
+  refreshDebiCheckMandate,
   registerTT1Endpoint,
   getMandateReport,
   getInstalmentReport
@@ -13,6 +14,7 @@ router.use(protect);
 router.use(authorize('admin', 'super_admin'));
 
 router.post('/mandates/initiate', initiateDebiCheckMandate);
+router.post('/mandates/:applicationId/refresh', refreshDebiCheckMandate);
 router.post('/tt1/register-endpoint', registerTT1Endpoint);
 router.post('/reports/mandates', getMandateReport);
 router.post('/reports/instalments', getInstalmentReport);

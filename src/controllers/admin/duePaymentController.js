@@ -21,6 +21,8 @@ const syncDuePayments = async (tenantId) => {
     let loanIsOverdue = false;
     let loanPenaltyAccumulated = 0;
 
+    let maxOverdueDays = 0;
+
     const schedQuery = { loanId: loan._id };
     if (tenantId) schedQuery.tenantId = tenantId;
     const schedules = await RepaymentSchedule.find(schedQuery).sort({ emiNumber: 1 });
@@ -43,6 +45,8 @@ const syncDuePayments = async (tenantId) => {
       const overdueDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
       
       if (overdueDays >= 0) {
+        if (overdueDays > maxOverdueDays) maxOverdueDays = overdueDays;
+        
         let dueStatus = overdueDays === 0 ? 'Due Today' : 'Overdue';
         let lateDayStatus = 'On Time';
         let penaltyAmount = inst.penaltyWaived ? 0 : (inst.penaltyAmount || 0);
@@ -79,13 +83,16 @@ const syncDuePayments = async (tenantId) => {
           isDeleted: false
         };
 
-        if (tenantId) updateObj.tenantId = tenantId;
+        if (tenantId) {
+          updateObj.tenantId = tenantId;
+        } else if (loan.tenantId) {
+          updateObj.tenantId = loan.tenantId;
+        }
 
         await DuePayment.findOneAndUpdate(
           { loanId: loan._id, installmentNumber: inst.emiNumber },
           {
             $setOnInsert: {
-              tenantId: tenantId || loan.tenantId,
               borrowerId: loan.borrowerId,
               borrowerName: loan.borrowerName || loan.fullName,
               borrowerPhoto: loan.borrowerPhoto,
@@ -126,7 +133,15 @@ const syncDuePayments = async (tenantId) => {
     let needsSave = false;
     if (loanIsOverdue && loan.loanStatus !== 'Overdue') {
       loan.loanStatus = 'Overdue';
-      loan.overdueStatus = 'Overdue';
+      needsSave = true;
+    }
+    
+    let expectedOverdueStatus = 'On Time';
+    if (maxOverdueDays >= 1 && maxOverdueDays <= 7) expectedOverdueStatus = '1-7 Days Late';
+    else if (maxOverdueDays > 7) expectedOverdueStatus = '8+ Days Late';
+
+    if (loan.overdueStatus !== expectedOverdueStatus) {
+      loan.overdueStatus = expectedOverdueStatus;
       needsSave = true;
     }
     if (loan.penaltyAmount !== loanPenaltyAccumulated) {

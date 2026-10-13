@@ -1,6 +1,8 @@
 const asyncHandler = require('express-async-handler');
 const nupayService = require('../../services/nupayService');
+const debi24Service = require('../../services/debi24Service');
 const LoanApplication = require('../../models/LoanApplication');
+const BankVerification = require('../../models/BankVerification');
 const idempotency = require('../../services/idempotencyService');
 const {
   mandateInitiationSchema,
@@ -39,11 +41,10 @@ const initiateDebiCheckMandate = asyncHandler(async (req, res) => {
     const loan = await LoanApplication.findOne({ _id: applicationId, tenantId: req.tenantId });
     if (!loan) return sendError(res, 'Loan application not found', 404);
 
+    const bankRecord = await BankVerification.findOne({ applicationId: loan._id });
+
     let mandatePayload = mandate;
     if (!mandatePayload || Object.keys(mandatePayload).length === 0) {
-      const BankVerification = require('../../models/BankVerification');
-      const bankRecord = await BankVerification.findOne({ applicationId: loan._id });
-
       const verifiedAcc = loan.bankVerification?.verifiedBankAccount || bankRecord?.accountNumber || '';
       const verifiedBranch = loan.bankVerification?.verifiedBranchCode || bankRecord?.branchCode || '051001';
       const verifiedAccType = loan.bankVerification?.verifiedAccountType || '01';
@@ -64,7 +65,23 @@ const initiateDebiCheckMandate = asyncHandler(async (req, res) => {
       else if (verifiedAccType.toLowerCase().startsWith('trans')) accType = '02';
       else if (verifiedAccType.toLowerCase().startsWith('che') || verifiedAccType.toLowerCase().startsWith('curr')) accType = '03';
 
-      const mapBankNameToId = (name = '') => {
+      const mapBankNameToId = (name = '', branch = '') => {
+        const b = String(branch || '').trim();
+        if (b === '470010') return '10'; // Capitec Bank
+        if (b === '632005') return '16'; // ABSA Bank
+        if (b === '051001') return '1';  // Standard Bank
+        if (b === '250655' || b === '250805') return '3'; // FNB
+        if (b === '198765') return '2';  // Nedbank
+        if (b === '678910') return '61'; // TymeBank
+        if (b === '679000') return '63'; // Discovery Bank
+        if (b === '430000') return '7';  // African Bank
+        if (b === '462005') return '44'; // Bidvest Bank
+        if (b === '589000') return '55'; // Finbond
+        if (b === '431010') return '19'; // Ubank
+        if (b === '410506') return '6';  // GroBank / Sasfin
+        if (b === '450105') return '9';  // Mercantile
+        if (b === '352000') return '67'; // Old Mutual
+
         const lower = name.toLowerCase();
         if (lower.includes('standard') || lower.includes('sbsa')) return '1';
         if (lower.includes('nedbank') || lower.includes('ned')) return '2';
@@ -112,7 +129,7 @@ const initiateDebiCheckMandate = asyncHandler(async (req, res) => {
         debtorId: loan.idNumber || '9001015009087',
         debtorAccountNumber: verifiedAcc.replace(/\D/g, '') || '1234567890',
         debtorAccountType: accType,
-        debtorBankId: mapBankNameToId(bankName),
+        debtorBankId: mapBankNameToId(bankName, verifiedBranch),
         debtorBranchNumber: verifiedBranch.replace(/\D/g, '').padEnd(6, '0').substring(0, 6) || '051001',
         debtorIdUltimate: '',
         debtorPhoneNumber: debtorPhone,
@@ -169,6 +186,9 @@ const initiateDebiCheckMandate = asyncHandler(async (req, res) => {
             effectiveDate: payload.startDate,
             receivedAt: new Date().toISOString()
           };
+        }
+        if (process.env.DEBI24_API_KEY) {
+          return debi24Service.createMandate(loan, bankRecord, key);
         }
         return nupayService.initiateMandate(payload, req.tenantId);
       }
@@ -240,8 +260,42 @@ const getInstalmentReport = asyncHandler(async (req, res) => {
   }
 });
 
+const refreshDebiCheckMandate = asyncHandler(async (req, res) => {
+  try {
+    const { applicationId } = req.params;
+    const loan = await LoanApplication.findOne({ _id: applicationId, tenantId: req.tenantId });
+    if (!loan) return sendError(res, 'Loan application not found', 404);
+
+    const mandateId = loan.nupayMandate?.mandateId || loan.debicheckMandateReference;
+    if (!mandateId) return sendError(res, 'No mandate found for this loan', 400);
+
+    if (process.env.DEBI24_API_KEY) {
+      const refreshed = await debi24Service.refreshMandate(mandateId);
+      const rawStatus = String(refreshed.status || refreshed.provider?.status || '').toUpperCase();
+      let outcome = 'PENDING';
+      if (rawStatus === 'ACCEPTED' || rawStatus === 'ACTIVE') outcome = 'ACCEPTED';
+      else if (rawStatus === 'REJECTED' || rawStatus === 'FAILED') outcome = 'REJECTED';
+
+      loan.debicheckMandateStatus = outcome;
+      if (loan.nupayMandate) {
+        loan.nupayMandate.outcome = outcome;
+        loan.nupayMandate.status = outcome;
+        loan.nupayMandate.providerStatus = outcome === 'ACCEPTED' ? 'ACCEPTED' : outcome === 'REJECTED' ? 'REJECTED' : 'PENDING AUTH';
+        loan.nupayMandate.updatedAt = new Date();
+      }
+      await loan.save();
+      return sendSuccess(res, 'Mandate status refreshed', { outcome, status: refreshed.status, refreshed });
+    }
+
+    return sendError(res, 'Debi24 is not configured', 400);
+  } catch (error) {
+    return handleError(res, error);
+  }
+});
+
 module.exports = {
   initiateDebiCheckMandate,
+  refreshDebiCheckMandate,
   registerTT1Endpoint,
   getMandateReport,
   getInstalmentReport
