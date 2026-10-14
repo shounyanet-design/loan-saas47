@@ -208,13 +208,44 @@ const REQUIRED_KEYS = {
 
 async function testConnection(tenantId, provider) {
   if (provider === 'nupay') {
+    let resolved = null;
     try {
+      resolved = await resolve(tenantId, provider);
       const nupayService = require('../../../services/nupayService');
       const creds = await nupayService.getCredentials(tenantId);
-      const ok = Boolean(creds.username && creds.password && creds.rawCardAcceptor);
-      return { provider, ok, source: creds.cardAcceptorSource || 'env', mode: 'production', result: ok ? 'NuPay credentials verified' : 'NuPay credentials missing' };
+      const ok = Boolean(creds.auth && creds.cardAcceptor && creds.baseUrl);
+      const result = ok ? 'NuPay credentials verified' : 'NuPay credentials missing';
+
+      if (resolved.source === 'tenant') {
+        await tenantContext.runAsSystem(async () => {
+          const doc = await getSettings(tenantId);
+          const p = doc.providers.get(provider);
+          if (p) {
+            p.status = ok ? 'valid' : 'invalid';
+            p.lastTestedAt = new Date();
+            p.lastTestResult = result;
+            doc.providers.set(provider, p);
+            await doc.save();
+          }
+        });
+      }
+
+      return { provider, ok, source: resolved.source, mode: resolved.mode || creds.mode, result };
     } catch (e) {
-      return { provider, ok: false, source: 'unknown', mode: 'production', result: `Connection test failed: ${e.message}` };
+      if (resolved && resolved.source === 'tenant') {
+        await tenantContext.runAsSystem(async () => {
+          const doc = await getSettings(tenantId);
+          const p = doc.providers.get(provider);
+          if (p) {
+            p.status = 'invalid';
+            p.lastTestedAt = new Date();
+            p.lastTestResult = e.message;
+            doc.providers.set(provider, p);
+            await doc.save();
+          }
+        });
+      }
+      return { provider, ok: false, source: resolved?.source || 'unknown', mode: 'production', result: `Connection test failed: ${e.message}` };
     }
   }
 
