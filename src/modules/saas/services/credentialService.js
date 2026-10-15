@@ -126,7 +126,7 @@ async function getSettings(tenantId) {
 }
 
 /** Save/replace credentials for a provider (encrypts each value). */
-async function setProviderCredentials(tenantId, provider, { credentials = {}, enabled, mode } = {}) {
+async function setProviderCredentials(tenantId, provider, { credentials = {}, enabled, mode, source } = {}) {
   return tenantContext.runAsSystem(async () => {
     const doc = await getSettings(tenantId);
     const existing = doc.providers.get(provider) || { credentials: new Map() };
@@ -135,8 +135,9 @@ async function setProviderCredentials(tenantId, provider, { credentials = {}, en
       if (v === '' || v === null) encMap.delete(k); // empty clears the key
       else encMap.set(k, encrypt(v));
     }
+    const isEnabled = source === 'platform' ? false : (enabled !== undefined ? !!enabled : (existing.enabled || false));
     doc.providers.set(provider, {
-      enabled: enabled !== undefined ? !!enabled : (existing.enabled || false),
+      enabled: isEnabled,
       mode: mode || existing.mode || 'production',
       credentials: encMap,
       status: 'untested',
@@ -155,8 +156,10 @@ function maskProvider(p) {
   const creds = {};
   const credMap = p.credentials instanceof Map ? p.credentials : new Map(Object.entries(p.credentials || {}));
   for (const [k, v] of credMap) creds[k] = mask(decryptSafe(v));
+  const hasCustomCreds = Object.values(creds).some((v) => v && String(v).trim().length > 0);
+  const source = (p.enabled && hasCustomCreds) ? 'tenant' : 'platform';
   return {
-    enabled: p.enabled, mode: p.mode, status: p.status,
+    enabled: p.enabled, mode: p.mode, status: p.status, source,
     lastTestedAt: p.lastTestedAt, lastTestResult: p.lastTestResult, rotatedAt: p.rotatedAt,
     credentials: creds,
   };
@@ -169,7 +172,7 @@ async function getMaskedSettings(tenantId) {
   const doc = await getSettings(tenantId);
   const providers = {};
   for (const name of TenantApiSettings.PROVIDERS) {
-    providers[name] = maskProvider(doc.providers.get(name)) || { enabled: false, mode: 'production', status: 'unconfigured', credentials: {} };
+    providers[name] = maskProvider(doc.providers.get(name)) || { enabled: false, mode: 'production', status: 'unconfigured', source: 'platform', credentials: {} };
   }
   return { tenantId, providers, registry: PROVIDER_REGISTRY };
 }

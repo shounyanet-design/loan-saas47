@@ -162,8 +162,8 @@ exports.updateProvider = asyncHandler(async (req, res) => {
   const tenantId = tid(req);
   const { provider } = req.params;
   if (!TenantApiSettings.PROVIDERS.includes(provider)) return sendError(res, 'Unknown provider', 400);
-  const { credentials, enabled, mode } = req.body;
-  const masked = await credentialService.setProviderCredentials(tenantId, provider, { credentials, enabled, mode });
+  const { credentials, enabled, mode, source } = req.body;
+  const masked = await credentialService.setProviderCredentials(tenantId, provider, { credentials, enabled, mode, source });
   await audit(req, { action: 'API_CREDENTIALS_UPDATED', entity: 'TenantApiSettings', entityId: tenantId, newValues: { provider, enabled, mode, keys: Object.keys(credentials || {}) } });
   return sendSuccess(res, 'Provider updated', { provider, ...masked });
 });

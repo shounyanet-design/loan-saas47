@@ -159,6 +159,7 @@ exports.create = asyncHandler(async (req, res) => {
     maxUsers: req.body.maxUsers,
     maxBorrowers: req.body.maxBorrowers,
     maxStorage: req.body.maxStorage,
+    debi24ClientId: req.body.debi24ClientId ? String(req.body.debi24ClientId).trim() : '',
   });
 
   // Provision the per-tenant settings rows (mirrors migration 001 behavior).
@@ -200,7 +201,7 @@ exports.update = asyncHandler(async (req, res) => {
   }
 
   const editable = ['companyName', 'subscriptionStatus', 'timezone', 'currency', 'locale', 'country',
-    'phone', 'owner', 'brandLogo', 'primaryColor', 'secondaryColor', 'maxUsers', 'maxBorrowers', 'maxStorage'];
+    'phone', 'owner', 'brandLogo', 'primaryColor', 'secondaryColor', 'maxUsers', 'maxBorrowers', 'maxStorage', 'debi24ClientId'];
   editable.forEach((f) => { if (req.body[f] !== undefined) tenant[f] = req.body[f]; });
   if (req.body.status !== undefined) tenant.status = toModelStatus(req.body.status);
 

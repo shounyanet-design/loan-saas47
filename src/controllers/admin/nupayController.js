@@ -3,7 +3,23 @@ const nupayService = require('../../services/nupayService');
 const debi24Service = require('../../services/debi24Service');
 const LoanApplication = require('../../models/LoanApplication');
 const BankVerification = require('../../models/BankVerification');
+const Tenant = require('../../models/Tenant');
 const idempotency = require('../../services/idempotencyService');
+
+function resolveDebi24ClientId(tenant) {
+  if (!tenant) return (process.env.DEBI24_CLIENT_ID || 'pointfortyseven').trim();
+  if (tenant.debi24ClientId && String(tenant.debi24ClientId).trim()) {
+    return String(tenant.debi24ClientId).trim();
+  }
+  if (tenant.isDefault) {
+    return (process.env.DEBI24_CLIENT_ID || 'pointfortyseven').trim();
+  }
+  const rawName = String(tenant.companyName || tenant.companyCode || '').trim();
+  if (rawName) {
+    return rawName.replace(/\s+/g, '-');
+  }
+  return (process.env.DEBI24_CLIENT_ID || 'pointfortyseven').trim();
+}
 const {
   mandateInitiationSchema,
   tt1RegistrationSchema,
@@ -160,6 +176,8 @@ const initiateDebiCheckMandate = asyncHandler(async (req, res) => {
     }
 
     const payload = validate(mandateInitiationSchema, mandatePayload);
+    const tenant = await Tenant.findById(req.tenantId || loan.tenantId).lean();
+    const debi24ClientId = resolveDebi24ClientId(tenant);
     const key = req.headers['idempotency-key']
       || idempotency.buildKey('nupay', String(req.tenantId), 'initiateMandate', applicationId, payload.clientReference);
 
@@ -188,7 +206,7 @@ const initiateDebiCheckMandate = asyncHandler(async (req, res) => {
           };
         }
         if (process.env.DEBI24_API_KEY) {
-          return debi24Service.createMandate(loan, bankRecord, key);
+          return debi24Service.createMandate(loan, bankRecord, key, debi24ClientId);
         }
         return nupayService.initiateMandate(payload, req.tenantId);
       }
@@ -206,6 +224,7 @@ const initiateDebiCheckMandate = asyncHandler(async (req, res) => {
       providerTransactionId: result.providerTransactionId,
       providerMessageId: result.providerMessageId,
       effectiveDate: result.effectiveDate,
+      debi24ClientId: result.debi24ClientId || debi24ClientId,
       updatedAt: new Date()
     };
     await loan.save();
@@ -269,8 +288,11 @@ const refreshDebiCheckMandate = asyncHandler(async (req, res) => {
     const mandateId = loan.nupayMandate?.mandateId || loan.debicheckMandateReference;
     if (!mandateId) return sendError(res, 'No mandate found for this loan', 400);
 
+    const tenant = await Tenant.findById(req.tenantId || loan.tenantId).lean();
+    const targetClientId = loan.nupayMandate?.debi24ClientId || resolveDebi24ClientId(tenant);
+
     if (process.env.DEBI24_API_KEY) {
-      const refreshed = await debi24Service.refreshMandate(mandateId);
+      const refreshed = await debi24Service.refreshMandate(mandateId, targetClientId);
       const rawStatus = String(refreshed.status || refreshed.provider?.status || '').toUpperCase();
       let outcome = 'PENDING';
       if (rawStatus === 'ACCEPTED' || rawStatus === 'ACTIVE') outcome = 'ACCEPTED';
@@ -281,6 +303,9 @@ const refreshDebiCheckMandate = asyncHandler(async (req, res) => {
         loan.nupayMandate.outcome = outcome;
         loan.nupayMandate.status = outcome;
         loan.nupayMandate.providerStatus = outcome === 'ACCEPTED' ? 'ACCEPTED' : outcome === 'REJECTED' ? 'REJECTED' : 'PENDING AUTH';
+        if (!loan.nupayMandate.debi24ClientId) {
+          loan.nupayMandate.debi24ClientId = targetClientId;
+        }
         loan.nupayMandate.updatedAt = new Date();
       }
       await loan.save();

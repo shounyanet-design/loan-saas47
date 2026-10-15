@@ -5,9 +5,10 @@ class Debi24Service {
     this.httpClient = httpClient;
   }
 
-  getConfig() {
+  getConfig(customClientId = null) {
     const baseUrl = (process.env.DEBI24_API_URL || 'https://debi24-api-dev-1002931581108.africa-south1.run.app').replace(/\/+$/, '');
-    const clientId = (process.env.DEBI24_CLIENT_ID || 'pointfortyseven').trim();
+    const defaultClientId = (process.env.DEBI24_CLIENT_ID || 'pointfortyseven').trim();
+    const clientId = (customClientId ? String(customClientId).trim() : defaultClientId) || defaultClientId;
     const apiKey = (process.env.DEBI24_API_KEY || '').trim();
 
     if (!apiKey) {
@@ -165,10 +166,10 @@ class Debi24Service {
   /**
    * Create mandate via Debi24 Bridge
    */
-  async createMandate(loan, bankRecord = null, customIdempotencyKey = null) {
-    const { baseUrl, clientId, apiKey } = this.getConfig();
+  async createMandate(loan, bankRecord = null, customIdempotencyKey = null, targetClientId = null) {
+    const { baseUrl, clientId, apiKey } = this.getConfig(targetClientId);
     const payload = this.buildMandatePayload(loan, bankRecord);
-    const idempotencyKey = `mnd-${payload.mandate.reference}`.substring(0, 128);
+    const idempotencyKey = (customIdempotencyKey || `mnd-${payload.mandate.reference}`).substring(0, 128);
 
     const url = `${baseUrl}/api/v1/clients/${clientId}/mandates`;
 
@@ -201,6 +202,7 @@ class Debi24Service {
         providerTransactionId: data.provider?.transactionId || data.id,
         providerMessageId: data.traceId || '',
         effectiveDate: payload.mandate.instalmentStartAt,
+        debi24ClientId: clientId,
         raw: data
       };
     } catch (error) {
@@ -224,8 +226,8 @@ class Debi24Service {
   /**
    * Refresh mandate status from NuPay via Debi24
    */
-  async refreshMandate(mandateId) {
-    const { baseUrl, clientId, apiKey } = this.getConfig();
+  async refreshMandate(mandateId, targetClientId = null) {
+    const { baseUrl, clientId, apiKey } = this.getConfig(targetClientId);
     const url = `${baseUrl}/api/v1/clients/${clientId}/mandates/${mandateId}/refresh`;
 
     const response = await this.httpClient.post(url, {}, {
@@ -242,8 +244,8 @@ class Debi24Service {
   /**
    * Get mandate details by ID
    */
-  async getMandate(mandateId) {
-    const { baseUrl, clientId, apiKey } = this.getConfig();
+  async getMandate(mandateId, targetClientId = null) {
+    const { baseUrl, clientId, apiKey } = this.getConfig(targetClientId);
     const url = `${baseUrl}/api/v1/clients/${clientId}/mandates/${mandateId}`;
 
     const response = await this.httpClient.get(url, {

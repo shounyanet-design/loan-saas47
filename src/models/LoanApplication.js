@@ -580,6 +580,7 @@ const loanApplicationSchema = new mongoose.Schema(
       statusDescription: { type: String, default: '' },
       callbackRequestId: { type: String, default: '' },
       callbackReceivedAt: { type: Date },
+      debi24ClientId: { type: String, default: '' },
       updatedAt: { type: Date }
     },
 

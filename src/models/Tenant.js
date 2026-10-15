@@ -55,6 +55,9 @@ const tenantSchema = new mongoose.Schema(
     // Marks the tenant that represents the original single-tenant deployment.
     isDefault: { type: Boolean, default: false },
 
+    // Optional explicit Debi24 Client Identifier override (e.g. 'Dimeva', 'Chana-Investment').
+    debi24ClientId: { type: String, trim: true, default: '' },
+
     // Per-tenant feature flag overrides: { FEATURE_KEY: true|false }. Applied ON
     // TOP of the tenant's plan-derived features (override wins). Absent key =>
     // inherit from plan. Empty {} => pure plan behaviour (backward compatible).

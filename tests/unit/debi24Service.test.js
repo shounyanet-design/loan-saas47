@@ -54,3 +54,21 @@ test('debi24Service builds a valid Debi24 mandate payload', () => {
   assert.equal(payload.mandate.instalmentAmount, '350.00');
   assert.equal(payload.mandate.numberOfInstalments, 6);
 });
+
+test('debi24Service resolves custom clientId dynamically and falls back to default', () => {
+  const originalApiKey = process.env.DEBI24_API_KEY;
+  process.env.DEBI24_API_KEY = 'test_key_123';
+
+  // Custom client ID (e.g. Dimeva, Chana-Investment)
+  const configDimeva = debi24Service.getConfig('Dimeva');
+  assert.equal(configDimeva.clientId, 'Dimeva');
+
+  const configChana = debi24Service.getConfig('Chana-Investment');
+  assert.equal(configChana.clientId, 'Chana-Investment');
+
+  // Empty/null should safely fallback to default pointfortyseven
+  const configDefault = debi24Service.getConfig(null);
+  assert.equal(configDefault.clientId, process.env.DEBI24_CLIENT_ID || 'pointfortyseven');
+
+  process.env.DEBI24_API_KEY = originalApiKey;
+});
