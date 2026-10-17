@@ -78,7 +78,7 @@ class Debi24Service {
   /**
    * Build Debi24 Mandate creation payload from loan and bank records
    */
-  buildMandatePayload(loan, bankRecord = null) {
+  buildMandatePayload(loan, bankRecord = null, transactionType = 'TT1R') {
     const verifiedAcc = (
       loan.bankVerification?.verifiedBankAccount ||
       bankRecord?.accountNumber ||
@@ -118,10 +118,30 @@ class Debi24Service {
     if (collectionDay > 30) collectionDay = 30;
     if (collectionDay < 1) collectionDay = 1;
 
-    // Start Date: next strike date (e.g. tomorrow or collectionDay in current/next month)
-    const startDate = new Date();
-    startDate.setDate(startDate.getDate() + 2); // default 2 days ahead
-    const dateStr = startDate.toISOString().split('T')[0];
+    // Start Date: Must match collectionDay for Monthly mandates in NuPay/DebiCheck
+    let startDate;
+    if (loan.repaymentDate && new Date(loan.repaymentDate) > new Date()) {
+      startDate = new Date(loan.repaymentDate);
+    } else {
+      const now = new Date();
+      const currentYear = now.getFullYear();
+      const currentMonth = now.getMonth();
+
+      const targetThisMonth = new Date(currentYear, currentMonth, collectionDay);
+      const minLeadTimeDate = new Date();
+      minLeadTimeDate.setDate(minLeadTimeDate.getDate() + 2); // At least 2 days lead time
+
+      if (targetThisMonth >= minLeadTimeDate) {
+        startDate = targetThisMonth;
+      } else {
+        startDate = new Date(currentYear, currentMonth + 1, collectionDay);
+      }
+    }
+
+    const yearStr = startDate.getFullYear();
+    const monthStr = String(startDate.getMonth() + 1).padStart(2, '0');
+    const dayStr = String(collectionDay).padStart(2, '0');
+    const dateStr = `${yearStr}-${monthStr}-${dayStr}`;
     const instalmentStartAt = `${dateStr}T00:00:00+02:00`;
 
     const applicationId = loan.applicationId || String(loan._id);
@@ -149,7 +169,7 @@ class Debi24Service {
       mandate: {
         reference: mandateRef,
         type: 'fixed',
-        transactionType: 'TT1R',
+        transactionType: transactionType === 'TT1D' ? 'TT1D' : 'TT1R',
         frequencyCode: 'MNTH',
         collectionDay: Number(collectionDay),
         adjustmentCategory: 'N',
@@ -166,9 +186,9 @@ class Debi24Service {
   /**
    * Create mandate via Debi24 Bridge
    */
-  async createMandate(loan, bankRecord = null, customIdempotencyKey = null, targetClientId = null) {
+  async createMandate(loan, bankRecord = null, customIdempotencyKey = null, targetClientId = null, transactionType = 'TT1R') {
     const { baseUrl, clientId, apiKey } = this.getConfig(targetClientId);
-    const payload = this.buildMandatePayload(loan, bankRecord);
+    const payload = this.buildMandatePayload(loan, bankRecord, transactionType);
     const idempotencyKey = (customIdempotencyKey || `mnd-${payload.mandate.reference}`).substring(0, 128);
 
     const url = `${baseUrl}/api/v1/clients/${clientId}/mandates`;
@@ -203,6 +223,7 @@ class Debi24Service {
         providerMessageId: data.traceId || '',
         effectiveDate: payload.mandate.instalmentStartAt,
         debi24ClientId: clientId,
+        transactionType: payload.mandate.transactionType,
         raw: data
       };
     } catch (error) {

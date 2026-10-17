@@ -581,6 +581,7 @@ const loanApplicationSchema = new mongoose.Schema(
       callbackRequestId: { type: String, default: '' },
       callbackReceivedAt: { type: Date },
       debi24ClientId: { type: String, default: '' },
+      transactionType: { type: String, enum: ['TT1R', 'TT1D', ''], default: 'TT1R' },
       updatedAt: { type: Date }
     },
 

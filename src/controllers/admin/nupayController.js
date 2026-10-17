@@ -51,7 +51,8 @@ function handleError(res, error) {
 
 const initiateDebiCheckMandate = asyncHandler(async (req, res) => {
   try {
-    const { applicationId, mandate } = req.body;
+    const { applicationId, mandate, transactionType: reqTransactionType } = req.body;
+    const transactionType = reqTransactionType || req.body.mandate?.transactionType || 'TT1R';
     if (!applicationId) return sendError(res, 'applicationId is required', 400);
 
     const loan = await LoanApplication.findOne({ _id: applicationId, tenantId: req.tenantId });
@@ -116,10 +117,6 @@ const initiateDebiCheckMandate = asyncHandler(async (req, res) => {
         return '1';
       };
 
-      const tomorrow = new Date();
-      tomorrow.setDate(tomorrow.getDate() + 1);
-      const startDateStr = tomorrow.toISOString().split('T')[0];
-
       let collectionDay = '25';
       if (loan.repaymentDate) {
         const day = new Date(loan.repaymentDate).getDate();
@@ -131,6 +128,27 @@ const initiateDebiCheckMandate = asyncHandler(async (req, res) => {
       if (collectionDay === '31') {
         collectionDay = '30';
       }
+
+      let startDateObj;
+      if (loan.repaymentDate && new Date(loan.repaymentDate) > new Date()) {
+        startDateObj = new Date(loan.repaymentDate);
+      } else {
+        const now = new Date();
+        const currentYear = now.getFullYear();
+        const currentMonth = now.getMonth();
+        const targetThisMonth = new Date(currentYear, currentMonth, parseInt(collectionDay, 10));
+        const minLeadTimeDate = new Date();
+        minLeadTimeDate.setDate(minLeadTimeDate.getDate() + 2);
+
+        if (targetThisMonth >= minLeadTimeDate) {
+          startDateObj = targetThisMonth;
+        } else {
+          startDateObj = new Date(currentYear, currentMonth + 1, parseInt(collectionDay, 10));
+        }
+      }
+      const yStr = startDateObj.getFullYear();
+      const mStr = String(startDateObj.getMonth() + 1).padStart(2, '0');
+      const startDateStr = `${yStr}-${mStr}-${collectionDay}`;
 
       const instAmountVal = Number(loan.estimatedMonthlyEMI || loan.adminDecision?.approvedAmount || 10).toFixed(2);
       const maxAmountVal = (Number(instAmountVal) * 1.2).toFixed(2);
@@ -178,8 +196,9 @@ const initiateDebiCheckMandate = asyncHandler(async (req, res) => {
     const payload = validate(mandateInitiationSchema, mandatePayload);
     const tenant = await Tenant.findById(req.tenantId || loan.tenantId).lean();
     const debi24ClientId = resolveDebi24ClientId(tenant);
+    const dedupeWindow = Math.floor(Date.now() / 5000); // 5-second deduplication window to prevent rapid double-clicks while allowing legitimate retries
     const key = req.headers['idempotency-key']
-      || idempotency.buildKey('nupay', String(req.tenantId), 'initiateMandate', applicationId, payload.clientReference);
+      || idempotency.buildKey('nupay', String(req.tenantId), 'initiateMandate', applicationId, transactionType, String(dedupeWindow));
 
     const { response: result, replayed } = await idempotency.runOnce(
       {
@@ -187,7 +206,7 @@ const initiateDebiCheckMandate = asyncHandler(async (req, res) => {
         scope: 'nupay',
         action: 'initiateMandate',
         tenantId: req.tenantId,
-        request: { applicationId, mandate: payload }
+        request: { applicationId, mandate: payload, transactionType }
       },
       () => {
         const { isDevelopmentSandboxBypassEnabled } = require('../../utils/devSandboxBypass');
@@ -202,11 +221,12 @@ const initiateDebiCheckMandate = asyncHandler(async (req, res) => {
             providerTransactionId: 'TXN-' + Math.random().toString(36).substring(2, 9).toUpperCase(),
             providerMessageId: 'MSG-' + Math.random().toString(36).substring(2, 9).toUpperCase(),
             effectiveDate: payload.startDate,
+            transactionType,
             receivedAt: new Date().toISOString()
           };
         }
         if (process.env.DEBI24_API_KEY) {
-          return debi24Service.createMandate(loan, bankRecord, key, debi24ClientId);
+          return debi24Service.createMandate(loan, bankRecord, key, debi24ClientId, transactionType);
         }
         return nupayService.initiateMandate(payload, req.tenantId);
       }
@@ -225,6 +245,7 @@ const initiateDebiCheckMandate = asyncHandler(async (req, res) => {
       providerMessageId: result.providerMessageId,
       effectiveDate: result.effectiveDate,
       debi24ClientId: result.debi24ClientId || debi24ClientId,
+      transactionType: result.transactionType || transactionType,
       updatedAt: new Date()
     };
     await loan.save();
