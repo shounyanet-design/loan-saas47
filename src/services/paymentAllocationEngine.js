@@ -99,6 +99,7 @@ const reverseVerifiedPayment = async (paymentId, adminUserId, reason, session = 
   }
 
   payment.paymentStatus = 'Reversed';
+  payment.settlementStatus = 'Reversed';
   payment.notes = (payment.notes ? payment.notes + '\n' : '') + `Reversed by Admin: ${reason}`;
   await payment.save(options);
 

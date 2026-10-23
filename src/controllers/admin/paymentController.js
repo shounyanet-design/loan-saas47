@@ -12,7 +12,7 @@ const { allocateVerifiedPayment, reverseVerifiedPayment } = require('../../servi
  * @access  Private/Admin
  */
 const getAllPayments = asyncHandler(async (req, res) => {
-  const { page = 1, limit = 10, search = '', status, method, type } = req.query;
+  const { page = 1, limit = 10, search = '', status, method, type, settlementStatus } = req.query;
 
   const query = { isDeleted: false };
   if (req.tenantId) query.tenantId = req.tenantId;
@@ -22,6 +22,7 @@ const getAllPayments = asyncHandler(async (req, res) => {
       { borrowerName: { $regex: search, $options: 'i' } },
       { loanCode: { $regex: search, $options: 'i' } },
       { transactionId: { $regex: search, $options: 'i' } },
+      { settlementReference: { $regex: search, $options: 'i' } },
       { borrowerPhone: { $regex: search, $options: 'i' } }
     ];
   }
@@ -29,6 +30,9 @@ const getAllPayments = asyncHandler(async (req, res) => {
   if (status) query.paymentStatus = status;
   if (method) query.paymentMethod = method;
   if (type) query.paymentType = type;
+  if (settlementStatus && settlementStatus !== 'All' && settlementStatus !== 'All Settlements' && settlementStatus !== 'All settlement statuses') {
+    query.settlementStatus = settlementStatus;
+  }
 
   const skip = (page - 1) * limit;
 

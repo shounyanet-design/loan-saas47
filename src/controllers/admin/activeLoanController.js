@@ -22,7 +22,8 @@ const getAllActiveLoans = asyncHandler(async (req, res) => {
     limit = 10,
     search = '',
     status,
-    overdueStatus
+    overdueStatus,
+    collectionStatus
   } = req.query;
 
   const query = { isDeleted: false };
@@ -45,6 +46,9 @@ const getAllActiveLoans = asyncHandler(async (req, res) => {
   }
   if (overdueStatus) {
     query.overdueStatus = overdueStatus;
+  }
+  if (collectionStatus && collectionStatus !== 'All' && collectionStatus !== 'All Collections') {
+    query.collectionStatus = collectionStatus;
   }
 
   const skip = (page - 1) * limit;
@@ -848,6 +852,92 @@ const assignAgent = asyncHandler(async (req, res) => {
   sendSuccess(res, 'Agent assigned successfully', { activeLoan });
 });
 
+/**
+ * @desc    Update collection status from Debi24 (with automated allocation & reversal rules)
+ * @route   PUT /api/admin/active-loans/:id/collection-status
+ * @access  Private/Admin
+ */
+const updateCollectionStatus = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { collectionStatus, reference, amount, date } = req.body;
+
+  const validStatuses = ['Scheduled', 'In Tracking', 'Successful', 'Failed', 'Disputed', 'Cancelled', 'Recalled', 'Unknown'];
+  if (!validStatuses.includes(collectionStatus)) {
+    return sendError(res, `Invalid collection status: ${collectionStatus}`, 400);
+  }
+
+  const query = { _id: id, isDeleted: false };
+  if (req.tenantId) query.tenantId = req.tenantId;
+
+  const activeLoan = await ActiveLoan.findOne(query);
+  if (!activeLoan) return sendError(res, 'Active loan not found', 404);
+
+  const prevStatus = activeLoan.collectionStatus;
+  activeLoan.collectionStatus = collectionStatus;
+  activeLoan.lastCollectionDate = date ? new Date(date) : new Date();
+  if (reference) activeLoan.lastCollectionReference = reference;
+
+  // Rule 1: Successful -> Display AND allocate payment by reducing EMI Amount
+  if (collectionStatus === 'Successful' && prevStatus !== 'Successful') {
+    const paymentAmount = Number(amount || activeLoan.emiAmount || 0);
+    const settleRef = reference || `SETTLE-${Math.floor(100000 + Math.random() * 900000)}`;
+
+    const existingPayment = await Payment.findOne({
+      loanId: activeLoan._id,
+      paymentMethod: 'Debit Order',
+      settlementReference: settleRef,
+      isDeleted: false
+    });
+
+    if (!existingPayment && paymentAmount > 0) {
+      const payment = new Payment({
+        borrowerId: activeLoan.borrowerId,
+        borrowerName: activeLoan.borrowerName,
+        borrowerPhoto: activeLoan.borrowerPhoto,
+        borrowerPhone: activeLoan.borrowerPhone,
+        loanId: activeLoan._id,
+        loanCode: activeLoan.loanCode,
+        paymentAmount,
+        paymentDate: date ? new Date(date) : new Date(),
+        paymentMethod: 'Debit Order',
+        paymentStatus: 'Verified',
+        settlementStatus: 'Matched',
+        settlementReference: settleRef,
+        paymentType: 'EMI Payment',
+        notes: `Debi24 Collection Successful (Ref: ${settleRef})`,
+        tenantId: activeLoan.tenantId
+      });
+      await payment.save();
+
+      const { allocateVerifiedPayment } = require('../../services/paymentAllocationEngine');
+      await allocateVerifiedPayment(payment._id, req.user?._id || activeLoan.approvedBy);
+    }
+  }
+  // Rule 2: Disputed -> Display AND reverse previous payment allocation that reduced EMI Amount
+  else if (collectionStatus === 'Disputed' && prevStatus !== 'Disputed') {
+    const latestVerifiedDebitPayment = await Payment.findOne({
+      loanId: activeLoan._id,
+      paymentMethod: 'Debit Order',
+      paymentStatus: 'Verified',
+      isDeleted: false
+    }).sort({ createdAt: -1 });
+
+    if (latestVerifiedDebitPayment) {
+      const { reverseVerifiedPayment } = require('../../services/paymentAllocationEngine');
+      await reverseVerifiedPayment(
+        latestVerifiedDebitPayment._id,
+        req.user?._id || activeLoan.approvedBy,
+        'Debi24 Dispute - Debtor disputed debit order collection'
+      );
+    }
+  }
+
+  await activeLoan.save();
+
+  const refreshedLoan = await ActiveLoan.findById(activeLoan._id);
+  sendSuccess(res, `Collection status updated to ${collectionStatus}`, { activeLoan: refreshedLoan });
+});
+
 module.exports = {
   getAllActiveLoans,
   getDashboardStats,
@@ -862,5 +952,6 @@ module.exports = {
   deleteLoan,
   assignAgent,
   getSettlementQuote,
-  settleLoan
+  settleLoan,
+  updateCollectionStatus
 };

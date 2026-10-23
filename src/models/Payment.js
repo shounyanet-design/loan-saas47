@@ -47,6 +47,16 @@ const paymentSchema = new mongoose.Schema({
   overduePenaltyIncluded: { type: Boolean, default: false },
   remainingBalanceAfterPayment: { type: Number },
 
+  // Debi24 Settlement Tracking
+  settlementStatus: { 
+    type: String, 
+    enum: ['Pending', 'Matched', 'Disputed', 'Reversed', 'Cancelled', 'Not Applicable'], 
+    default: 'Not Applicable' 
+  },
+  settlementReference: { type: String, default: '' },
+  settlementBatchId: { type: String, default: '' },
+  settledDate: { type: Date },
+
   isDeleted: { type: Boolean, default: false }
 }, {
   timestamps: true
@@ -68,6 +78,21 @@ paymentSchema.pre('validate', async function() {
       throw err;
     }
   }
+
+  // Auto-assign settlement fields for Debit Order collections
+  if (this.isNew) {
+    if (!this.settlementStatus || this.settlementStatus === 'Not Applicable') {
+      if (this.paymentMethod === 'Debit Order') {
+        this.settlementStatus = 'Pending';
+      } else {
+        this.settlementStatus = 'Not Applicable';
+      }
+    }
+    if (this.paymentMethod === 'Debit Order' && !this.settlementReference) {
+      const suffix = Math.floor(100000 + Math.random() * 900000);
+      this.settlementReference = `SETTLE-${suffix}`;
+    }
+  }
 });
 
 paymentSchema.plugin(tenantPlugin);
@@ -76,6 +101,8 @@ paymentSchema.plugin(tenantPlugin);
 paymentSchema.index({ tenantId: 1, transactionId: 1 }, { unique: true });
 // Hot-path: payment verification queues and per-loan/borrower payment history.
 paymentSchema.index({ tenantId: 1, paymentStatus: 1, createdAt: -1 });
+paymentSchema.index({ tenantId: 1, settlementStatus: 1, createdAt: -1 });
+paymentSchema.index({ tenantId: 1, settlementReference: 1 });
 paymentSchema.index({ tenantId: 1, loanId: 1 });
 
 module.exports = mongoose.model('Payment', paymentSchema);

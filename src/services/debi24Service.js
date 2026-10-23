@@ -78,7 +78,7 @@ class Debi24Service {
   /**
    * Build Debi24 Mandate creation payload from loan and bank records
    */
-  buildMandatePayload(loan, bankRecord = null, transactionType = 'TT1R') {
+  buildMandatePayload(loan, bankRecord = null, transactionType = 'TT1R', trackingDays = 10) {
     const verifiedAcc = (
       loan.bankVerification?.verifiedBankAccount ||
       bankRecord?.accountNumber ||
@@ -148,6 +148,9 @@ class Debi24Service {
     const attemptSuffix = Date.now().toString().slice(-6);
     const mandateRef = `MAND-${applicationId}-${attemptSuffix}`.replace(/[^a-zA-Z0-9-_]/g, '').substring(0, 100);
 
+    const numTrackingDays = Math.max(0, Math.min(10, Number(trackingDays) || 0));
+    const isTrackingEnabled = numTrackingDays > 0;
+
     return {
       customer: {
         reference: `CUST-${applicationId}`.substring(0, 100),
@@ -173,7 +176,8 @@ class Debi24Service {
         frequencyCode: 'MNTH',
         collectionDay: Number(collectionDay),
         adjustmentCategory: 'N',
-        trackingEnabled: false,
+        trackingEnabled: isTrackingEnabled,
+        ...(isTrackingEnabled ? { trackingCode: String(numTrackingDays).padStart(2, '0') } : {}),
         instalmentStartAt,
         instalmentAmount: emiVal,
         maximumAmount: maxVal,
@@ -186,9 +190,11 @@ class Debi24Service {
   /**
    * Create mandate via Debi24 Bridge
    */
-  async createMandate(loan, bankRecord = null, customIdempotencyKey = null, targetClientId = null, transactionType = 'TT1R') {
+  async createMandate(loan, bankRecord = null, customIdempotencyKey = null, targetClientId = null, transactionType = 'TT1R', trackingDays = 10) {
     const { baseUrl, clientId, apiKey } = this.getConfig(targetClientId);
-    const payload = this.buildMandatePayload(loan, bankRecord, transactionType);
+    const numTrackingDays = Math.max(0, Math.min(10, Number(trackingDays) || 0));
+    const isTrackingEnabled = numTrackingDays > 0;
+    const payload = this.buildMandatePayload(loan, bankRecord, transactionType, numTrackingDays);
     const idempotencyKey = (customIdempotencyKey || `mnd-${payload.mandate.reference}`).substring(0, 128);
 
     const url = `${baseUrl}/api/v1/clients/${clientId}/mandates`;
@@ -216,7 +222,7 @@ class Debi24Service {
         outcome,
         providerStatus: outcome === 'ACCEPTED' ? 'ACCEPTED' : outcome === 'REJECTED' ? 'REJECTED' : 'PENDING AUTH',
         resultCode: outcome === 'ACCEPTED' ? '900000' : '900001',
-        mandateId: data.id || data.mandate?.reference || payload.mandate.reference,
+        mandateId: data.id || data.mandate?.id || data.mandate?.reference || payload.mandate.reference,
         clientReference: payload.customer.reference,
         contractReference: payload.mandate.reference,
         providerTransactionId: data.provider?.transactionId || data.id,
@@ -224,6 +230,8 @@ class Debi24Service {
         effectiveDate: payload.mandate.instalmentStartAt,
         debi24ClientId: clientId,
         transactionType: payload.mandate.transactionType,
+        trackingDays: numTrackingDays,
+        trackingEnabled: isTrackingEnabled,
         raw: data
       };
     } catch (error) {
@@ -249,7 +257,27 @@ class Debi24Service {
    */
   async refreshMandate(mandateId, targetClientId = null) {
     const { baseUrl, clientId, apiKey } = this.getConfig(targetClientId);
-    const url = `${baseUrl}/api/v1/clients/${clientId}/mandates/${mandateId}/refresh`;
+    let effectiveMandateId = mandateId;
+
+    // Check if mandateId is a contract reference (e.g. MAND-LAPP-...) rather than a UUID
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(mandateId);
+    if (!isUuid) {
+      try {
+        const listRes = await this.httpClient.get(`${baseUrl}/api/v1/clients/${clientId}/mandates`, {
+          headers: { Authorization: `Bearer ${apiKey}` },
+          params: { limit: 100 }
+        });
+        const items = listRes.data?.items || listRes.data || [];
+        const match = items.find((m) => m.externalReference === mandateId || m.reference === mandateId);
+        if (match && match.id) {
+          effectiveMandateId = match.id;
+        }
+      } catch (lookupErr) {
+        console.warn('Debi24 mandate UUID lookup by reference failed:', lookupErr.message);
+      }
+    }
+
+    const url = `${baseUrl}/api/v1/clients/${clientId}/mandates/${effectiveMandateId}/refresh`;
 
     const response = await this.httpClient.post(url, {}, {
       headers: {
@@ -259,7 +287,10 @@ class Debi24Service {
       timeout: 20000
     });
 
-    return response.data;
+    return {
+      ...response.data,
+      resolvedMandateId: effectiveMandateId
+    };
   }
 
   /**
@@ -274,6 +305,23 @@ class Debi24Service {
         Authorization: `Bearer ${apiKey}`
       },
       timeout: 15000
+    });
+
+    return response.data;
+  }
+
+  /**
+   * Get settlements from Debi24
+   */
+  async getSettlements(targetClientId = null) {
+    const { baseUrl, clientId, apiKey } = this.getConfig(targetClientId);
+    const url = `${baseUrl}/api/v1/clients/${clientId}/settlements`;
+
+    const response = await this.httpClient.get(url, {
+      headers: {
+        Authorization: `Bearer ${apiKey}`
+      },
+      timeout: 20000
     });
 
     return response.data;

@@ -94,6 +94,13 @@ const activeLoanSchema = new mongoose.Schema({
     enum: ['On Time', '1-7 Days Late', '8+ Days Late'], 
     default: 'On Time' 
   },
+  collectionStatus: {
+    type: String,
+    enum: ['Scheduled', 'In Tracking', 'Successful', 'Failed', 'Disputed', 'Cancelled', 'Recalled', 'Unknown', ''],
+    default: 'Scheduled'
+  },
+  lastCollectionDate: { type: Date },
+  lastCollectionReference: { type: String, default: '' },
   
   approvedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   approvedDate: { type: Date, default: Date.now },
@@ -200,5 +207,6 @@ activeLoanSchema.plugin(tenantPlugin);
 activeLoanSchema.index({ tenantId: 1, loanApplicationId: 1 }, { unique: true, sparse: true });
 // Hot-path: active-loan lists/dashboards filter by status and soft-delete flag.
 activeLoanSchema.index({ tenantId: 1, loanStatus: 1, isDeleted: 1 });
+activeLoanSchema.index({ tenantId: 1, collectionStatus: 1 });
 
 module.exports = mongoose.model('ActiveLoan', activeLoanSchema);

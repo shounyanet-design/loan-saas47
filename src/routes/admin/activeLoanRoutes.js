@@ -14,7 +14,8 @@ const {
   deleteLoan,
   assignAgent,
   getSettlementQuote,
-  settleLoan
+  settleLoan,
+  updateCollectionStatus
 } = require('../../controllers/admin/activeLoanController');
 const { protect } = require('../../middlewares/authMiddleware');
 const { authorize } = require('../../middlewares/roleMiddleware');
@@ -37,8 +38,9 @@ router.get('/:id/settlement-quote', getSettlementQuote);
 router.post('/:id/settle', settleLoan);
 router.delete('/:id', deleteLoan);
 
-// Status, Notes, and Closure
+// Status, Notes, Closure, and Collections
 router.put('/:id/status', updateLoanStatus);
+router.put('/:id/collection-status', updateCollectionStatus);
 router.put('/:id/notes', addAdminNotes);
 router.put('/:id/close', closeLoan);
 

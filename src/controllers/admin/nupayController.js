@@ -51,8 +51,9 @@ function handleError(res, error) {
 
 const initiateDebiCheckMandate = asyncHandler(async (req, res) => {
   try {
-    const { applicationId, mandate, transactionType: reqTransactionType } = req.body;
+    const { applicationId, mandate, transactionType: reqTransactionType, trackingDays: reqTrackingDays } = req.body;
     const transactionType = reqTransactionType || req.body.mandate?.transactionType || 'TT1R';
+    const trackingDays = Number(reqTrackingDays ?? req.body.mandate?.trackingDays ?? 10);
     if (!applicationId) return sendError(res, 'applicationId is required', 400);
 
     const loan = await LoanApplication.findOne({ _id: applicationId, tenantId: req.tenantId });
@@ -180,7 +181,7 @@ const initiateDebiCheckMandate = asyncHandler(async (req, res) => {
         dateAdjustmentRule: 'Y',
         debitValueTypeId: '1',
         instalments: loan.requestedDuration || 1,
-        trackingIndicator: '00',
+        trackingIndicator: String(trackingDays).padStart(2, '0'),
         mac: '',
         authenticationType: 'REAL TIME',
         entryClass: '0033',
@@ -198,7 +199,7 @@ const initiateDebiCheckMandate = asyncHandler(async (req, res) => {
     const debi24ClientId = resolveDebi24ClientId(tenant);
     const dedupeWindow = Math.floor(Date.now() / 5000); // 5-second deduplication window to prevent rapid double-clicks while allowing legitimate retries
     const key = req.headers['idempotency-key']
-      || idempotency.buildKey('nupay', String(req.tenantId), 'initiateMandate', applicationId, transactionType, String(dedupeWindow));
+      || idempotency.buildKey('nupay', String(req.tenantId), 'initiateMandate', applicationId, transactionType, String(trackingDays), String(dedupeWindow));
 
     const { response: result, replayed } = await idempotency.runOnce(
       {
@@ -206,7 +207,7 @@ const initiateDebiCheckMandate = asyncHandler(async (req, res) => {
         scope: 'nupay',
         action: 'initiateMandate',
         tenantId: req.tenantId,
-        request: { applicationId, mandate: payload, transactionType }
+        request: { applicationId, mandate: payload, transactionType, trackingDays }
       },
       () => {
         const { isDevelopmentSandboxBypassEnabled } = require('../../utils/devSandboxBypass');
@@ -222,11 +223,12 @@ const initiateDebiCheckMandate = asyncHandler(async (req, res) => {
             providerMessageId: 'MSG-' + Math.random().toString(36).substring(2, 9).toUpperCase(),
             effectiveDate: payload.startDate,
             transactionType,
+            trackingDays,
             receivedAt: new Date().toISOString()
           };
         }
         if (process.env.DEBI24_API_KEY) {
-          return debi24Service.createMandate(loan, bankRecord, key, debi24ClientId, transactionType);
+          return debi24Service.createMandate(loan, bankRecord, key, debi24ClientId, transactionType, trackingDays);
         }
         return nupayService.initiateMandate(payload, req.tenantId);
       }
@@ -246,6 +248,8 @@ const initiateDebiCheckMandate = asyncHandler(async (req, res) => {
       effectiveDate: result.effectiveDate,
       debi24ClientId: result.debi24ClientId || debi24ClientId,
       transactionType: result.transactionType || transactionType,
+      trackingDays: result.trackingDays !== undefined ? result.trackingDays : trackingDays,
+      trackingEnabled: (result.trackingDays !== undefined ? result.trackingDays : trackingDays) > 0,
       updatedAt: new Date()
     };
     await loan.save();
@@ -314,7 +318,7 @@ const refreshDebiCheckMandate = asyncHandler(async (req, res) => {
 
     if (process.env.DEBI24_API_KEY) {
       const refreshed = await debi24Service.refreshMandate(mandateId, targetClientId);
-      const rawStatus = String(refreshed.status || refreshed.provider?.status || '').toUpperCase();
+      const rawStatus = String(refreshed.mandate?.status || refreshed.status || refreshed.provider?.status || '').toUpperCase();
       let outcome = 'PENDING';
       if (rawStatus === 'ACCEPTED' || rawStatus === 'ACTIVE') outcome = 'ACCEPTED';
       else if (rawStatus === 'REJECTED' || rawStatus === 'FAILED') outcome = 'REJECTED';
@@ -324,13 +328,23 @@ const refreshDebiCheckMandate = asyncHandler(async (req, res) => {
         loan.nupayMandate.outcome = outcome;
         loan.nupayMandate.status = outcome;
         loan.nupayMandate.providerStatus = outcome === 'ACCEPTED' ? 'ACCEPTED' : outcome === 'REJECTED' ? 'REJECTED' : 'PENDING AUTH';
+        if (refreshed.resolvedMandateId) {
+          loan.nupayMandate.mandateId = refreshed.resolvedMandateId;
+        }
         if (!loan.nupayMandate.debi24ClientId) {
           loan.nupayMandate.debi24ClientId = targetClientId;
+        }
+        if (refreshed.mandate?.trackingDays !== undefined) {
+          loan.nupayMandate.trackingDays = Number(refreshed.mandate.trackingDays);
+          loan.nupayMandate.trackingEnabled = loan.nupayMandate.trackingDays > 0;
+        } else if (refreshed.mandate?.trackingCode) {
+          loan.nupayMandate.trackingDays = Number(refreshed.mandate.trackingCode);
+          loan.nupayMandate.trackingEnabled = loan.nupayMandate.trackingDays > 0;
         }
         loan.nupayMandate.updatedAt = new Date();
       }
       await loan.save();
-      return sendSuccess(res, 'Mandate status refreshed', { outcome, status: refreshed.status, refreshed });
+      return sendSuccess(res, 'Mandate status refreshed', { outcome, status: refreshed.mandate?.status || refreshed.status, refreshed });
     }
 
     return sendError(res, 'Debi24 is not configured', 400);
