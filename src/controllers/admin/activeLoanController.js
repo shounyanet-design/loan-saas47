@@ -10,6 +10,11 @@ const Notification = require('../../models/Notification');
 const { sendSuccess, sendError } = require('../../utils/responseHandler');
 const { getIO } = require('../../socket/socketServer');
 const tenantContext = require('../../tenancy/tenantContext');
+const {
+  applyCollectionStatusUpdate,
+  syncLoanCollectionStatus,
+  syncAllActiveCollections
+} = require('../../services/debi24SyncService');
 
 /**
  * @desc    Get all active loans with pagination, search, and filters
@@ -859,12 +864,7 @@ const assignAgent = asyncHandler(async (req, res) => {
  */
 const updateCollectionStatus = asyncHandler(async (req, res) => {
   const { id } = req.params;
-  const { collectionStatus, reference, amount, date } = req.body;
-
-  const validStatuses = ['Scheduled', 'In Tracking', 'Successful', 'Failed', 'Disputed', 'Cancelled', 'Recalled', 'Unknown'];
-  if (!validStatuses.includes(collectionStatus)) {
-    return sendError(res, `Invalid collection status: ${collectionStatus}`, 400);
-  }
+  const { collectionStatus, reference, amount, date, notes } = req.body;
 
   const query = { _id: id, isDeleted: false };
   if (req.tenantId) query.tenantId = req.tenantId;
@@ -872,70 +872,75 @@ const updateCollectionStatus = asyncHandler(async (req, res) => {
   const activeLoan = await ActiveLoan.findOne(query);
   if (!activeLoan) return sendError(res, 'Active loan not found', 404);
 
-  const prevStatus = activeLoan.collectionStatus;
-  activeLoan.collectionStatus = collectionStatus;
-  activeLoan.lastCollectionDate = date ? new Date(date) : new Date();
-  if (reference) activeLoan.lastCollectionReference = reference;
-
-  // Rule 1: Successful -> Display AND allocate payment by reducing EMI Amount
-  if (collectionStatus === 'Successful' && prevStatus !== 'Successful') {
-    const paymentAmount = Number(amount || activeLoan.emiAmount || 0);
-    const settleRef = reference || `SETTLE-${Math.floor(100000 + Math.random() * 900000)}`;
-
-    const existingPayment = await Payment.findOne({
-      loanId: activeLoan._id,
-      paymentMethod: 'Debit Order',
-      settlementReference: settleRef,
-      isDeleted: false
+  try {
+    const result = await applyCollectionStatusUpdate(activeLoan, {
+      collectionStatus,
+      reference,
+      amount,
+      date,
+      userId: req.user?._id,
+      notes: notes || `Manual Admin Collection Status Update: ${collectionStatus}`
     });
 
-    if (!existingPayment && paymentAmount > 0) {
-      const payment = new Payment({
-        borrowerId: activeLoan.borrowerId,
-        borrowerName: activeLoan.borrowerName,
-        borrowerPhoto: activeLoan.borrowerPhoto,
-        borrowerPhone: activeLoan.borrowerPhone,
-        loanId: activeLoan._id,
-        loanCode: activeLoan.loanCode,
-        paymentAmount,
-        paymentDate: date ? new Date(date) : new Date(),
-        paymentMethod: 'Debit Order',
-        paymentStatus: 'Verified',
-        settlementStatus: 'Matched',
-        settlementReference: settleRef,
-        paymentType: 'EMI Payment',
-        notes: `Debi24 Collection Successful (Ref: ${settleRef})`,
-        tenantId: activeLoan.tenantId
-      });
-      await payment.save();
-
-      const { allocateVerifiedPayment } = require('../../services/paymentAllocationEngine');
-      await allocateVerifiedPayment(payment._id, req.user?._id || activeLoan.approvedBy);
-    }
+    const refreshedLoan = await ActiveLoan.findById(activeLoan._id);
+    sendSuccess(res, `Collection status updated to ${collectionStatus}`, {
+      activeLoan: refreshedLoan,
+      paymentAllocated: result.paymentAllocated,
+      paymentReversed: result.paymentReversed
+    });
+  } catch (err) {
+    return sendError(res, err.message, err.statusCode || 400);
   }
-  // Rule 2: Disputed -> Display AND reverse previous payment allocation that reduced EMI Amount
-  else if (collectionStatus === 'Disputed' && prevStatus !== 'Disputed') {
-    const latestVerifiedDebitPayment = await Payment.findOne({
-      loanId: activeLoan._id,
-      paymentMethod: 'Debit Order',
-      paymentStatus: 'Verified',
-      isDeleted: false
-    }).sort({ createdAt: -1 });
+});
 
-    if (latestVerifiedDebitPayment) {
-      const { reverseVerifiedPayment } = require('../../services/paymentAllocationEngine');
-      await reverseVerifiedPayment(
-        latestVerifiedDebitPayment._id,
-        req.user?._id || activeLoan.approvedBy,
-        'Debi24 Dispute - Debtor disputed debit order collection'
-      );
-    }
+/**
+ * @desc    Synchronize Debi24 collection status for a single active loan
+ * @route   POST /api/admin/active-loans/:id/sync-debi24
+ * @access  Private/Admin
+ */
+const syncDebi24CollectionStatus = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const query = { _id: id, isDeleted: false };
+  if (req.tenantId) query.tenantId = req.tenantId;
+
+  const activeLoan = await ActiveLoan.findOne(query);
+  if (!activeLoan) return sendError(res, 'Active loan not found', 404);
+
+  try {
+    const result = await syncLoanCollectionStatus(activeLoan, req.user?._id);
+    const refreshedLoan = await ActiveLoan.findById(activeLoan._id);
+
+    sendSuccess(
+      res,
+      result.skipped
+        ? result.reason
+        : `Debi24 collection status synced: ${result.collectionStatus}`,
+      {
+        ...result,
+        activeLoan: refreshedLoan
+      }
+    );
+  } catch (error) {
+    return sendError(res, `Debi24 synchronization failed: ${error.message}`, error.statusCode || 500);
   }
+});
 
-  await activeLoan.save();
-
-  const refreshedLoan = await ActiveLoan.findById(activeLoan._id);
-  sendSuccess(res, `Collection status updated to ${collectionStatus}`, { activeLoan: refreshedLoan });
+/**
+ * @desc    Synchronize all active loans with Debi24 (multi-tenant batch)
+ * @route   POST /api/admin/active-loans/sync-all-debi24
+ * @access  Private/Admin
+ */
+const syncAllDebi24Collections = asyncHandler(async (req, res) => {
+  try {
+    const summary = await syncAllActiveCollections();
+    sendSuccess(
+      res,
+      `Debi24 batch sync completed: ${summary.updatedCount} updated, ${summary.errorCount} errors`,
+      summary
+    );
+  } catch (error) {
+    return sendError(res, `Debi24 batch sync failed: ${error.message}`, error.statusCode || 500);
+  }
 });
 
 module.exports = {
@@ -953,5 +958,7 @@ module.exports = {
   assignAgent,
   getSettlementQuote,
   settleLoan,
-  updateCollectionStatus
+  updateCollectionStatus,
+  syncDebi24CollectionStatus,
+  syncAllDebi24Collections
 };

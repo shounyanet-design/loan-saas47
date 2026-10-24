@@ -479,6 +479,20 @@ const approveApplication = asyncHandler(async (req, res) => {
       notes: adminNotes || 'Loan application approved by admin. Digital agreement pending signature.',
     });
 
+    // Re-synchronize verification hash with authoritative approved terms and financial snapshot
+    if (application.creditAssessment) {
+      const { generateVerificationHash } = require('../utils/verificationHashEngine');
+      const Borrower = require('../models/Borrower');
+      const borrowerDoc = await Borrower.findOne({
+        $or: [{ _id: application.borrowerId }, { userId: application.borrowerId }]
+      }).session(session);
+      const updatedHash = generateVerificationHash(application, borrowerDoc);
+      application.creditAssessment.verificationHash = updatedHash;
+      if (application.consumerCreditReport) {
+        application.consumerCreditReport.verificationHash = updatedHash;
+      }
+    }
+
     await application.save({ session });
 
     // --- COMMIT TRANSACTION ---

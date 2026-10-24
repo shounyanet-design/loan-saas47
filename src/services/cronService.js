@@ -83,6 +83,19 @@ const initCronJobs = () => {
       console.error('[Cron] Failed to execute multi-tenant EMI reminder job:', err.message);
     }
   });
+
+  // Run Debi24 automated collection and payment settlement sync twice daily (06:00 and 18:00)
+  cron.schedule('0 6,18 * * *', async () => {
+    console.log('[Cron] Running scheduled Debi24 collection and settlement sync...');
+    try {
+      const { syncAllActiveCollections, syncAllPaymentSettlements } = require('./debi24SyncService');
+      const collectionsSummary = await syncAllActiveCollections();
+      const settlementsSummary = await syncAllPaymentSettlements();
+      console.log(`[Cron] Debi24 sync completed: ${collectionsSummary.updatedCount} collections updated, ${settlementsSummary.updatedCount} settlements updated.`);
+    } catch (err) {
+      console.error('[Cron] Failed to run scheduled Debi24 collection/settlement sync:', err.message);
+    }
+  });
 };
 
 /**

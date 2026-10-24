@@ -5,6 +5,7 @@ const RepaymentSchedule = require('../../models/RepaymentSchedule');
 const Commission = require('../../models/Commission');
 const { sendSuccess, sendError } = require('../../utils/responseHandler');
 const { allocateVerifiedPayment, reverseVerifiedPayment } = require('../../services/paymentAllocationEngine');
+const { syncPaymentSettlementStatus, syncAllPaymentSettlements } = require('../../services/debi24SyncService');
 
 /**
  * @desc    Get all payments
@@ -239,6 +240,55 @@ const downloadReceipt = asyncHandler(async (req, res) => {
   sendSuccess(res, 'Receipt fetched successfully', { receiptUrl: payment.receiptFile || payment.receiptImage });
 });
 
+/**
+ * @desc    Synchronize settlement status with Debi24 for a single payment
+ * @route   POST /api/admin/payments/:id/sync-settlement
+ * @access  Private/Admin
+ */
+const syncPaymentSettlement = asyncHandler(async (req, res) => {
+  const query = { _id: req.params.id, isDeleted: false };
+  if (req.tenantId) query.tenantId = req.tenantId;
+
+  const payment = await Payment.findOne(query);
+  if (!payment) return sendError(res, 'Payment not found', 404);
+
+  try {
+    const result = await syncPaymentSettlementStatus(payment, req.user?._id);
+    const refreshedPayment = await Payment.findById(payment._id);
+
+    sendSuccess(
+      res,
+      result.skipped
+        ? result.reason
+        : `Settlement status synced: ${result.settlementStatus}`,
+      {
+        ...result,
+        payment: refreshedPayment
+      }
+    );
+  } catch (error) {
+    return sendError(res, `Settlement synchronization failed: ${error.message}`, error.statusCode || 500);
+  }
+});
+
+/**
+ * @desc    Synchronize all debit order payment settlements from Debi24
+ * @route   POST /api/admin/payments/sync-all-settlements
+ * @access  Private/Admin
+ */
+const syncAllPaymentSettlementsRoute = asyncHandler(async (req, res) => {
+  try {
+    const summary = await syncAllPaymentSettlements();
+    sendSuccess(
+      res,
+      `Debi24 settlement sync completed: ${summary.updatedCount} live settlements updated (${summary.skippedCount} legacy/offline skipped)`,
+      summary
+    );
+  } catch (error) {
+    return sendError(res, `Debi24 settlement sync failed: ${error.message}`, error.statusCode || 500);
+  }
+});
+
 module.exports = {
   getAllPayments,
   getPaymentStats,
@@ -250,5 +300,7 @@ module.exports = {
   getRejectedPayments,
   exportPayments,
   downloadReceipt,
-  reversePayment
+  reversePayment,
+  syncPaymentSettlement,
+  syncAllPaymentSettlementsRoute
 };

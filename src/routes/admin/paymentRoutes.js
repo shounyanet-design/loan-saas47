@@ -11,7 +11,9 @@ const {
   getRejectedPayments,
   exportPayments,
   downloadReceipt,
-  reversePayment
+  reversePayment,
+  syncPaymentSettlement,
+  syncAllPaymentSettlementsRoute
 } = require('../../controllers/admin/paymentController');
 const { protect } = require('../../middlewares/authMiddleware');
 const { authorize } = require('../../middlewares/roleMiddleware');
@@ -20,9 +22,10 @@ const { authorize } = require('../../middlewares/roleMiddleware');
 router.use(protect);
 router.use(authorize('admin'));
 
-// Stats & Export (must be before /:id)
+// Stats, Export & Batch Sync (must be before /:id)
 router.get('/stats', getPaymentStats);
 router.get('/export', exportPayments);
+router.post('/sync-all-settlements', syncAllPaymentSettlementsRoute);
 
 // Status-specific lists
 router.get('/pending', getPendingPayments);
@@ -32,6 +35,7 @@ router.get('/rejected', getRejectedPayments);
 // Core operations
 router.get('/', getAllPayments);
 router.get('/:id', getPaymentDetails);
+router.post('/:id/sync-settlement', syncPaymentSettlement);
 router.put('/:id/verify', verifyPayment);
 router.put('/:id/reject', rejectPayment);
 router.put('/:id/reverse', reversePayment);

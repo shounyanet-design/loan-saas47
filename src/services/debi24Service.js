@@ -257,25 +257,8 @@ class Debi24Service {
    */
   async refreshMandate(mandateId, targetClientId = null) {
     const { baseUrl, clientId, apiKey } = this.getConfig(targetClientId);
-    let effectiveMandateId = mandateId;
-
     // Check if mandateId is a contract reference (e.g. MAND-LAPP-...) rather than a UUID
-    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(mandateId);
-    if (!isUuid) {
-      try {
-        const listRes = await this.httpClient.get(`${baseUrl}/api/v1/clients/${clientId}/mandates`, {
-          headers: { Authorization: `Bearer ${apiKey}` },
-          params: { limit: 100 }
-        });
-        const items = listRes.data?.items || listRes.data || [];
-        const match = items.find((m) => m.externalReference === mandateId || m.reference === mandateId);
-        if (match && match.id) {
-          effectiveMandateId = match.id;
-        }
-      } catch (lookupErr) {
-        console.warn('Debi24 mandate UUID lookup by reference failed:', lookupErr.message);
-      }
-    }
+    const effectiveMandateId = await this.resolveMandateId(mandateId, baseUrl, clientId, apiKey);
 
     const url = `${baseUrl}/api/v1/clients/${clientId}/mandates/${effectiveMandateId}/refresh`;
 
@@ -294,11 +277,99 @@ class Debi24Service {
   }
 
   /**
+   * Resolve a contract reference (e.g. MAND-LAPP-...) to Debi24 mandate UUID if needed
+   */
+  async resolveMandateId(mandateId, baseUrl, clientId, apiKey) {
+    if (!mandateId) return null;
+    const cleanId = String(mandateId).trim();
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(cleanId);
+    if (isUuid) return cleanId;
+
+    try {
+      const listRes = await this.httpClient.get(`${baseUrl}/api/v1/clients/${clientId}/mandates`, {
+        headers: { Authorization: `Bearer ${apiKey}` },
+        params: { limit: 100 }
+      });
+      const items = listRes.data?.items || listRes.data || [];
+      const match = items.find((m) => m.externalReference === cleanId || m.reference === cleanId);
+      if (match && match.id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(match.id)) {
+        return match.id;
+      }
+    } catch (lookupErr) {
+      console.warn('Debi24 mandate UUID lookup by reference failed:', lookupErr.message);
+    }
+    return null;
+  }
+
+  /**
+   * Synchronize collections from NuPay for a mandate
+   * POST /api/v1/clients/{clientId}/mandates/{mandateId}/collections/sync
+   */
+  async syncMandateCollections(mandateId, targetClientId = null) {
+    const { baseUrl, clientId, apiKey } = this.getConfig(targetClientId);
+    const effectiveMandateId = await this.resolveMandateId(mandateId, baseUrl, clientId, apiKey);
+    if (!effectiveMandateId) {
+      const err = new Error(`Mandate reference '${mandateId}' could not be resolved to a valid Debi24 UUID`);
+      err.statusCode = 400;
+      err.code = 'INVALID_MANDATE_ID';
+      throw err;
+    }
+
+    const url = `${baseUrl}/api/v1/clients/${clientId}/mandates/${effectiveMandateId}/collections/sync`;
+
+    const response = await this.httpClient.post(url, {}, {
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json'
+      },
+      timeout: 30000
+    });
+
+    return {
+      ...response.data,
+      resolvedMandateId: effectiveMandateId
+    };
+  }
+
+  /**
+   * List collections for a mandate
+   * GET /api/v1/clients/{clientId}/mandates/{mandateId}/collections
+   */
+  async getMandateCollections(mandateId, targetClientId = null) {
+    const { baseUrl, clientId, apiKey } = this.getConfig(targetClientId);
+    const effectiveMandateId = await this.resolveMandateId(mandateId, baseUrl, clientId, apiKey);
+    if (!effectiveMandateId) {
+      const err = new Error(`Mandate reference '${mandateId}' could not be resolved to a valid Debi24 UUID`);
+      err.statusCode = 400;
+      err.code = 'INVALID_MANDATE_ID';
+      throw err;
+    }
+
+    const url = `${baseUrl}/api/v1/clients/${clientId}/mandates/${effectiveMandateId}/collections`;
+
+    const response = await this.httpClient.get(url, {
+      headers: {
+        Authorization: `Bearer ${apiKey}`
+      },
+      timeout: 20000
+    });
+
+    return response.data;
+  }
+
+  /**
    * Get mandate details by ID
    */
   async getMandate(mandateId, targetClientId = null) {
     const { baseUrl, clientId, apiKey } = this.getConfig(targetClientId);
-    const url = `${baseUrl}/api/v1/clients/${clientId}/mandates/${mandateId}`;
+    const effectiveMandateId = await this.resolveMandateId(mandateId, baseUrl, clientId, apiKey);
+    if (!effectiveMandateId) {
+      const err = new Error(`Mandate reference '${mandateId}' could not be resolved to a valid Debi24 UUID`);
+      err.statusCode = 400;
+      err.code = 'INVALID_MANDATE_ID';
+      throw err;
+    }
+    const url = `${baseUrl}/api/v1/clients/${clientId}/mandates/${effectiveMandateId}`;
 
     const response = await this.httpClient.get(url, {
       headers: {
@@ -312,8 +383,9 @@ class Debi24Service {
 
   /**
    * Get settlements from Debi24
+   * GET /api/v1/clients/{clientId}/settlements
    */
-  async getSettlements(targetClientId = null) {
+  async getSettlements(targetClientId = null, params = {}) {
     const { baseUrl, clientId, apiKey } = this.getConfig(targetClientId);
     const url = `${baseUrl}/api/v1/clients/${clientId}/settlements`;
 
@@ -321,6 +393,7 @@ class Debi24Service {
       headers: {
         Authorization: `Bearer ${apiKey}`
       },
+      params,
       timeout: 20000
     });
 
