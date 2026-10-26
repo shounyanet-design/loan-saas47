@@ -2,14 +2,35 @@ const axios = require('axios');
 const { datanamixClient } = require('../shared/datanamixClient');
 const datanamixConfig = require('../../../config/datanamix.config');
 
+const getFaceTecUserAgent = () => {
+  return process.env.FACETEC_USER_AGENT || 'FaceTecSDK-browser-10.1.17';
+};
+
+const getFaceTecBaseUrl = () => {
+  return process.env.FACETEC_SERVER_URL || datanamixConfig.endpoints.faceVerification || '';
+};
+
+const isDirectFaceTecServer = (url) => {
+  if (!url) return false;
+  if (process.env.USE_DIRECT_FACETEC_SERVER === 'true') return true;
+  return (
+    url.includes('api.facetec.com') ||
+    url.includes('chana-onprem-usage-logs.datanamix.com') ||
+    url.includes('facetec') ||
+    url.includes(':8080') ||
+    url.includes('localhost') ||
+    url.includes('127.0.0.1')
+  );
+};
+
 /**
  * Requests a new FaceTec session token
  * @returns {Promise<Object>} The session token payload
  */
 const getFaceSessionToken = async () => {
-  const baseUrl = datanamixConfig.endpoints.faceVerification || '';
+  const baseUrl = getFaceTecBaseUrl();
   
-  if (baseUrl.includes('chana-onprem-usage-logs.datanamix.com') || baseUrl.includes('api.facetec.com')) {
+  if (isDirectFaceTecServer(baseUrl)) {
     const url = baseUrl.endsWith('/') ? `${baseUrl}session-token` : `${baseUrl}/session-token`;
     console.log(`[FaceTec] Requesting Session Token directly from server: ${url}`);
     
@@ -17,7 +38,7 @@ const getFaceSessionToken = async () => {
       headers: {
         'X-Device-Key-Identifier': process.env.FACETEC_DEVICE_KEY_IDENTIFIER || 'dummy-device-key',
         'X-Device-Key': process.env.FACETEC_DEVICE_KEY_IDENTIFIER || 'dummy-device-key',
-        'X-User-Agent': 'FaceTecSDK-browser-9.7.120',
+        'X-User-Agent': getFaceTecUserAgent(),
       },
       timeout: 10000
     });
@@ -43,10 +64,10 @@ const verifyFaceLiveness = async (sessionData = {}) => {
 
   console.log(`🎭 [FaceTec Service]: Triggering FaceLiveness verification for session: ${sessionId || 'N/A'}`);
 
-  const baseUrl = datanamixConfig.endpoints.faceVerification || '';
+  const baseUrl = getFaceTecBaseUrl();
 
   // Direct FaceTec Server implementation
-  if (baseUrl.includes('chana-onprem-usage-logs.datanamix.com') || baseUrl.includes('api.facetec.com')) {
+  if (isDirectFaceTecServer(baseUrl)) {
     const url = baseUrl.endsWith('/') ? `${baseUrl}liveness-3d` : `${baseUrl}/liveness-3d`;
     console.log(`[FaceTec] POST to direct endpoint: ${url}`);
     try {
@@ -59,7 +80,7 @@ const verifyFaceLiveness = async (sessionData = {}) => {
           'Content-Type': 'application/json',
           'X-Device-Key-Identifier': process.env.FACETEC_DEVICE_KEY_IDENTIFIER || 'dummy-device-key',
           'X-Device-Key': process.env.FACETEC_DEVICE_KEY_IDENTIFIER || 'dummy-device-key',
-          'X-User-Agent': 'FaceTecSDK-browser-9.7.120',
+          'X-User-Agent': getFaceTecUserAgent(),
         },
         timeout: 15000
       });
@@ -119,7 +140,33 @@ const verifyFaceLiveness = async (sessionData = {}) => {
   }
 };
 
+/**
+ * Forwards v10 FaceTec session request blob to FaceTec Server / Cloud
+ * @param {Object} data - Contains requestBlob
+ * @returns {Promise<Object>} Server response blob payload
+ */
+const processFaceRequest = async ({ requestBlob }) => {
+  const baseUrl = getFaceTecBaseUrl();
+  const url = baseUrl.endsWith('/') ? `${baseUrl}process-request` : `${baseUrl}/process-request`;
+  console.log(`🎭 [FaceTec v10 Service]: Forwarding process-request to: ${url}`);
+
+  const response = await axios.post(url, {
+    requestBlob
+  }, {
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Device-Key-Identifier': process.env.FACETEC_DEVICE_KEY_IDENTIFIER || 'dummy-device-key',
+      'X-Device-Key': process.env.FACETEC_DEVICE_KEY_IDENTIFIER || 'dummy-device-key',
+      'X-User-Agent': getFaceTecUserAgent(),
+    },
+    timeout: 30000
+  });
+
+  return response.data;
+};
+
 module.exports = {
   getFaceSessionToken,
-  verifyFaceLiveness
+  verifyFaceLiveness,
+  processFaceRequest
 };

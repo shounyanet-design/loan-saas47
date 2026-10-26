@@ -244,6 +244,126 @@ exports.getBorrowerById = asyncHandler(async (req, res, next) => {
   });
 });
 
+// @desc    Get complete borrower statement & financial ledger
+// @route   GET /api/admin/borrowers/:id/statement
+// @access  Private/Admin
+exports.getBorrowerStatement = asyncHandler(async (req, res, next) => {
+  const borrower = await Borrower.findById(req.params.id)
+    .populate('assignedAgent', 'fullName email')
+    .populate('assignedStaff', 'fullName email');
+
+  if (!borrower) {
+    return sendError(res, 'Borrower not found', 404);
+  }
+
+  // Fetch all loans, payments, and applications for this borrower
+  const [applications, loans, payments] = await Promise.all([
+    LoanApplication.find({ borrowerId: borrower.userId }).sort({ createdAt: 1 }),
+    ActiveLoan.find({ 
+      $or: [
+        { borrowerId: borrower._id },
+        { borrowerId: borrower.userId }
+      ],
+      isDeleted: false 
+    }).sort({ createdAt: 1 }),
+    Payment.find({ borrowerId: borrower._id, isDeleted: false }).sort({ paymentDate: 1, createdAt: 1 }),
+  ]);
+
+  // Financial summary calculations
+  let totalDisbursed = 0;
+  let totalRepaid = 0;
+  let activeLoansCount = 0;
+  let completedLoansCount = 0;
+
+  loans.forEach(loan => {
+    totalDisbursed += Number(loan.approvedAmount || loan.loanAmount || 0);
+    if (loan.loanStatus === 'Active' || loan.loanStatus === 'Overdue') {
+      activeLoansCount++;
+    } else if (loan.loanStatus === 'Completed' || loan.loanStatus === 'Closed') {
+      completedLoansCount++;
+    }
+  });
+
+  payments.forEach(pay => {
+    if (pay.paymentStatus === 'Completed' || pay.paymentStatus === 'Successful' || pay.paymentStatus === 'Verified') {
+      totalRepaid += Number(pay.paymentAmount || 0);
+    }
+  });
+
+  const outstandingBalance = Math.max(0, totalDisbursed - totalRepaid);
+
+  // Compile full ledger entries
+  const ledger = [];
+
+  loans.forEach(loan => {
+    ledger.push({
+      date: loan.approvedDate || loan.disbursementDate || loan.createdAt,
+      reference: loan.loanCode || `LN-${loan._id.toString().slice(-6)}`,
+      description: `Disbursement: ${loan.loanCode || 'Loan Facility'}`,
+      type: 'DISBURSEMENT',
+      category: 'Debit (+Loan)',
+      amount: Number(loan.approvedAmount || loan.loanAmount || 0),
+      balanceImpact: Number(loan.approvedAmount || loan.loanAmount || 0),
+      status: loan.loanStatus || 'Disbursed'
+    });
+  });
+
+  payments.forEach(pay => {
+    ledger.push({
+      date: pay.paymentDate || pay.createdAt,
+      reference: pay.transactionId || `PAY-${pay._id.toString().slice(-6)}`,
+      description: `Payment: ${pay.paymentMethod || 'EFT/DebiCheck'} (${pay.transactionId || 'Repayment'})`,
+      type: 'REPAYMENT',
+      category: 'Credit (-Balance)',
+      amount: Number(pay.paymentAmount || 0),
+      balanceImpact: -Number(pay.paymentAmount || 0),
+      status: pay.paymentStatus || 'Completed'
+    });
+  });
+
+  applications.forEach(app => {
+    ledger.push({
+      date: app.createdAt,
+      reference: app.applicationId || `APP-${app._id.toString().slice(-6)}`,
+      description: `Application: ${app.applicationId || ''} (${app.loanProduct || 'Personal Loan'})`,
+      type: 'APPLICATION',
+      category: 'Application',
+      amount: Number(app.requestedAmount || app.loanAmount || 0),
+      balanceImpact: 0,
+      status: app.status || 'Submitted'
+    });
+  });
+
+  // Sort chronologically (oldest to newest for statement progression)
+  ledger.sort((a, b) => new Date(a.date) - new Date(b.date));
+
+  // Compute running balance
+  let running = 0;
+  const ledgerWithBalance = ledger.map(item => {
+    running += item.balanceImpact;
+    return {
+      ...item,
+      runningBalance: Math.max(0, running)
+    };
+  });
+
+  sendSuccess(res, 'Borrower statement retrieved successfully', {
+    borrower,
+    summary: {
+      statementNumber: `STMT-${borrower.borrowerCode || 'BRW'}-${Date.now().toString().slice(-6)}`,
+      generatedAt: new Date(),
+      totalDisbursed,
+      totalRepaid,
+      outstandingBalance,
+      activeLoansCount,
+      completedLoansCount,
+      totalApplications: applications.length
+    },
+    ledger: ledgerWithBalance
+  });
+});
+
+
 // @desc    Update borrower
 // @route   PUT /api/admin/borrowers/:id
 // @access  Private/Admin

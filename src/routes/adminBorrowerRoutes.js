@@ -4,6 +4,7 @@ const {
   createBorrower, 
   getAllBorrowers, 
   getBorrowerById, 
+  getBorrowerStatement,
   updateBorrower, 
   freezeBorrower, 
   blacklistBorrower, 
@@ -23,6 +24,7 @@ router.get('/', getAllBorrowers);
 // (no-op for grandfathered/unlimited plans).
 router.post('/create', enforceLimit('borrowers'), upload.single('profilePhoto'), createBorrower);
 router.get('/:id', getBorrowerById);
+router.get('/:id/statement', getBorrowerStatement);
 router.put('/:id', upload.single('profilePhoto'), updateBorrower);
 router.patch('/:id/freeze', freezeBorrower);
 router.patch('/:id/blacklist', blacklistBorrower);

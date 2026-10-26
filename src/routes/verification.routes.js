@@ -10,6 +10,7 @@ const {
   verifyIdentityController,
   verifyFaceLivenessController,
   getFaceSessionTokenController,
+  processFaceRequestController,
   verifyBankController,
   verifyCreditController,
   verifyPhoneController,
@@ -116,6 +117,13 @@ router.post(
  * @access  Private
  */
 router.get('/face-session-token', getFaceSessionTokenController);
+
+/**
+ * @route   POST /api/verification/face-process-request
+ * @desc    Process FaceTec v10 session request blob
+ * @access  Private
+ */
+router.post('/face-process-request', processFaceRequestController);
 
 /**
  * @route   POST /api/verification/bank

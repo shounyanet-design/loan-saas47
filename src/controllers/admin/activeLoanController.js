@@ -10,6 +10,7 @@ const Notification = require('../../models/Notification');
 const { sendSuccess, sendError } = require('../../utils/responseHandler');
 const { getIO } = require('../../socket/socketServer');
 const tenantContext = require('../../tenancy/tenantContext');
+const debi24Service = require('../../services/debi24Service');
 const {
   applyCollectionStatusUpdate,
   syncLoanCollectionStatus,
@@ -943,6 +944,117 @@ const syncAllDebi24Collections = asyncHandler(async (req, res) => {
   }
 });
 
+/**
+ * @desc    Maintain collection via Debi24 (Maintain, Cancel, Reschedule, Reactivate, Recall)
+ * @route   POST /api/admin/active-loans/:id/maintain-collection
+ * @access  Private/Admin
+ */
+const maintainLoanCollection = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { action, newDate, newAmount, reason, trackingDays } = req.body;
+
+  const validActions = ['maintain', 'cancel', 'reschedule', 'reactivate', 'recall'];
+  const normAction = String(action || '').toLowerCase().trim();
+
+  if (!validActions.includes(normAction)) {
+    return sendError(res, `Invalid action. Permitted actions: ${validActions.join(', ')}`, 400);
+  }
+
+  const query = { _id: id, isDeleted: false };
+  if (req.tenantId) query.tenantId = req.tenantId;
+
+  const activeLoan = await ActiveLoan.findOne(query);
+  if (!activeLoan) return sendError(res, 'Active loan not found', 404);
+
+  // Validate state transitions according to DebiCheck Decision Table rules
+  const currentStatus = activeLoan.collectionStatus || 'Scheduled';
+  const permittedActionsMap = {
+    'Scheduled':   ['maintain', 'cancel'],
+    'Failed':      ['reschedule'],
+    'Cancelled':   ['reactivate'],
+    'In_Tracking': ['recall'],
+    'In Tracking': ['recall']
+  };
+
+  const allowedForCurrent = permittedActionsMap[currentStatus] || [];
+  if (allowedForCurrent.length > 0 && !allowedForCurrent.includes(normAction)) {
+    return sendError(
+      res, 
+      `Action '${normAction}' is not permitted when collection status is '${currentStatus}'. Allowed: ${allowedForCurrent.join(', ')}`,
+      400
+    );
+  }
+
+  try {
+    // 1. Resolve Mandate Reference
+    const loanApp = await LoanApplication.findById(activeLoan.loanApplicationId);
+    const mandateRef = loanApp?.nupayMandate?.contractReference || 
+                       loanApp?.nupayMandate?.mandateId || 
+                       activeLoan.lastCollectionReference ||
+                       `MAND-${activeLoan.loanCode}`;
+
+    const debi24ClientId = loanApp?.nupayMandate?.debi24ClientId || (process.env.DEBI24_CLIENT_ID || 'pointfortyseven').trim();
+
+    // 2. Execute via Debi24 Service
+    const debi24Result = await debi24Service.maintainCollection(
+      mandateRef, 
+      normAction, 
+      { newDate, newAmount, reason, trackingDays }, 
+      debi24ClientId
+    );
+
+    // 3. Map new collection status based on action
+    let targetStatus = currentStatus;
+    if (normAction === 'cancel') {
+      targetStatus = 'Cancelled';
+    } else if (normAction === 'recall') {
+      targetStatus = 'Recalled';
+    } else if (normAction === 'reschedule' || normAction === 'maintain' || normAction === 'reactivate') {
+      targetStatus = 'Scheduled';
+    }
+
+    // 4. Update date & emi on activeLoan if modified
+    if (newDate) {
+      activeLoan.nextDueDate = new Date(newDate);
+      if (activeLoan.repaymentSchedule && activeLoan.repaymentSchedule.length > 0) {
+        const nextPending = activeLoan.repaymentSchedule.find(s => s.paymentStatus === 'Pending' || s.paymentStatus === 'Overdue');
+        if (nextPending) {
+          nextPending.dueDate = new Date(newDate);
+          if (newAmount && Number(newAmount) > 0) {
+            nextPending.emiAmount = Number(newAmount);
+          }
+        }
+      }
+    }
+    if (newAmount && Number(newAmount) > 0 && (normAction === 'reschedule' || normAction === 'maintain')) {
+      activeLoan.emiAmount = Number(newAmount);
+    }
+
+    // 5. Apply status update & audit logging
+    await applyCollectionStatusUpdate(activeLoan, {
+      collectionStatus: targetStatus,
+      reference: debi24Result.reference || `MAINT-${normAction.toUpperCase()}-${Date.now()}`,
+      amount: newAmount || activeLoan.emiAmount,
+      date: newDate || new Date(),
+      userId: req.user?._id,
+      notes: reason || `Debi24 Action: ${normAction.toUpperCase()}`
+    });
+
+    const refreshedLoan = await ActiveLoan.findById(activeLoan._id);
+
+    return sendSuccess(res, `Debi24 collection maintained successfully: ${normAction.toUpperCase()}`, {
+      action: normAction,
+      previousStatus: currentStatus,
+      newStatus: targetStatus,
+      debi24Result,
+      activeLoan: refreshedLoan
+    });
+  } catch (err) {
+    console.error(`❌ [Debi24 Maintenance Error for loan ${activeLoan.loanCode}]:`, err.message);
+    return sendError(res, err.message || 'Failed to maintain collection via Debi24', err.statusCode || 500);
+  }
+});
+
 module.exports = {
   getAllActiveLoans,
   getDashboardStats,
@@ -960,5 +1072,6 @@ module.exports = {
   settleLoan,
   updateCollectionStatus,
   syncDebi24CollectionStatus,
-  syncAllDebi24Collections
+  syncAllDebi24Collections,
+  maintainLoanCollection
 };

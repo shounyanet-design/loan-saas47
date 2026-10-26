@@ -214,6 +214,26 @@ exports.getFaceSessionTokenController = async (req, res) => {
 };
 
 /**
+ * 2.6. FaceTec v10 Process Session Request Controller
+ */
+exports.processFaceRequestController = async (req, res) => {
+  const { requestBlob } = req.body;
+  try {
+    const result = await datanamix.identity.processFaceRequest({ requestBlob });
+    return res.status(200).json({
+      success: true,
+      data: result
+    });
+  } catch (error) {
+    console.error('❌ [FaceTec Process Request Controller Error]:', error.message);
+    return res.status(error.status || error.statusCode || 500).json({
+      success: false,
+      message: error.message || 'Error occurred while forwarding FaceTec session request.'
+    });
+  }
+};
+
+/**
  * 3. Bank Account Ownership Verification Controller (Account Holder Verification Advanced)
  */
 exports.verifyBankController = async (req, res) => {
