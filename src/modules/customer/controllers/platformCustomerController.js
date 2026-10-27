@@ -43,3 +43,15 @@ exports.ticketReply = asyncHandler(async (req, res) => {
   try { const t = await supportService.agentReply(ticket.tenantId, req.params.id, { body: req.body.body, email: req.platformUser.email }); await audit(req, { action: 'SUPPORT_REPLIED', entity: 'SupportTicket', entityId: req.params.id }); return sendSuccess(res, 'Reply added', t); }
   catch (e) { return sendError(res, e.message, e.status || 500); }
 });
+exports.ticketStatus = asyncHandler(async (req, res) => {
+  if (!['open', 'pending', 'resolved', 'closed'].includes(req.body.status)) {
+    return sendError(res, 'Invalid status', 400);
+  }
+  const SupportTicket = require('../models/SupportTicket');
+  const ticket = await require('../../../tenancy/tenantContext').runAsSystem(() =>
+    SupportTicket.findByIdAndUpdate(req.params.id, { $set: { status: req.body.status } }, { returnDocument: 'after' })
+  );
+  if (!ticket) return sendError(res, 'Ticket not found', 404);
+  await audit(req, { action: 'SUPPORT_STATUS_CHANGED', entity: 'SupportTicket', entityId: req.params.id });
+  return sendSuccess(res, 'Status updated', ticket);
+});

@@ -147,15 +147,15 @@ const normalizeResponse = (raw, clientReference) => {
     riskReason = 'Borrower matched against critical restricted sanctions or terror watchlist.';
   } else if (hasPartialMatch || results.length > 0) {
     // CASE 2: PARTIAL MATCH / MEDIUM RISK
-    verificationStatus = 'REVIEW_REQUIRED';
-    complianceDecision = 'REVIEW_REQUIRED';
+    verificationStatus = 'MANUAL_REVIEW';
+    complianceDecision = 'MANUAL_REVIEW';
     riskLevel = 'MEDIUM';
     isBlocked = false;
     amlScore = 70; // Score 70 for review
     riskReason = 'Potential politically exposed person (PEP) or country risk requiring manual review.';
   } else {
     // CASE 1: NO MATCHES (CLEAN)
-    verificationStatus = 'CLEAR';
+    verificationStatus = 'CLEARED';
     complianceDecision = 'APPROVED';
     riskLevel = 'LOW';
     isBlocked = false;

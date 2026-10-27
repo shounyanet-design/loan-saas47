@@ -45,11 +45,13 @@ async function listForTenant({ status } = {}) {
   return SupportTicket.find(q).sort({ lastReplyAt: -1 }).limit(200).lean();
 }
 
+require('../../../models/Tenant');
+
 // Platform side (super admin) — all tenants, SYSTEM mode.
 async function listAll({ status, tenantId } = {}) {
   return tenantContext.runAsSystem(() => {
     const q = {}; if (status) q.status = status; if (tenantId) q.tenantId = tenantId;
-    return SupportTicket.find(q).sort({ lastReplyAt: -1 }).limit(500).lean();
+    return SupportTicket.find(q).populate('tenantId', 'companyName companyCode').sort({ lastReplyAt: -1 }).limit(500).lean();
   });
 }
 async function agentReply(tenantId, ticketId, { body, email }) {

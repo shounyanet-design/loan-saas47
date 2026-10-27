@@ -19,5 +19,6 @@ router.put('/announcements/:id', requirePermission('MANAGE_NOTIFICATIONS'), c.an
 // Support triage
 router.get('/support/tickets', requirePermission('MANAGE_SUPPORT_TICKETS'), c.ticketsAll);
 router.post('/support/tickets/:id/reply', requirePermission('MANAGE_SUPPORT_TICKETS'), c.ticketReply);
+router.patch('/support/tickets/:id/status', requirePermission('MANAGE_SUPPORT_TICKETS'), c.ticketStatus);
 
 module.exports = router;

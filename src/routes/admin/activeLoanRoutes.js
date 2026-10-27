@@ -17,7 +17,8 @@ const {
   settleLoan,
   updateCollectionStatus,
   syncDebi24CollectionStatus,
-  syncAllDebi24Collections
+  syncAllDebi24Collections,
+  maintainLoanCollection
 } = require('../../controllers/admin/activeLoanController');
 const { protect } = require('../../middlewares/authMiddleware');
 const { authorize } = require('../../middlewares/roleMiddleware');
@@ -45,6 +46,7 @@ router.delete('/:id', deleteLoan);
 router.put('/:id/status', updateLoanStatus);
 router.put('/:id/collection-status', updateCollectionStatus);
 router.post('/:id/sync-debi24', syncDebi24CollectionStatus);
+router.post('/:id/maintain-collection', maintainLoanCollection);
 router.put('/:id/notes', addAdminNotes);
 router.put('/:id/close', closeLoan);
 
