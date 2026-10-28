@@ -10,12 +10,30 @@ const getFaceTecBaseUrl = () => {
   return process.env.FACETEC_SERVER_URL || datanamixConfig.endpoints.faceVerification || '';
 };
 
+const getFaceTecHeaders = () => {
+  const headers = {
+    'Content-Type': 'application/json',
+    'X-Device-Key-Identifier': process.env.FACETEC_DEVICE_KEY_IDENTIFIER || 'dummy-device-key',
+    'X-Device-Key': process.env.FACETEC_DEVICE_KEY_IDENTIFIER || 'dummy-device-key',
+    'X-User-Agent': getFaceTecUserAgent(),
+  };
+
+  const clientId = process.env.DATANAMIX_CLIENT_ID;
+  const clientSecret = process.env.DATANAMIX_CLIENT_SECRET;
+  if (clientId && clientSecret) {
+    headers['Authorization'] = `Basic ${Buffer.from(`${clientId}:${clientSecret}`).toString('base64')}`;
+  }
+
+  return headers;
+};
+
 const isDirectFaceTecServer = (url) => {
   if (!url) return false;
   if (process.env.USE_DIRECT_FACETEC_SERVER === 'true') return true;
   return (
     url.includes('api.facetec.com') ||
     url.includes('chana-onprem-usage-logs.datanamix.com') ||
+    url.includes('face.datanamix.com') ||
     url.includes('facetec') ||
     url.includes(':8080') ||
     url.includes('localhost') ||
@@ -35,11 +53,7 @@ const getFaceSessionToken = async () => {
     console.log(`[FaceTec] Requesting Session Token directly from server: ${url}`);
     
     const response = await axios.get(url, {
-      headers: {
-        'X-Device-Key-Identifier': process.env.FACETEC_DEVICE_KEY_IDENTIFIER || 'dummy-device-key',
-        'X-Device-Key': process.env.FACETEC_DEVICE_KEY_IDENTIFIER || 'dummy-device-key',
-        'X-User-Agent': getFaceTecUserAgent(),
-      },
+      headers: getFaceTecHeaders(),
       timeout: 10000
     });
     return response.data;
@@ -76,12 +90,7 @@ const verifyFaceLiveness = async (sessionData = {}) => {
         auditTrailImage,
         sessionId
       }, {
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Device-Key-Identifier': process.env.FACETEC_DEVICE_KEY_IDENTIFIER || 'dummy-device-key',
-          'X-Device-Key': process.env.FACETEC_DEVICE_KEY_IDENTIFIER || 'dummy-device-key',
-          'X-User-Agent': getFaceTecUserAgent(),
-        },
+        headers: getFaceTecHeaders(),
         timeout: 15000
       });
 
@@ -153,12 +162,7 @@ const processFaceRequest = async ({ requestBlob }) => {
   const response = await axios.post(url, {
     requestBlob
   }, {
-    headers: {
-      'Content-Type': 'application/json',
-      'X-Device-Key-Identifier': process.env.FACETEC_DEVICE_KEY_IDENTIFIER || 'dummy-device-key',
-      'X-Device-Key': process.env.FACETEC_DEVICE_KEY_IDENTIFIER || 'dummy-device-key',
-      'X-User-Agent': getFaceTecUserAgent(),
-    },
+    headers: getFaceTecHeaders(),
     timeout: 30000
   });
 
