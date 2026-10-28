@@ -65,9 +65,15 @@ const getAllApplications = asyncHandler(async (req, res) => {
   }
 
   if (amlStatus === 'AML_CLEARED') {
-    query['amlVerification.verificationStatus'] = 'CLEARED';
+    query.$or = [
+      { 'amlVerification.verificationStatus': { $in: ['CLEARED', 'CLEAR'] } },
+      { 'compliance.aml.verificationStatus': { $in: ['CLEARED', 'CLEAR'] } }
+    ];
   } else if (amlStatus === 'MANUAL_REVIEW') {
-    query['amlVerification.verificationStatus'] = 'MANUAL_REVIEW';
+    query.$or = [
+      { 'amlVerification.verificationStatus': { $in: ['MANUAL_REVIEW', 'REVIEW_REQUIRED'] } },
+      { 'compliance.aml.verificationStatus': { $in: ['MANUAL_REVIEW', 'REVIEW_REQUIRED'] } }
+    ];
   } else if (amlStatus === 'BLOCKED') {
     query.$and = [
       ...(query.$and || []),
@@ -75,7 +81,10 @@ const getAllApplications = asyncHandler(async (req, res) => {
         $or: [
           { 'amlVerification.verificationStatus': { $in: ['AUTO_REJECT', 'HIGH_RISK'] } },
           { 'amlVerification.complianceDecision': 'AUTO_REJECT' },
-          { 'amlVerification.isBlocked': true }
+          { 'amlVerification.isBlocked': true },
+          { 'compliance.aml.verificationStatus': { $in: ['AUTO_REJECT', 'HIGH_RISK'] } },
+          { 'compliance.aml.complianceDecision': 'AUTO_REJECT' },
+          { 'compliance.aml.isBlocked': true }
         ]
       }
     ];
@@ -147,7 +156,10 @@ const getAllApplications = asyncHandler(async (req, res) => {
         : (app.staffReview?.staffName ? { fullName: app.staffReview.staffName } : null),
       assignedAt: app.assignedAt || null,
       status: app.status,
-      amlVerification: app.amlVerification,
+      amlVerification: (app.amlVerification?.verificationStatus && app.amlVerification.verificationStatus !== 'NOT_STARTED') 
+        ? app.amlVerification 
+        : (app.compliance?.aml || app.amlVerification),
+      compliance: app.compliance,
       hasActiveLoan: activeLoanIds.has(app._id.toString()),
       reviewStatus: app.reviewStatus === 'Pending' && app.staffReview?.recommendation && app.staffReview.recommendation !== 'Pending'
         ? (app.staffReview.recommendation.includes('Reject') ? 'Rejected Recommendation' : 'Recommendation Submitted')
@@ -192,13 +204,26 @@ const getApplicationStats = asyncHandler(async (req, res) => {
 
   const total = await LoanApplication.countDocuments();
   const [amlCleared, amlManualReview, amlBlocked] = await Promise.all([
-    LoanApplication.countDocuments({ 'amlVerification.verificationStatus': 'CLEARED' }),
-    LoanApplication.countDocuments({ 'amlVerification.verificationStatus': 'MANUAL_REVIEW' }),
+    LoanApplication.countDocuments({
+      $or: [
+        { 'amlVerification.verificationStatus': { $in: ['CLEARED', 'CLEAR'] } },
+        { 'compliance.aml.verificationStatus': { $in: ['CLEARED', 'CLEAR'] } }
+      ]
+    }),
+    LoanApplication.countDocuments({
+      $or: [
+        { 'amlVerification.verificationStatus': { $in: ['MANUAL_REVIEW', 'REVIEW_REQUIRED'] } },
+        { 'compliance.aml.verificationStatus': { $in: ['MANUAL_REVIEW', 'REVIEW_REQUIRED'] } }
+      ]
+    }),
     LoanApplication.countDocuments({
       $or: [
         { 'amlVerification.verificationStatus': { $in: ['AUTO_REJECT', 'HIGH_RISK'] } },
         { 'amlVerification.complianceDecision': 'AUTO_REJECT' },
-        { 'amlVerification.isBlocked': true }
+        { 'amlVerification.isBlocked': true },
+        { 'compliance.aml.verificationStatus': { $in: ['AUTO_REJECT', 'HIGH_RISK'] } },
+        { 'compliance.aml.complianceDecision': 'AUTO_REJECT' },
+        { 'compliance.aml.isBlocked': true }
       ]
     })
   ]);

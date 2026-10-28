@@ -222,7 +222,7 @@ const verifyAMLScreeningController = async (req, res) => {
       })),
       screeningRawResponse: result.rawResponse || {},
       screeningDate: result.verifiedAt || new Date(),
-      complianceOutcome: result.verificationStatus === 'CLEAR' ? 'PASSED' : (result.isBlocked ? 'FAILED' : 'REFERRED'),
+      complianceOutcome: (result.verificationStatus === 'CLEARED' || result.verificationStatus === 'CLEAR') ? 'PASSED' : (result.isBlocked ? 'FAILED' : 'REFERRED'),
       notes: result.riskReason
     });
 
