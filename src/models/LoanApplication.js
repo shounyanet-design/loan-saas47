@@ -99,7 +99,16 @@ const loanApplicationSchema = new mongoose.Schema(
     creditRiskReady: { type: Boolean, default: false },
     applicationAuditStatus: {
       type: String,
-      enum: ['Ready For Review', 'Missing Documents', 'Awaiting Verification', 'Credit Consent Missing', 'Incomplete'],
+      enum: [
+        'Ready For Review',
+        'Missing Documents',
+        'Awaiting Verification',
+        'Credit Consent Missing',
+        'Incomplete',
+        'READY FOR REVIEW STAGE',
+        'APPLICATION BLOCKED',
+        'MANUAL COMPLIANCE REVIEW REQUIRED'
+      ],
       default: 'Incomplete',
     },
     
