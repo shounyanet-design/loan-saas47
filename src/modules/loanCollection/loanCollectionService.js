@@ -65,6 +65,9 @@ class LoanCollectionService {
     if (result.outcome === 'ACCEPTED' || result.success || result.status === 'SUBMITTED') {
       attempt.providerReference = result.providerReference || result.mandateId || result.clientReference;
       await attempt.save();
+      schedule.retryCount = attemptNumber;
+      schedule.lastRetryAttemptAt = new Date();
+      await schedule.save();
       console.log(`[COLLECTION_SUBMITTED] Submitted attempt ${attempt._id} to NuPay (Ref: ${attempt.providerReference})`);
       return { success: true, collectionAttempt: attempt };
     } else {

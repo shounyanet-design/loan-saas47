@@ -26,7 +26,7 @@ class CollectionReconciliation {
     if (schedule.status !== 'Paid') {
       schedule.status = 'Paid';
       schedule.paidAt = collectionAttempt.successfulAt || new Date();
-      schedule.amountPaid = collectionAttempt.requestedAmount || schedule.amount;
+      schedule.amountPaid = collectionAttempt.requestedAmount || schedule.debitOrderCollectionAmount || schedule.amount;
       await schedule.save();
     }
 
@@ -46,7 +46,7 @@ class CollectionReconciliation {
         loanId: collectionAttempt.loanId,
         loanCode: loan ? loan.loanCode : `LN-${collectionAttempt.loanId}`,
         transactionId,
-        paymentAmount: collectionAttempt.requestedAmount || schedule.amount,
+        paymentAmount: collectionAttempt.requestedAmount || schedule.debitOrderCollectionAmount || schedule.amount,
         paymentDate: collectionAttempt.successfulAt || new Date(),
         paymentMethod: 'Debit Order',
         paymentStatus: 'Verified',

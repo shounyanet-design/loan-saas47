@@ -24,6 +24,7 @@ const tenantSettingsSchema = new mongoose.Schema(
     defaultLanguage: { type: String, default: 'en' },
     dateFormat: { type: String, default: 'DD/MM/YYYY' },
     numberFormat: { type: String, default: '1,234.56' },
+    debi24ServiceFeeRate: { type: Number, default: null, min: 0, max: 100 },
 
     // ---- Branding (Milestone 2.2, all optional/additive) ----
     branding: {

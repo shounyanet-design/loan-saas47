@@ -115,7 +115,7 @@ const generateAgreement = async (loanId, adminId) => {
   application.agreementFinancialSnapshot = finances;
   application.approvedAmount = finances.principalAmount;
   application.processingFee = finances.initiationFeeAmount;
-  application.estimatedMonthlyEMI = finances.monthlyInstallmentAmount;
+  application.estimatedMonthlyEMI = finances.finalMonthlyDebitOrderAmount || finances.monthlyInstallmentAmount;
   application.totalRepayment = finances.totalRepaymentAmount;
 
   // Update application status and agreement metadata

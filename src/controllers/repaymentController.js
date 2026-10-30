@@ -70,6 +70,10 @@ const getLoanRepaymentSchedule = asyncHandler(async (req, res) => {
         emiNumber: emi.installmentNumber,
         dueDate: emi.dueDate,
         amount: emi.emiAmount,
+        baseEmiAmount: emi.baseEmiAmount || emi.emiAmount,
+        debi24ServiceFeeRate: emi.debi24ServiceFeeRate || 0,
+        debi24ServiceFeeAmount: emi.debi24ServiceFeeAmount || 0,
+        debitOrderCollectionAmount: emi.debitOrderCollectionAmount || emi.emiAmount,
         status: emi.paymentStatus === 'Paid' ? 'Paid' : (emi.paymentStatus === 'Overdue' ? 'Overdue' : 'Pending'),
         paidAt: emi.paidDate || null,
         penaltyAmount: emi.lateFee || 0
@@ -103,6 +107,10 @@ const getLoanRepaymentSchedule = asyncHandler(async (req, res) => {
         emiNumber: emi.installmentNumber,
         dueDate: emi.dueDate,
         amount: emi.emiAmount,
+        baseEmiAmount: emi.baseEmiAmount || emi.emiAmount,
+        debi24ServiceFeeRate: emi.debi24ServiceFeeRate || 0,
+        debi24ServiceFeeAmount: emi.debi24ServiceFeeAmount || 0,
+        debitOrderCollectionAmount: emi.debitOrderCollectionAmount || emi.emiAmount,
         status: emi.paymentStatus === 'Paid' ? 'Paid' : (emi.paymentStatus === 'Overdue' ? 'Overdue' : 'Pending'),
         paidAt: emi.paidDate || null,
         penaltyAmount: emi.lateFee || 0
@@ -140,6 +148,10 @@ const getUpcomingEMIs = asyncHandler(async (req, res) => {
           emiNumber: emi.installmentNumber,
           dueDate: emi.dueDate,
           amount: emi.emiAmount,
+          baseEmiAmount: emi.baseEmiAmount || emi.emiAmount,
+          debi24ServiceFeeRate: emi.debi24ServiceFeeRate || 0,
+          debi24ServiceFeeAmount: emi.debi24ServiceFeeAmount || 0,
+          debitOrderCollectionAmount: emi.debitOrderCollectionAmount || emi.emiAmount,
           status: emi.paymentStatus === 'Paid' ? 'Paid' : (emi.paymentStatus === 'Overdue' ? 'Overdue' : 'Pending'),
           paidAt: emi.paidDate || null,
           penaltyAmount: emi.lateFee || 0

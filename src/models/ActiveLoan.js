@@ -14,6 +14,8 @@ const repaymentScheduleSchema = new mongoose.Schema({
   },
   paidDate: { type: Date },
   lateFee: { type: Number, default: 0 },
+  debi24ServiceFeeAmount: { type: Number, default: 0 },
+  debitOrderCollectionAmount: { type: Number },
   amountPaid: { type: Number, default: 0 },
   penaltyWaived: { type: Boolean, default: false }
 });
@@ -54,6 +56,10 @@ const activeLoanSchema = new mongoose.Schema({
     totalCostOfCreditAmount: { type: Number, default: 0 },
     totalRepaymentAmount: { type: Number, default: 0 },
     monthlyInstallmentAmount: { type: Number, default: 0 },
+    debi24ServiceFeeRate: { type: Number, default: 0 },
+    debi24ServiceFeePerMonth: { type: Number, default: 0 },
+    finalMonthlyDebitOrderAmount: { type: Number, default: 0 },
+    totalDebi24ServiceFeeAmount: { type: Number, default: 0 },
     calculatedAt: { type: Date, default: Date.now },
     calculatorVersion: { type: String, default: '2.0.0' }
   },
@@ -73,6 +79,10 @@ const activeLoanSchema = new mongoose.Schema({
     totalCostOfCreditAmount: { type: Number, default: 0 },
     totalRepaymentAmount: { type: Number, default: 0 },
     monthlyInstallmentAmount: { type: Number, default: 0 },
+    debi24ServiceFeeRate: { type: Number, default: 0 },
+    debi24ServiceFeePerMonth: { type: Number, default: 0 },
+    finalMonthlyDebitOrderAmount: { type: Number, default: 0 },
+    totalDebi24ServiceFeeAmount: { type: Number, default: 0 },
     calculatedAt: { type: Date },
     calculatorVersion: { type: String }
   },

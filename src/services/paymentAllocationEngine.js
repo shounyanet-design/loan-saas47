@@ -27,7 +27,8 @@ const allocateVerifiedPayment = async (paymentId, adminUserId, session = null) =
     if (remainingAmount <= 0) break;
 
     const effectivePenalty = sched.penaltyWaived ? 0 : (sched.penaltyAmount || 0);
-    const totalDue = sched.amount + effectivePenalty;
+    const targetInstallment = Number(sched.debitOrderCollectionAmount || sched.amount);
+    const totalDue = targetInstallment + effectivePenalty;
     const unpaid = Math.max(0, totalDue - sched.amountPaid);
 
     if (unpaid > 0) {
@@ -125,7 +126,8 @@ const reverseVerifiedPayment = async (paymentId, adminUserId, reason, session = 
     for (const sched of schedules) {
       if (rem <= 0) break;
       const effectivePenalty = sched.penaltyWaived ? 0 : (sched.penaltyAmount || 0);
-      const totalDue = sched.amount + effectivePenalty;
+      const targetInstallment = Number(sched.debitOrderCollectionAmount || sched.amount);
+      const totalDue = targetInstallment + effectivePenalty;
       const unpaid = Math.max(0, totalDue - sched.amountPaid);
       if (unpaid > 0) {
         if (rem >= unpaid) {

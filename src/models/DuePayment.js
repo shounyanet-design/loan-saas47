@@ -28,10 +28,11 @@ const duePaymentSchema = new mongoose.Schema({
 
   overdueDays: { type: Number, default: 0 },
   penaltyAmount: { type: Number, default: 0 },
+  retryFeeAmount: { type: Number, default: 0 },
   totalDueAmount: { type: Number, required: true },
 
-  dueStatus: { type: String, enum: ['Due Today', 'Overdue', 'Paid', 'Rescheduled', 'Cancelled', 'Recalled'], default: 'Due Today' },
-  lateDayStatus: { type: String, enum: ['On Time', '1-7 Days Late', '8+ Days Late'], default: 'On Time' },
+  dueStatus: { type: String, enum: ['Due Today', 'Overdue', 'Paid', 'Rescheduled', 'Cancelled', 'Recalled', 'Grace Period'], default: 'Due Today' },
+  lateDayStatus: { type: String, enum: ['On Time', 'In Grace Period', '1-7 Days Late', '8+ Days Late'], default: 'On Time' },
 
   reminderStatus: { type: String, enum: ['Pending Reminder', 'Reminder Sent', 'Escalated'], default: 'Pending Reminder' },
   reminderHistory: [reminderHistorySchema],

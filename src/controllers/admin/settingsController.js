@@ -185,6 +185,22 @@ const updateBulkSettings = asyncHandler(async (req, res) => {
     }
   }
 
+  if (req.body.debi24ServiceFeeRate !== undefined) {
+    const fee = Number(req.body.debi24ServiceFeeRate);
+    if (isNaN(fee) || fee < 0 || fee > 100) {
+      return sendError(res, 'DEBI24 Service fee percentage must be between 0% and 100%', 400);
+    }
+  }
+
+  // Keep late fee fields in sync
+  if (req.body.latePaymentPenalty !== undefined) {
+    settings.latePaymentPenalty = Number(req.body.latePaymentPenalty);
+    settings.lateFeeAmount = Number(req.body.latePaymentPenalty);
+  } else if (req.body.lateFeeAmount !== undefined) {
+    settings.lateFeeAmount = Number(req.body.lateFeeAmount);
+    settings.latePaymentPenalty = Number(req.body.lateFeeAmount);
+  }
+
   Object.keys(req.body).forEach(key => {
     // If the key is a valid field on the document, update it
     if (key !== '_id' && key !== '__v') {

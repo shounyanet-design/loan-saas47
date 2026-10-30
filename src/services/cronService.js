@@ -9,6 +9,7 @@ const Tenant = require('../models/Tenant');
 const { createNotification } = require('../utils/notificationHelper');
 const { getIO } = require('../socket/socketServer');
 const tenantContext = require('../tenancy/tenantContext');
+const SystemSettings = require('../models/SystemSettings');
 
 /**
  * Utility to diagnose why populate returned null for a schedule reference
@@ -74,6 +75,7 @@ const initCronJobs = () => {
           await tenantContext.runWithTenant(tenant._id, async () => {
             await checkUpcomingEMIs();
             await checkOverdueEMIs();
+            await checkGracePeriodReminders();
           });
         } catch (tenantErr) {
           console.error(`[Cron] Error processing EMIs for tenant ${tenant._id} (${tenant.name}):`, tenantErr.message);
@@ -188,6 +190,12 @@ const checkUpcomingEMIs = async () => {
  */
 const checkOverdueEMIs = async () => {
   try {
+    const settings = await SystemSettings.findOne().lean();
+    const allowGracePeriod = settings?.allowGracePeriod !== false;
+    const gracePeriodDays = Number(settings?.gracePeriodDays ?? 3);
+    const autoApplyLateFee = settings?.autoApplyLateFee !== false;
+    const configuredPenalty = Number(settings?.latePaymentPenalty ?? settings?.lateFeeAmount ?? 150);
+
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
@@ -274,6 +282,38 @@ const checkOverdueEMIs = async () => {
         type: 'Penalty'
       });
     }
+
+    // Automated Late Fee Runs: Trigger penalty run automatically at midnight after grace period expiration
+    if (autoApplyLateFee) {
+      const eligibleForPenalty = await RepaymentSchedule.find({
+        status: 'Overdue',
+        penaltyWaived: { $ne: true },
+        $or: [
+          { penaltyAmount: { $exists: false } },
+          { penaltyAmount: 0 }
+        ],
+        dueDate: { $lt: today }
+      }).populate('loanId borrowerId');
+
+      for (const sched of eligibleForPenalty) {
+        if (!sched.loanId || !sched.borrowerId || sched.loanId.isDeleted) continue;
+        const diffTime = today.getTime() - new Date(sched.dueDate).getTime();
+        const overdueDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+        const graceExpired = !allowGracePeriod || (overdueDays > gracePeriodDays);
+
+        if (graceExpired) {
+          sched.penaltyAmount = configuredPenalty;
+          await sched.save();
+          await LoanActivity.create({
+            loanId: sched.loanId._id,
+            borrowerId: sched.borrowerId._id,
+            title: 'Automated Late Fee Run',
+            message: `Automated midnight penalty of R ${configuredPenalty} applied following grace period expiration (${overdueDays} days overdue).`,
+            type: 'Penalty'
+          });
+        }
+      }
+    }
     
     console.log(`Overdue Check: Processed ${overdueEmis.length} overdue payments.`);
   } catch (error) {
@@ -281,4 +321,99 @@ const checkOverdueEMIs = async () => {
   }
 };
 
-module.exports = { initCronJobs };
+/**
+ * Check for EMIs whose grace period expires in 24 hours and notify borrowers
+ * Governed by SystemSettings.allowGracePeriod and SystemSettings.graceReminders
+ */
+const checkGracePeriodReminders = async () => {
+  try {
+    const settings = await SystemSettings.findOne().lean();
+    const allowGracePeriod = settings?.allowGracePeriod !== false;
+    const graceReminders = settings?.graceReminders !== false;
+    const gracePeriodDays = Number(settings?.gracePeriodDays ?? 3);
+    const configuredPenalty = Number(settings?.latePaymentPenalty ?? settings?.lateFeeAmount ?? 150);
+
+    // If grace period or grace reminders are disabled, skip
+    if (!allowGracePeriod || !graceReminders || gracePeriodDays <= 0) {
+      return;
+    }
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    // 24 hours prior to grace period expiration means overdueDays equals (gracePeriodDays - 1)
+    const targetOverdueDays = gracePeriodDays - 1;
+
+    const schedules = await RepaymentSchedule.find({
+      status: { $in: ['Pending', 'Overdue'] },
+      graceReminderSent: { $ne: true },
+      dueDate: { $lt: today }
+    }).populate('loanId borrowerId');
+
+    const io = getIO();
+
+    for (const emi of schedules) {
+      if (!emi.loanId || !emi.borrowerId || emi.loanId.isDeleted) continue;
+
+      const diffTime = today.getTime() - new Date(emi.dueDate).getTime();
+      const overdueDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+
+      if (overdueDays === targetOverdueDays) {
+        const borrower = emi.borrowerId;
+        const loan = emi.loanId;
+        const borrowerUserId = borrower.userId ? borrower.userId.toString() : null;
+        const dueAmount = emi.debitOrderCollectionAmount || emi.amount;
+
+        const warningMsg = `Urgent Grace Warning: Your payment grace window for EMI #${emi.emiNumber} (R ${dueAmount.toLocaleString()}) expires in 24 hours. A late fee penalty of R ${configuredPenalty} will be added if unpaid.`;
+
+        if (borrowerUserId) {
+          await createNotification({
+            receiverId: borrower.userId,
+            receiverRole: 'borrower',
+            type: 'GRACE_PERIOD_EXPIRING',
+            title: 'Grace Period Expiring in 24 Hours',
+            message: warningMsg,
+            priority: 'URGENT',
+            metadata: {
+              loanId: loan._id,
+              emiNumber: emi.emiNumber,
+              penaltyAmount: configuredPenalty
+            }
+          });
+        }
+
+        await BorrowerAlert.create({
+          borrowerId: borrower._id,
+          title: 'Grace Period Expiring in 24 Hours',
+          message: warningMsg,
+          alertType: 'GRACE_PERIOD_EXPIRING',
+          priority: 'Urgent'
+        });
+
+        if (io && borrowerUserId) {
+          io.to(borrowerUserId).emit('grace-expiring-alert', {
+            title: 'Grace Period Expiring in 24 Hours',
+            message: warningMsg,
+            loanId: loan._id
+          });
+          io.to(borrowerUserId).emit('dashboard-updated');
+        }
+
+        await LoanActivity.create({
+          loanId: loan._id,
+          borrowerId: borrower._id,
+          title: 'Grace Period Expiration Warning Sent',
+          message: warningMsg,
+          type: 'Notification'
+        });
+
+        emi.graceReminderSent = true;
+        await emi.save();
+      }
+    }
+  } catch (err) {
+    console.error('Error in Grace Period Reminder Cron:', err);
+  }
+};
+
+module.exports = { initCronJobs, checkUpcomingEMIs, checkOverdueEMIs, checkGracePeriodReminders };

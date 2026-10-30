@@ -91,6 +91,7 @@ const systemSettingsSchema = new mongoose.Schema({
   monthlyServiceFee: { type: Number, default: 60 },
   vatPercentage: { type: Number, default: 15 }, // 15% VAT in South Africa
   creditLifeInsuranceRate: { type: Number, default: 1.2 }, // 1.2% p.a.
+  debi24ServiceFeeRate: { type: Number, default: 2.5, min: 0, max: 100 }, // Percentage fee charged for DEBI24 credit bureau services
   collectionFeeRate: { type: Number, default: 10 }, // 10% collection fee
   latePaymentPenalty: { type: Number, default: 150 },
   debitOrderRetryFee: { type: Number, default: 50 },

@@ -3,6 +3,9 @@ const ActiveLoan = require('../models/ActiveLoan');
 const LoanApplication = require('../models/LoanApplication');
 const Payment = require('../models/Payment');
 const Tenant = require('../models/Tenant');
+const RepaymentSchedule = require('../models/RepaymentSchedule');
+const LoanActivity = require('../models/LoanActivity');
+const SystemSettings = require('../models/SystemSettings');
 const tenantContext = require('../tenancy/tenantContext');
 const debi24Service = require('./debi24Service');
 const { allocateVerifiedPayment, reverseVerifiedPayment } = require('./paymentAllocationEngine');
@@ -163,6 +166,53 @@ async function applyCollectionStatusUpdate(activeLoan, {
         session
       );
       paymentReversed = true;
+    }
+  }
+  // Rule 3: Failed / Unpaid / Bounced -> Apply One-Time Flat Debit Order Retry Fee
+  else if (['Failed', 'Unpaid', 'Bounced'].includes(collectionStatus)) {
+    const schedQuery = {
+      loanId: activeLoan._id,
+      status: { $in: ['Pending', 'Overdue'] }
+    };
+    if (activeLoan.tenantId) {
+      schedQuery.tenantId = activeLoan.tenantId;
+    }
+
+    const schedule = await RepaymentSchedule.findOne(schedQuery)
+      .sort({ emiNumber: 1 })
+      .session(session);
+
+    if (schedule) {
+      // Enforce client rule: One-time flat fee per failed monthly installment
+      if (!schedule.retryFeeAmount || schedule.retryFeeAmount === 0) {
+        const settings = await SystemSettings.findOne().lean();
+        const retryFee = Number(settings?.debitOrderRetryFee ?? 50);
+
+        schedule.retryFeeAmount = retryFee;
+        schedule.debitOrderFailed = true;
+
+        // Final amount to be collected on retry = Base + Service Fee + Retry Fee
+        schedule.debitOrderCollectionAmount = 
+          Number(schedule.baseEmiAmount || schedule.amount) + 
+          Number(schedule.debi24ServiceFeeAmount || 0) + 
+          Number(retryFee);
+
+        await schedule.save({ session });
+
+        // Update active loan total payable amount and remaining balance to include retry fee
+        activeLoan.totalPayableAmount = Number(activeLoan.totalPayableAmount || 0) + retryFee;
+        activeLoan.remainingBalance = Number(activeLoan.remainingBalance || 0) + retryFee;
+
+        // Audit activity log
+        await LoanActivity.create([{
+          loanId: activeLoan._id,
+          borrowerId: activeLoan.borrowerId,
+          title: 'Debit Order Failed - Retry Fee Charged',
+          message: `Debit order collection failed. One-time flat retry fee of R ${retryFee} applied to EMI #${schedule.emiNumber}. New collection amount: R ${schedule.debitOrderCollectionAmount}.`,
+          type: 'Penalty',
+          tenantId: activeLoan.tenantId
+        }], { session });
+      }
     }
   }
 

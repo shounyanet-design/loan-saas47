@@ -54,7 +54,7 @@ class CollectionRules {
       borrower,
       loan,
       mandateRef,
-      amount: schedule.amount
+      amount: schedule.debitOrderCollectionAmount || schedule.amount
     };
   }
 

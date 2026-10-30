@@ -5,6 +5,7 @@ const RepaymentSchedule = require('../../models/RepaymentSchedule');
 const { sendSuccess, sendError } = require('../../utils/responseHandler');
 const { createNotification } = require('../../utils/notificationHelper');
 const Borrower = require('../../models/Borrower');
+const SystemSettings = require('../../models/SystemSettings');
 
 /**
  * Utility function to sync Due Payments from ActiveLoans
@@ -14,6 +15,12 @@ const syncDuePayments = async (tenantId) => {
   if (tenantId) query.tenantId = tenantId;
   const activeLoans = await ActiveLoan.find(query);
   
+  const settings = await SystemSettings.findOne().lean();
+  const allowGracePeriod = settings?.allowGracePeriod !== false;
+  const gracePeriodDays = Number(settings?.gracePeriodDays ?? 3);
+  const autoApplyLateFee = settings?.autoApplyLateFee !== false;
+  const configuredPenalty = Number(settings?.latePaymentPenalty ?? settings?.lateFeeAmount ?? 150);
+
   const now = new Date();
   const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   
@@ -51,32 +58,50 @@ const syncDuePayments = async (tenantId) => {
         let lateDayStatus = 'On Time';
         let penaltyAmount = inst.penaltyWaived ? 0 : (inst.penaltyAmount || 0);
 
-        if (!inst.penaltyWaived && penaltyAmount === 0) {
-          if (overdueDays >= 1 && overdueDays <= 7) {
-            lateDayStatus = '1-7 Days Late';
-            penaltyAmount = 150;
-          } else if (overdueDays > 7) {
-            lateDayStatus = '8+ Days Late';
-            penaltyAmount = 300;
+        const isInGracePeriod = allowGracePeriod && overdueDays > 0 && overdueDays <= gracePeriodDays;
+
+        if (isInGracePeriod) {
+          dueStatus = 'Grace Period';
+          lateDayStatus = 'In Grace Period';
+          // Exempt late payment penalty runs during the grace window
+          penaltyAmount = 0;
+          if (inst.penaltyAmount > 0 && !inst.penaltyWaived) {
+            inst.penaltyAmount = 0;
+            await inst.save();
           }
-          inst.penaltyAmount = penaltyAmount;
-          await inst.save();
+        } else if (overdueDays > 0) {
+          dueStatus = 'Overdue';
+          if (overdueDays <= 7) {
+            lateDayStatus = '1-7 Days Late';
+          } else {
+            lateDayStatus = '8+ Days Late';
+          }
+
+          if (!inst.penaltyWaived && penaltyAmount === 0 && autoApplyLateFee) {
+            penaltyAmount = configuredPenalty;
+            inst.penaltyAmount = penaltyAmount;
+            await inst.save();
+          }
         }
 
         if (dueStatus === 'Overdue') {
           loanIsOverdue = true;
-          inst.status = 'Overdue';
-          await inst.save();
+          if (inst.status !== 'Overdue') {
+            inst.status = 'Overdue';
+            await inst.save();
+          }
         }
         
         loanPenaltyAccumulated += penaltyAmount;
 
-        const totalDueAmount = inst.amount + penaltyAmount;
+        const instDue = Number(inst.debitOrderCollectionAmount || (Number(inst.amount) + Number(inst.retryFeeAmount || 0)));
+        const totalDueAmount = instDue + penaltyAmount;
 
         const updateObj = {
           remainingBalance: loan.remainingBalance,
           overdueDays,
           penaltyAmount,
+          retryFeeAmount: Number(inst.retryFeeAmount || 0),
           totalDueAmount,
           dueStatus,
           lateDayStatus,
@@ -100,7 +125,7 @@ const syncDuePayments = async (tenantId) => {
               borrowerEmail: loan.borrowerEmail || loan.emailAddress || 'Not Provided',
               borrowerAddress: 'Verified Address on File',
               loanCode: loan.loanCode,
-              emiAmount: inst.amount,
+              emiAmount: inst.debitOrderCollectionAmount || inst.amount,
               dueDate: inst.dueDate,
               loanAmount: loan.approvedAmount,
             },

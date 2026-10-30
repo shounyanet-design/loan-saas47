@@ -201,6 +201,14 @@ function calculateLoanFinances({
   const totalRepaymentAmount = round2(principalAmount + totalCostOfCreditAmount);
   const monthlyInstallmentAmount = round2(totalRepaymentAmount / durationMonths);
 
+  // 7. DEBI24 Credit Bureau Service Fee Calculation
+  // Service Fee Amount = Total Repayment Amount * (Service Fee % / 100)
+  // Final Debit Order Amount = Total Repayment Amount + Service Fee Amount
+  const debi24Rate = Number(settings?.debi24ServiceFeeRate ?? 2.5);
+  const debi24ServiceFeePerMonth = debi24Rate > 0 ? round2(monthlyInstallmentAmount * (debi24Rate / 100)) : 0;
+  const finalMonthlyDebitOrderAmount = round2(monthlyInstallmentAmount + debi24ServiceFeePerMonth);
+  const totalDebi24ServiceFeeAmount = round2(debi24ServiceFeePerMonth * durationMonths);
+
   return {
     principalAmount,
     annualInterestRate: annualRate,
@@ -217,6 +225,10 @@ function calculateLoanFinances({
     totalCostOfCreditAmount,
     totalRepaymentAmount,
     monthlyInstallmentAmount,
+    debi24ServiceFeeRate: debi24Rate,
+    debi24ServiceFeePerMonth,
+    finalMonthlyDebitOrderAmount,
+    totalDebi24ServiceFeeAmount,
     calculatedAt: new Date(),
     calculatorVersion: '2.0.0'
   };
@@ -236,11 +248,13 @@ function calculateLoanFinances({
 function generateRepaymentSchedule({
   totalRepaymentAmount,
   durationMonths,
-  startDate = new Date()
+  startDate = new Date(),
+  debi24ServiceFeeRate = 0
 }) {
   const total = round2(totalRepaymentAmount);
   const duration = Math.max(1, Math.round(Number(durationMonths) || 1));
   const standardEmi = round2(total / duration);
+  const rate = Number(debi24ServiceFeeRate || 0);
   const schedule = [];
   let allocated = 0;
 
@@ -257,12 +271,19 @@ function generateRepaymentSchedule({
       allocated = round2(allocated + amount);
     }
 
+    const debi24ServiceFeeAmount = rate > 0 ? round2(amount * (rate / 100)) : 0;
+    const debitOrderCollectionAmount = round2(amount + debi24ServiceFeeAmount);
+
     schedule.push({
       installmentNumber: i,
       emiNumber: i,
       dueDate,
       emiAmount: amount,
       amount: amount,
+      baseEmiAmount: amount,
+      debi24ServiceFeeRate: rate,
+      debi24ServiceFeeAmount,
+      debitOrderCollectionAmount,
       principalAmount: round2(amount),
       interestAmount: 0,
       paymentStatus: 'Pending',

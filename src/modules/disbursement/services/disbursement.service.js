@@ -93,7 +93,8 @@ async function disburseLoan(applicationId, context) {
     const emiSchedule = generateRepaymentSchedule({
       totalRepaymentAmount,
       durationMonths: duration,
-      startDate: new Date()
+      startDate: new Date(),
+      debi24ServiceFeeRate: finSnap?.debi24ServiceFeeRate ?? settings?.debi24ServiceFeeRate ?? 2.5
     });
 
     let creditProviderSnapshot = (application.agreementCreditProviderSnapshot && application.agreementCreditProviderSnapshot.legalName)
@@ -145,11 +146,16 @@ async function disburseLoan(applicationId, context) {
 
     // Populate RepaymentSchedule collection for reporting & collection queries
     const repaymentEntries = emiSchedule.map(e => ({
+      tenantId: context.tenantId,
       loanId: activeLoan._id,
       borrowerId: application.borrowerId,
       emiNumber: e.installmentNumber,
       dueDate: e.dueDate,
       amount: e.emiAmount,
+      baseEmiAmount: e.baseEmiAmount || e.emiAmount,
+      debi24ServiceFeeRate: e.debi24ServiceFeeRate || 0,
+      debi24ServiceFeeAmount: e.debi24ServiceFeeAmount || 0,
+      debitOrderCollectionAmount: e.debitOrderCollectionAmount || e.emiAmount,
       status: 'Pending'
     }));
     await RepaymentSchedule.insertMany(repaymentEntries, { session });

@@ -24,6 +24,20 @@ const repaymentScheduleSchema = new mongoose.Schema({
     type: Number,
     required: true
   },
+  baseEmiAmount: {
+    type: Number
+  },
+  debi24ServiceFeeRate: {
+    type: Number,
+    default: 0
+  },
+  debi24ServiceFeeAmount: {
+    type: Number,
+    default: 0
+  },
+  debitOrderCollectionAmount: {
+    type: Number
+  },
   status: {
     type: String,
     enum: ['Pending', 'Paid', 'Partial', 'Overdue', 'Late Paid', 'Disputed'],
@@ -56,6 +70,26 @@ const repaymentScheduleSchema = new mongoose.Schema({
   penaltyWaivedBy: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
+    default: null
+  },
+  graceReminderSent: {
+    type: Boolean,
+    default: false
+  },
+  retryFeeAmount: {
+    type: Number,
+    default: 0
+  },
+  retryCount: {
+    type: Number,
+    default: 0
+  },
+  debitOrderFailed: {
+    type: Boolean,
+    default: false
+  },
+  lastRetryAttemptAt: {
+    type: Date,
     default: null
   }
 }, {
