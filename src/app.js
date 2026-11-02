@@ -53,6 +53,7 @@ const borrowerApplyLoanRoutes = require('./routes/borrowerLoanRoutes');
 const verificationRoutes = require('./routes/verification.routes');
 const agreementRoutes = require('./modules/agreementSigning/routes/agreementSigning.routes');
 const validationRoutes = require('./routes/validationRoutes');
+const insuranceRoutes = require('./routes/insuranceRoutes');
 const platformRoutes = require('./modules/platform/routes');
 const tenantSaasRoutes = require('./modules/saas/routes/tenantSaasRoutes');
 const publicSaasRoutes = require('./modules/saas/routes/publicRoutes');
@@ -173,6 +174,7 @@ app.use('/api/verification', verificationRoutes);
 app.use('/api/agreement', agreementRoutes);
 app.use('/api/upload', uploadRoutes);
 app.use('/api/validation-rules', validationRoutes);
+app.use('/api/insurance', insuranceRoutes);
 
 // Super Admin (SaaS Platform) layer — fully separate from tenant LMS routes.
 // Milestone 2.2 SaaS platform routes are merged inside this router.

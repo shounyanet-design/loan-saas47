@@ -150,6 +150,8 @@ const getAllApplications = asyncHandler(async (req, res) => {
       loanDuration: app.requestedDuration,
       interestRate: app.interestRate,
       estimatedEMI: app.estimatedMonthlyEMI,
+      debi24ServiceFeeAmount: app.debi24ServiceFeeAmount || app.financialSnapshot?.debi24ServiceFeePerMonth || 0,
+      finalMonthlyDebitOrderAmount: app.finalMonthlyDebitOrderAmount || app.financialSnapshot?.finalMonthlyDebitOrderAmount || 0,
       // Prefer assignedReviewer (set at assignment time) over staffReview.staffName (set after review submission)
       staffReviewer: app.assignedReviewer
         ? { fullName: app.assignedReviewer.fullName, _id: app.assignedReviewer._id }
@@ -477,6 +479,9 @@ const approveApplication = asyncHandler(async (req, res) => {
     application.interestRate = approvedFinances.annualInterestRate;
     application.processingFee = approvedFinances.initiationFeeAmount;
     application.estimatedMonthlyEMI = approvedFinances.monthlyInstallmentAmount;
+    application.debi24ServiceFeeRate = approvedFinances.debi24ServiceFeeRate;
+    application.debi24ServiceFeeAmount = approvedFinances.debi24ServiceFeePerMonth;
+    application.finalMonthlyDebitOrderAmount = approvedFinances.finalMonthlyDebitOrderAmount;
     application.totalRepayment = approvedFinances.totalRepaymentAmount;
     application.financialSnapshot = approvedFinances;
     application.agreementFinancialSnapshot = approvedFinances;
@@ -618,6 +623,26 @@ const rejectApplication = asyncHandler(async (req, res) => {
   });
 
   await application.save();
+
+  // Cancel Groups R Us insurance policy if active
+  const isPolicyActive = application.insurance?.policyNumber && 
+    (application.insurance?.policyStatus === 'ACTIVE' || application.insurance?.status === 'ACTIVE');
+  if (isPolicyActive) {
+    try {
+      const groupsRUsInsuranceService = require('../services/groupsRUsInsuranceService');
+      groupsRUsInsuranceService.cancelPolicy({
+        clientIdNumber: application.idNumber,
+        policyRefNumber: application.insurance.policyNumber,
+        reason: rejectionReason || 'Loan application rejected by admin'
+      }).catch(err => {
+        console.warn('[Reject] Groups R Us policy cancellation background notice:', err.message);
+      });
+      application.insurance.policyStatus = 'CANCELLED';
+      await application.save();
+    } catch (cancelErr) {
+      console.warn('[Reject] Insurance cancellation skipped:', cancelErr.message);
+    }
+  }
 
   // Notify Borrower & Create Admin Realtime Log
   const borrower = await Borrower.findById(application.borrowerId);
@@ -1185,6 +1210,9 @@ const createApplicationOnBehalf = asyncHandler(async (req, res) => {
       processingFee,
       interestRate,
       estimatedMonthlyEMI,
+      debi24ServiceFeeRate: finances.debi24ServiceFeeRate,
+      debi24ServiceFeeAmount: finances.debi24ServiceFeePerMonth,
+      finalMonthlyDebitOrderAmount: finances.finalMonthlyDebitOrderAmount,
       totalRepayment,
       financialSnapshot: finances,
       agreementFinancialSnapshot: finances,

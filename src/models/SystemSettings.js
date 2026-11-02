@@ -159,7 +159,33 @@ const systemSettingsSchema = new mongoose.Schema({
   fallbackCollectionEnabled: { type: Boolean, default: true },
   maxDebiCheckRetries: { type: Number, default: 2 },
   arrearsCollectionEnabled: { type: Boolean, default: true },
-  firstPaymentPayfastEnabled: { type: Boolean, default: false }
+  firstPaymentPayfastEnabled: { type: Boolean, default: false },
+
+  // 9. GROUPS R US INSURANCE UNDERWRITING ENGINE
+  groupsRUs: {
+    username: { type: String, default: process.env.GROUPS_RUS_USERNAME || '' },
+    password: { type: String, default: process.env.GROUPS_RUS_PASSWORD || '' },
+    branchCode: { type: String, default: process.env.GROUPS_RUS_BRANCH_CODE || '' },
+    environment: { type: String, enum: ['TEST', 'LIVE'], default: 'TEST' },
+    testBaseUrl: { type: String, default: 'https://test.groupsrus.co.za/ws_finapi/' },
+    liveBaseUrl: { type: String, default: 'https://restapi.groupsrus.co.za/ws_finapi/' },
+    backupBaseUrl: { type: String, default: 'https://restapi2.groupsrus.co.za/ws_finapi/' },
+    fallbackMode: { type: Boolean, default: true }
+  },
+
+  funeralPlans: [{
+    id: { type: String, required: true },
+    name: { type: String, required: true },
+    coverMultiplier: { type: Number, default: 3 },
+    status: { type: String, enum: ['Enabled', 'Disabled'], default: 'Enabled' },
+    benefits: {
+      airtime: { type: Boolean, default: true },
+      grocery: { type: Boolean, default: true },
+      tombstone: { type: Boolean, default: true },
+      funeralAdmin: { type: Boolean, default: true }
+    },
+    basePremium: { type: Number, default: 450.00 }
+  }]
 }, { timestamps: true });
 
 module.exports = mongoose.model('SystemSettings', systemSettingsSchema);

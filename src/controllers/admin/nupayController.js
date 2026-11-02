@@ -151,8 +151,25 @@ const initiateDebiCheckMandate = asyncHandler(async (req, res) => {
       const mStr = String(startDateObj.getMonth() + 1).padStart(2, '0');
       const startDateStr = `${yStr}-${mStr}-${collectionDay}`;
 
-      const instAmountVal = Number(loan.estimatedMonthlyEMI || loan.adminDecision?.approvedAmount || 10).toFixed(2);
-      const maxAmountVal = (Number(instAmountVal) * 1.2).toFixed(2);
+      // Resolve final monthly debit order amount including Debi24 service fee
+      const finSnap = loan.financialSnapshot || loan.agreementFinancialSnapshot || {};
+      let finalDebitAmount = Number(
+        loan.finalMonthlyDebitOrderAmount ||
+        finSnap.finalMonthlyDebitOrderAmount ||
+        0
+      );
+
+      if (!finalDebitAmount || finalDebitAmount <= 0) {
+        const baseEmi = Number(loan.estimatedMonthlyEMI || loan.adminDecision?.approvedAmount || 0);
+        const debi24Fee = Number(loan.debi24ServiceFeeAmount || finSnap.debi24ServiceFeePerMonth || 0);
+        finalDebitAmount = baseEmi + debi24Fee;
+      }
+      if (!finalDebitAmount || finalDebitAmount <= 0) {
+        finalDebitAmount = Number(loan.estimatedMonthlyEMI || loan.adminDecision?.approvedAmount || 10);
+      }
+
+      const instAmountVal = finalDebitAmount.toFixed(2);
+      const maxAmountVal = (finalDebitAmount * 1.2).toFixed(2);
 
       mandatePayload = {
         frequency: 'MNTH',

@@ -104,9 +104,25 @@ class Debi24Service {
     const mobile = this.formatMobile(loan.phoneNumber || '+27823509883');
     const email = loan.emailAddress || 'customer@example.com';
 
-    // Amount formatting
-    const emiVal = Number(loan.estimatedMonthlyEMI || loan.adminDecision?.approvedAmount || 100).toFixed(2);
-    const maxVal = (Number(emiVal) * 1.2).toFixed(2);
+    // Amount formatting including Debi24 service fee
+    const finSnap = loan.financialSnapshot || loan.agreementFinancialSnapshot || {};
+    let finalDebitAmount = Number(
+      loan.finalMonthlyDebitOrderAmount ||
+      finSnap.finalMonthlyDebitOrderAmount ||
+      0
+    );
+
+    if (!finalDebitAmount || finalDebitAmount <= 0) {
+      const baseEmi = Number(loan.estimatedMonthlyEMI || loan.adminDecision?.approvedAmount || 0);
+      const debi24Fee = Number(loan.debi24ServiceFeeAmount || finSnap.debi24ServiceFeePerMonth || 0);
+      finalDebitAmount = baseEmi + debi24Fee;
+    }
+    if (!finalDebitAmount || finalDebitAmount <= 0) {
+      finalDebitAmount = Number(loan.estimatedMonthlyEMI || loan.adminDecision?.approvedAmount || 100);
+    }
+
+    const emiVal = finalDebitAmount.toFixed(2);
+    const maxVal = (finalDebitAmount * 1.2).toFixed(2);
 
     // Collection day
     let collectionDay = 25;

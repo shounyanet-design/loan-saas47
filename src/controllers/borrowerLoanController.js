@@ -197,6 +197,7 @@ exports.submitFullApplication = asyncHandler(async (req, res, next) => {
     confirmationAccepted,
     creditConsentAccepted,
     creditConsentAcceptedAt,
+    insurance,
   } = req.body;
 
   if (!confirmationAccepted) return sendError(res, 'Please accept confirmation', 400);
@@ -368,6 +369,38 @@ exports.submitFullApplication = asyncHandler(async (req, res, next) => {
       documentVerificationStatus,
       creditRiskReady,
       applicationAuditStatus,
+      insurance: (() => {
+        const raw = insurance || {};
+        const isFuneral = Boolean(
+          raw.isFuneralBenefitIncluded ??
+          (Number(raw.voluntaryLifePremium || raw.funeralPremium || 0) > 0 ||
+           (raw.selectedPlan && raw.selectedPlan !== 'None') ||
+           (raw.funeralPlanName && raw.funeralPlanName !== 'None'))
+        );
+        const funeralCost = Number(raw.funeralPremium ?? raw.voluntaryLifePremium ?? 0);
+        const planName = raw.funeralPlanName || raw.selectedPlan || (isFuneral ? 'Standard' : 'None');
+        const planId = raw.funeralPlanId || (isFuneral ? planName.toLowerCase() : null);
+        const hasLiveQuote = Boolean(raw.quoteId || raw.policyStatus === 'QUOTED' || raw.status === 'QUOTED');
+
+        // Look up configured plan multiplier from SystemSettings
+        const configuredPlans = settings?.funeralPlans || [];
+        const matchedPlan = configuredPlans.find(p => p.id === planId || p.name?.toLowerCase() === planName.toLowerCase());
+        const multiplier = matchedPlan?.coverMultiplier ?? 3;
+        const funeralCover = isFuneral ? Number(amount * multiplier) : 0;
+
+        return {
+          creditLifePremium: Number(raw.creditLifePremium ?? finances.insuranceAmount ?? 0),
+          creditLifeCover: Number(raw.creditLifeCover ?? amount ?? 0),
+          isFuneralBenefitIncluded: isFuneral,
+          funeralPlanId: planId,
+          funeralPlanName: planName,
+          funeralPremium: isFuneral ? funeralCost : 0,
+          funeralCover: funeralCover,
+          policyStatus: hasLiveQuote ? 'QUOTED' : 'UNQUOTED',
+          bindingState: 'NOT_ATTEMPTED',
+          bindingAttempts: 0
+        };
+      })(),
     };
 
     // Auto-link reusable verified KYC if borrower is verified

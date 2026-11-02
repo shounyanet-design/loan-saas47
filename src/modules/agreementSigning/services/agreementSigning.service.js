@@ -314,6 +314,8 @@ const signAgreement = async (loanApplicationId, otpCode, ip = '', userAgent = ''
   const approvedPrincipal = finSnap?.principalAmount ?? Number(application.approvedAmount || application.requestedAmount || 0);
   const durationMonths = finSnap?.durationMonths ?? Number(application.adminDecision?.finalDuration || application.requestedDuration || 1);
   const monthlyEmi = finSnap?.monthlyInstallmentAmount ?? Number(application.estimatedMonthlyEMI || 0);
+  const debi24Fee = Number(finSnap?.debi24ServiceFeePerMonth || application.debi24ServiceFeeAmount || 0);
+  const finalDebitOrderAmount = Number(finSnap?.finalMonthlyDebitOrderAmount || application.finalMonthlyDebitOrderAmount || (monthlyEmi + debi24Fee));
   const annualInterest = finSnap?.annualInterestRate ?? Number(application.interestRate || 12.5);
   const totalRepay = finSnap?.totalRepaymentAmount ?? Number(application.totalRepayment || (monthlyEmi * durationMonths));
 
@@ -338,7 +340,9 @@ Registered Address: ${formattedAddress}
 LOAN PRINCIPAL DETAILS:
 Approved Amount: R ${approvedPrincipal.toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
 Duration: ${durationMonths} Months
-Estimated EMI: R ${monthlyEmi.toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+Estimated Monthly EMI: R ${monthlyEmi.toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+DEBI24 Service Fee: R ${debi24Fee.toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+Total Monthly Debit Order: R ${finalDebitOrderAmount.toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
 Interest Rate: ${annualInterest.toFixed(2)}% per annum
 Total Repayable: R ${totalRepay.toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
 

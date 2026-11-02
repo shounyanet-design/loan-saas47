@@ -29,6 +29,9 @@ const loanApplicationSchema = new mongoose.Schema(
     processingFee: { type: Number },
     interestRate: { type: Number },
     estimatedMonthlyEMI: { type: Number },
+    debi24ServiceFeeRate: { type: Number, default: 0 },
+    debi24ServiceFeeAmount: { type: Number, default: 0 },
+    finalMonthlyDebitOrderAmount: { type: Number, default: 0 },
     totalRepayment: { type: Number },
     repaymentDate: { type: Date },
 
@@ -45,10 +48,16 @@ const loanApplicationSchema = new mongoose.Schema(
       monthlyServiceFee: { type: Number, default: 0 },
       totalServiceFeeAmount: { type: Number, default: 0 },
       insuranceAmount: { type: Number, default: 0 },
+      creditLifeInsuranceAmount: { type: Number, default: 0 },
+      funeralBenefitAmount: { type: Number, default: 0 },
       vatAmount: { type: Number, default: 0 },
       totalCostOfCreditAmount: { type: Number, default: 0 },
       totalRepaymentAmount: { type: Number, default: 0 },
       monthlyInstallmentAmount: { type: Number, default: 0 },
+      debi24ServiceFeeRate: { type: Number, default: 0 },
+      debi24ServiceFeePerMonth: { type: Number, default: 0 },
+      finalMonthlyDebitOrderAmount: { type: Number, default: 0 },
+      totalDebi24ServiceFeeAmount: { type: Number, default: 0 },
       calculatedAt: { type: Date, default: Date.now },
       calculatorVersion: { type: String, default: '2.0.0' }
     },
@@ -64,12 +73,59 @@ const loanApplicationSchema = new mongoose.Schema(
       monthlyServiceFee: { type: Number, default: 0 },
       totalServiceFeeAmount: { type: Number, default: 0 },
       insuranceAmount: { type: Number, default: 0 },
+      creditLifeInsuranceAmount: { type: Number, default: 0 },
+      funeralBenefitAmount: { type: Number, default: 0 },
       vatAmount: { type: Number, default: 0 },
       totalCostOfCreditAmount: { type: Number, default: 0 },
       totalRepaymentAmount: { type: Number, default: 0 },
       monthlyInstallmentAmount: { type: Number, default: 0 },
+      debi24ServiceFeeRate: { type: Number, default: 0 },
+      debi24ServiceFeePerMonth: { type: Number, default: 0 },
+      finalMonthlyDebitOrderAmount: { type: Number, default: 0 },
+      totalDebi24ServiceFeeAmount: { type: Number, default: 0 },
       calculatedAt: { type: Date },
       calculatorVersion: { type: String }
+    },
+
+    // Groups R Us Insurance Underwriting Record
+    insurance: {
+      creditLifePremium: { type: Number, default: 0 },
+      creditLifeCover: { type: Number, default: 0 },
+      isFuneralBenefitIncluded: { type: Boolean, default: false },
+      funeralPlanId: { type: String },
+      funeralPlanName: { type: String },
+      funeralPremium: { type: Number, default: 0 },
+      funeralCover: { type: Number, default: 0 },
+      ratingQuestions: { type: Array, default: [] },
+      dueDiligenceCompleted: { type: Boolean, default: false },
+      dueDiligenceData: {
+        existingPoliciesReplaced: { type: Boolean },
+        affordabilityConfirmed: { type: Boolean },
+        exclusionsExplained: { type: Boolean },
+        beneficiaryDesignated: { type: Boolean },
+        completedAt: { type: Date },
+        completedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }
+      },
+      policyNumber: { type: String },
+      certificatePdfUrl: { type: String },
+      policyStatus: { type: String, enum: ['UNQUOTED', 'QUOTED', 'ACTIVE', 'CANCELLED'], default: 'UNQUOTED' },
+      activatedAt: { type: Date },
+
+      // Technical Binding Telemetry (Decoupled from business policy status)
+      bindingState: { 
+        type: String, 
+        enum: ['NOT_ATTEMPTED', 'BINDING_IN_PROGRESS', 'SUCCESS', 'FAILED_RETRYABLE', 'PERMANENT_FAILURE'], 
+        default: 'NOT_ATTEMPTED' 
+      },
+      bindingAttempts: { type: Number, default: 0 },
+      lastBindingAttemptAt: { type: Date },
+      lastBindingError: { type: String },
+      bindingLock: {
+        attemptId: { type: String },
+        owner: { type: String },
+        acquiredAt: { type: Date },
+        expiresAt: { type: Date }
+      }
     },
 
     // Status Tracking

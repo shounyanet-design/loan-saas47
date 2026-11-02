@@ -61,14 +61,15 @@ async function disburseLoan(applicationId, context) {
 
     // Resolve authoritative financial snapshot
     const { calculateLoanFinances, generateRepaymentSchedule } = require('../../../services/loanFinancialCalculator');
+    const SystemSettings = require('../../../models/SystemSettings');
+    const settings = await SystemSettings.findOne().session(session);
+
     let finSnap = (application.agreementFinancialSnapshot && application.agreementFinancialSnapshot.principalAmount)
       ? application.agreementFinancialSnapshot
       : (application.financialSnapshot && application.financialSnapshot.principalAmount ? application.financialSnapshot : null);
 
     if (!finSnap) {
       // Safe fallback for legacy records
-      const SystemSettings = require('../../../models/SystemSettings');
-      const settings = await SystemSettings.findOne().session(session);
       const activeProducts = settings?.loanProducts || [];
       const selectedProduct = activeProducts.find(p => p.name === application.loanType);
 
@@ -182,6 +183,26 @@ async function disburseLoan(applicationId, context) {
 
     await session.commitTransaction();
     session.endSession();
+
+    // Auto-activate underwritten insurance policy (Groups R Us) upon successful disbursement
+    try {
+      const currentPolicyStatus = application.insurance?.policyStatus || application.insurance?.status;
+      if (application.insurance && currentPolicyStatus !== 'ACTIVE') {
+        const groupsRUsInsuranceService = require('../../../services/groupsRUsInsuranceService');
+        const activationPayload = {
+          clientIdNumber: application.idNumber,
+          loanRefNumber: application.applicationId || String(application._id),
+          hasVoluntaryLife: Boolean(application.insurance?.isFuneralBenefitIncluded),
+          applicationId: application._id
+        };
+        groupsRUsInsuranceService.activatePolicy(activationPayload).catch(err => {
+          console.warn('[Disbursement] Groups R Us policy auto-activation background notice:', err.message);
+        });
+      }
+    } catch (insErr) {
+      console.warn('[Disbursement] Insurance activation trigger skipped:', insErr.message);
+    }
+
     return { existing: false, activeLoan };
   } catch (err) {
     await session.abortTransaction();
