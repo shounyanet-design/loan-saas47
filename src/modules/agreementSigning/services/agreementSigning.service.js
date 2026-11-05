@@ -401,9 +401,35 @@ Thank you for choosing ${snapshot.legalName}.
     }
   );
 
-  const borrower = await Borrower.findOne({ userId: application.borrowerId });
+  let borrower = await Borrower.findOne({
+    $or: [
+      { userId: application.borrowerId },
+      { _id: application.borrowerId }
+    ]
+  });
+
+  if (!borrower && application.idNumber) {
+    borrower = await Borrower.findOne({ idNumber: application.idNumber });
+  }
+
   if (!borrower) {
-    throw new Error('Borrower profile not found for associated user account.');
+    const User = require('../../../models/User');
+    const user = await User.findById(application.borrowerId).catch(() => null);
+    if (user) {
+      try {
+        borrower = await Borrower.create({
+          userId: user._id,
+          tenantId: application.tenantId || user.tenantId,
+          fullName: application.fullName || user.fullName,
+          idNumber: application.idNumber || user.idNumber,
+          email: application.emailAddress || user.email,
+          phoneNumber: application.phoneNumber || user.phone || user.phoneNumber,
+          accountStatus: 'Active'
+        });
+      } catch (bErr) {
+        console.warn(`[AGREEMENT SIGNING] Could not auto-create borrower: ${bErr.message}`);
+      }
+    }
   }
 
   await application.save();

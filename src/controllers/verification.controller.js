@@ -2873,7 +2873,14 @@ exports.getReusableKycController = async (req, res) => {
     try {
       let borrower = null;
       if (borrowerId) {
-        borrower = await Borrower.findById(borrowerId);
+        try {
+          borrower = await Borrower.findOne({
+            $or: [
+              { _id: borrowerId },
+              { userId: borrowerId }
+            ]
+          });
+        } catch (_) {}
       }
       if (!borrower && idNumber) {
         borrower = await Borrower.findOne({ idNumber });

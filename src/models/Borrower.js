@@ -21,12 +21,11 @@ const borrowerSchema = new mongoose.Schema(
     },
     phoneNumber: {
       type: String,
-      required: [true, 'Please add a phone number'],
+      default: '',
     },
     password: {
       type: String,
-      required: [true, 'Please add a password'],
-      minlength: 6,
+      required: false,
       select: false,
     },
     physicalAddress: {
@@ -213,7 +212,7 @@ const borrowerSchema = new mongoose.Schema(
 
 // Pre-save hook to hash password
 borrowerSchema.pre('save', async function () {
-  if (!this.isModified('password')) {
+  if (!this.password || !this.isModified('password')) {
     return;
   }
   const salt = await bcrypt.genSalt(10);

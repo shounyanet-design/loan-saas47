@@ -61,6 +61,7 @@ exports.getLoanEstimate = asyncHandler(async (req, res, next) => {
     estimatedMonthlyEMI: finances.monthlyInstallmentAmount,
     totalRepayment: finances.totalRepaymentAmount,
     duration: finances.durationMonths,
+    requestedDuration: finances.durationMonths,
     creditLifeInsurance: finances.insuranceAmount,
     vatOnFees: finances.vatAmount,
     monthlyServiceFee: finances.totalServiceFeeAmount,
@@ -198,6 +199,7 @@ exports.submitFullApplication = asyncHandler(async (req, res, next) => {
     creditConsentAccepted,
     creditConsentAcceptedAt,
     insurance,
+    affordability,
   } = req.body;
 
   if (!confirmationAccepted) return sendError(res, 'Please accept confirmation', 400);
@@ -401,6 +403,18 @@ exports.submitFullApplication = asyncHandler(async (req, res, next) => {
           bindingAttempts: 0
         };
       })(),
+      affordabilityOutcome: affordability || draft?.affordabilityOutcome || {
+        income: {
+          basicSalary: Number(employment.monthlyIncome || 0),
+          totalIncome: Number(employment.monthlyIncome || 0)
+        },
+        expenses: {
+          totalExpenses: 0
+        },
+        disposableIncome: Number(employment.monthlyIncome || 0),
+        debtToIncomeRatio: 0,
+        isNcrCompliant: true
+      },
     };
 
     // Auto-link reusable verified KYC if borrower is verified
@@ -550,6 +564,14 @@ exports.submitFullApplication = asyncHandler(async (req, res, next) => {
     // --- COMMIT TRANSACTION ---
     await session.commitTransaction();
     session.endSession();
+
+    if (borrowerProfile) {
+      const declaredSalary = Number(affordability?.income?.basicSalary || employment.monthlyIncome || 0);
+      if (declaredSalary > 0) {
+        borrowerProfile.monthlyNetSalary = declaredSalary;
+        await borrowerProfile.save().catch(() => {});
+      }
+    }
 
     // Trigger Real-time (After commit)
     if (io && admin) {

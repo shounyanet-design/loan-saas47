@@ -132,6 +132,52 @@ exports.createBorrower = async (req, res, next) => {
 // @access  Private/Admin
 exports.getAllBorrowers = asyncHandler(async (req, res) => {
   const { search, status, loanStatus } = req.query;
+
+  // Auto-sync and heal any User accounts with role: 'borrower' who are missing a Borrower profile
+  try {
+    const userQuery = { role: 'borrower' };
+    if (req.tenantId) userQuery.tenantId = req.tenantId;
+    const borrowerUsers = await User.find(userQuery).lean();
+
+    for (const bUser of borrowerUsers) {
+      const exists = await Borrower.findOne({
+        $or: [
+          { userId: bUser._id },
+          { email: bUser.email }
+        ]
+      });
+
+      if (!exists) {
+        const latestApp = await LoanApplication.findOne({
+          $or: [
+            { borrowerId: bUser._id },
+            { emailAddress: bUser.email }
+          ]
+        }).sort({ createdAt: -1 }).lean();
+
+        try {
+          await Borrower.create({
+            userId: bUser._id,
+            tenantId: bUser.tenantId || req.tenantId,
+            fullName: latestApp?.fullName || bUser.fullName || 'Borrower Client',
+            email: bUser.email,
+            phoneNumber: latestApp?.phoneNumber || bUser.phone || bUser.phoneNumber || '',
+            idNumber: latestApp?.idNumber || bUser.idNumber || '',
+            dateOfBirth: latestApp?.dateOfBirth || bUser.dateOfBirth,
+            physicalAddress: latestApp?.residentialAddress || bUser.address || '',
+            monthlyNetSalary: latestApp?.affordabilityOutcome?.income?.basicSalary || latestApp?.employmentDetails?.monthlyNetSalary || 0,
+            accountStatus: 'Active'
+          });
+          console.log(`[BORROWER SYNC] Auto-created Borrower profile for User ${bUser._id} (${bUser.email})`);
+        } catch (createErr) {
+          console.warn(`[BORROWER SYNC] Could not auto-create Borrower for ${bUser.email}:`, createErr.message);
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('[BORROWER SYNC] Non-critical error during borrower sync:', err.message);
+  }
+
   let query = {};
 
   // Search by name, email or phone

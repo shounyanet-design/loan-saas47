@@ -11,14 +11,32 @@ const bcrypt = require('bcryptjs');
  * @access  Private/Borrower
  */
 const getProfile = asyncHandler(async (req, res) => {
-  const borrower = await Borrower.findOne({ userId: req.user._id });
+  let borrower = await Borrower.findOne({ userId: req.user._id });
   
+  // Fetch full user object to get additional fields if needed
+  const user = await User.findById(req.user._id);
+
+  // Auto-heal missing Borrower profile from authenticated User
+  if (!borrower && user) {
+    try {
+      borrower = await Borrower.create({
+        userId: user._id,
+        tenantId: user.tenantId,
+        fullName: user.fullName || 'Borrower Client',
+        email: user.email,
+        phoneNumber: user.phone || user.phoneNumber || '',
+        idNumber: user.idNumber || '',
+        accountStatus: 'Active'
+      });
+      console.log(`[PROFILE] Auto-created missing Borrower profile for User ${user._id}`);
+    } catch (err) {
+      console.warn(`[PROFILE] Could not auto-create Borrower profile: ${err.message}`);
+    }
+  }
+
   if (!borrower) {
     return sendError(res, 'Borrower profile record missing.', 404);
   }
-
-  // Fetch full user object to get additional fields if needed
-  const user = await User.findById(req.user._id);
 
   sendSuccess(res, 'Profile loaded successfully', {
     id: borrower._id,
@@ -58,7 +76,25 @@ const getProfile = asyncHandler(async (req, res) => {
 const updateProfile = asyncHandler(async (req, res) => {
   const { fullName, phoneNumber, dateOfBirth, address, residentialArea } = req.body;
   
-  const borrower = await Borrower.findOne({ userId: req.user._id });
+  let borrower = await Borrower.findOne({ userId: req.user._id });
+  if (!borrower) {
+    const user = await User.findById(req.user._id);
+    if (user) {
+      try {
+        borrower = await Borrower.create({
+          userId: user._id,
+          tenantId: user.tenantId,
+          fullName: fullName || user.fullName,
+          email: user.email,
+          phoneNumber: phoneNumber || user.phone || user.phoneNumber || '',
+          dateOfBirth,
+          physicalAddress: address,
+          residentialArea,
+          accountStatus: 'Active'
+        });
+      } catch (_) {}
+    }
+  }
   if (!borrower) {
     return sendError(res, 'Borrower profile not found', 404);
   }
@@ -107,7 +143,23 @@ const updateProfilePhoto = asyncHandler(async (req, res) => {
     return sendError(res, 'Please upload an image', 400);
   }
 
-  const borrower = await Borrower.findOne({ userId: req.user._id });
+  let borrower = await Borrower.findOne({ userId: req.user._id });
+  if (!borrower) {
+    const user = await User.findById(req.user._id);
+    if (user) {
+      try {
+        borrower = await Borrower.create({
+          userId: user._id,
+          tenantId: user.tenantId,
+          fullName: user.fullName || 'Borrower Client',
+          email: user.email,
+          phoneNumber: user.phone || user.phoneNumber || '',
+          idNumber: user.idNumber || '',
+          accountStatus: 'Active'
+        });
+      } catch (_) {}
+    }
+  }
   if (!borrower) {
     return sendError(res, 'Borrower profile not found', 404);
   }

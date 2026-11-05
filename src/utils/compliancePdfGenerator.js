@@ -519,8 +519,56 @@ async function generateKycReportPdf(app) {
   page.drawText('VERIFICATION OUTCOME / DECISION:', { x: 55, y: y - 25, size: 8, font: fontBold, color: COLORS.textMuted });
   page.drawText(decisionText, { x: 55, y: y - 50, size: 16, font: fontBold, color: decisionColor });
 
-  page.drawText('BIOMETRIC FACE MATCH:', { x: 380, y: y - 25, size: 8, font: fontBold, color: COLORS.textMuted });
-  page.drawText(faceMatchScore, { x: 380, y: y - 50, size: 16, font: fontBold, color: isVerified ? COLORS.success : COLORS.danger });
+  page.drawText('BIOMETRIC FACE MATCH:', { x: 320, y: y - 25, size: 8, font: fontBold, color: COLORS.textMuted });
+  page.drawText(faceMatchScore, { x: 320, y: y - 50, size: 16, font: fontBold, color: isVerified ? COLORS.success : COLORS.danger });
+
+  // Embed Client Photo if available in snapshot
+  const photoSource = kyc.verifiedPhotoUrl || kyc.photoUrl || raw.Photo;
+  if (photoSource) {
+    try {
+      let imageBuffer = null;
+      if (typeof photoSource === 'string' && photoSource.startsWith('data:image')) {
+        const base64Data = photoSource.replace(/^data:image\/\w+;base64,/, '');
+        imageBuffer = Buffer.from(base64Data, 'base64');
+      } else if (typeof photoSource === 'string' && (photoSource.startsWith('http://') || photoSource.startsWith('https://'))) {
+        const axios = require('axios');
+        const imgRes = await axios.get(photoSource, { responseType: 'arraybuffer', timeout: 4000 });
+        if (imgRes.data) imageBuffer = Buffer.from(imgRes.data);
+      } else if (typeof photoSource === 'string' && photoSource.length > 100) {
+        imageBuffer = Buffer.from(photoSource, 'base64');
+      }
+
+      if (imageBuffer) {
+        let embeddedPhoto = null;
+        try {
+          embeddedPhoto = await doc.embedJpg(imageBuffer);
+        } catch (_) {
+          embeddedPhoto = await doc.embedPng(imageBuffer).catch(() => null);
+        }
+
+        if (embeddedPhoto) {
+          const photoDims = embeddedPhoto.scaleToFit(50, 60);
+          page.drawRectangle({
+            x: width - 110,
+            y: y - 68,
+            width: photoDims.width + 4,
+            height: photoDims.height + 4,
+            color: COLORS.white,
+            borderColor: COLORS.border,
+            borderWidth: 1,
+          });
+          page.drawImage(embeddedPhoto, {
+            x: width - 108,
+            y: y - 66,
+            width: photoDims.width,
+            height: photoDims.height,
+          });
+        }
+      }
+    } catch (embedErr) {
+      console.warn('[PDF GENERATOR] Could not embed client photo into report:', embedErr.message);
+    }
+  }
 
   y -= 95;
 

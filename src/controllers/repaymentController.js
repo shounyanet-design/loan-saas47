@@ -3,6 +3,7 @@ const asyncHandler = require('express-async-handler');
 const RepaymentSchedule = require('../models/RepaymentSchedule');
 const ActiveLoan = require('../models/ActiveLoan');
 const Borrower = require('../models/Borrower');
+const User = require('../models/User');
 const Payment = require('../models/Payment');
 const DuePayment = require('../models/DuePayment');
 const LoanActivity = require('../models/LoanActivity');
@@ -27,8 +28,13 @@ const getLoanRepaymentSchedule = asyncHandler(async (req, res) => {
   }
 
   // Role-based access control
-  if (role === 'borrower' && loan.borrowerId.toString() !== userId.toString()) {
-    return sendError(res, 'Access denied', 403);
+  if (role === 'borrower') {
+    let borrower = await Borrower.findOne({ userId });
+    const isOwner = loan.borrowerId.toString() === userId.toString() || 
+                    (borrower && loan.borrowerId.toString() === borrower._id.toString());
+    if (!isOwner) {
+      return sendError(res, 'Access denied', 403);
+    }
   }
 
   if (role === 'agent' && loan.assignedAgent?.toString() !== userId.toString()) {
@@ -131,12 +137,38 @@ const getUpcomingEMIs = asyncHandler(async (req, res) => {
   let query = { status: 'Pending' };
 
   if (role === 'borrower') {
-    const borrower = await Borrower.findOne({ userId });
-    if (!borrower) return sendError(res, 'Borrower profile not found', 404);
-    query.borrowerId = borrower._id;
+    let borrower = await Borrower.findOne({ userId });
+    if (!borrower) {
+      const user = await User.findById(userId);
+      if (user) {
+        try {
+          borrower = await Borrower.create({
+            userId: user._id,
+            tenantId: user.tenantId,
+            fullName: user.fullName || 'Borrower Client',
+            email: user.email,
+            phoneNumber: user.phone || user.phoneNumber || '',
+            idNumber: user.idNumber || '',
+            accountStatus: 'Active'
+          });
+        } catch (_) {}
+      }
+    }
+
+    if (borrower) {
+      query.$or = [{ borrowerId: borrower._id }, { borrowerId: userId }];
+    } else {
+      query.borrowerId = userId;
+    }
     
     // Check if we need to migrate any loans for this borrower
-    const activeLoans = await ActiveLoan.find({ borrowerId: borrower._id, isDeleted: false });
+    const activeLoans = await ActiveLoan.find({
+      $or: [
+        { borrowerId: borrower?._id },
+        { borrowerId: userId }
+      ],
+      isDeleted: false
+    });
     for (const loan of activeLoans) {
       const scheduleCount = await RepaymentSchedule.countDocuments({ loanId: loan._id });
       if (scheduleCount === 0 && loan.repaymentSchedule && loan.repaymentSchedule.length > 0) {
