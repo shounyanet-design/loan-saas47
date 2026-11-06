@@ -699,7 +699,9 @@ loanApplicationSchema.plugin(tenantPlugin);
 loanApplicationSchema.index({ tenantId: 1, applicationId: 1 }, { unique: true });
 // Hot-path query indexes: dashboards/lists filter+sort by status over time and
 // look up applications per borrower. Additive — safe background builds.
+loanApplicationSchema.index({ tenantId: 1, createdAt: -1 });
 loanApplicationSchema.index({ tenantId: 1, status: 1, createdAt: -1 });
 loanApplicationSchema.index({ tenantId: 1, borrowerId: 1 });
+loanApplicationSchema.index({ tenantId: 1, 'amlVerification.verificationStatus': 1, createdAt: -1 });
 
 module.exports = mongoose.model('LoanApplication', loanApplicationSchema);

@@ -108,29 +108,41 @@ const getAllApplications = asyncHandler(async (req, res) => {
 
   const skip = (page - 1) * limit;
 
-  const applications = await LoanApplication.find(query)
-    .populate('assignedReviewer', 'fullName email role')
-    .sort({ createdAt: -1 })
-    .skip(skip)
-    .limit(Number(limit));
+  // Run query and count concurrently, explicitly excluding huge payloads (Base64 PDFs, raw bureau dumps, heavy documents)
+  const [applications, total] = await Promise.all([
+    LoanApplication.find(query)
+      .select('-pdfReport -consumerCreditReportRaw -documents -employment -banking -affordability -affordabilityOutcome -kycVerification.extractedOCRData -kycVerification.verificationPdf')
+      .populate('assignedReviewer', 'fullName email role')
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(Number(limit))
+      .lean(),
+    LoanApplication.countDocuments(query)
+  ]);
 
-  const total = await LoanApplication.countDocuments(query);
-
-  // Batch-fetch borrower profiles so each row has a photo (avoids N+1 queries)
+  // Batch-fetch borrower profiles and active loans concurrently
   const borrowerUserIds = applications.map(a => a.borrowerId).filter(Boolean);
-  const borrowerProfiles = await Borrower.find({ userId: { $in: borrowerUserIds } })
-    .select('userId fullName profilePhoto borrowerCode')
-    .lean();
+  const applicationIds = applications.map(a => a._id);
+
+  const [borrowerProfiles, activeLoans] = await Promise.all([
+    borrowerUserIds.length > 0
+      ? Borrower.find({ userId: { $in: borrowerUserIds } })
+          .select('userId fullName profilePhoto borrowerCode')
+          .lean()
+      : [],
+    applicationIds.length > 0
+      ? ActiveLoan.find({
+          loanApplicationId: { $in: applicationIds },
+          isDeleted: false
+        }).select('loanApplicationId').lean()
+      : []
+  ]);
+
   const borrowerMap = {};
   borrowerProfiles.forEach(b => {
     if (b.userId) borrowerMap[b.userId.toString()] = b;
   });
 
-  // Batch-fetch active loans for these applications
-  const activeLoans = await ActiveLoan.find({
-    loanApplicationId: { $in: applications.map(a => a._id) },
-    isDeleted: false
-  }).select('loanApplicationId').lean();
   const activeLoanIds = new Set(activeLoans.map(al => al.loanApplicationId.toString()));
 
   const responseData = applications.map(app => {
@@ -195,17 +207,16 @@ const getAllApplications = asyncHandler(async (req, res) => {
  * @access  Private/Admin
  */
 const getApplicationStats = asyncHandler(async (req, res) => {
-  const stats = await LoanApplication.aggregate([
-    {
-      $group: {
-        _id: '$status',
-        count: { $sum: 1 }
+  const [stats, total, amlCleared, amlManualReview, amlBlocked] = await Promise.all([
+    LoanApplication.aggregate([
+      {
+        $group: {
+          _id: '$status',
+          count: { $sum: 1 }
+        }
       }
-    }
-  ]);
-
-  const total = await LoanApplication.countDocuments();
-  const [amlCleared, amlManualReview, amlBlocked] = await Promise.all([
+    ]),
+    LoanApplication.countDocuments(),
     LoanApplication.countDocuments({
       $or: [
         { 'amlVerification.verificationStatus': { $in: ['CLEARED', 'CLEAR'] } },
