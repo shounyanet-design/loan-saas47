@@ -40,13 +40,13 @@ class PayFastTokenizationService {
       amount: '0.00',
       item_name: 'Card Authorization - Loan Collection Fallback',
       item_description: 'Point.47 Loan Collection Card Tokenization Agreement',
-      subscription_type: '2', // 2 = Ad-Hoc Tokenization
-      cycles: '0',
-      frequency: '0',
       custom_str1: String(tenantId),
       custom_str2: 'LOAN_TOKENIZATION',
       custom_str3: String(borrower._id),
-      custom_str4: mPaymentId
+      custom_str4: mPaymentId,
+      subscription_type: '2', // 2 = Ad-Hoc Tokenization
+      frequency: '0',
+      cycles: '0',
     };
 
     if (cfg.passphrase && cfg.passphrase.trim() !== '') {

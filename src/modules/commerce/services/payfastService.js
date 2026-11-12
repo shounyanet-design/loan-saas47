@@ -14,7 +14,7 @@ const subscriptionController = require('../../saas/controllers/subscriptionContr
  * Payfast Environment Configuration
  */
 function getPayfastConfig() {
-  const env = (process.env.PAYFAST_ENVIRONMENT || 'sandbox').toLowerCase();
+  const env = (process.env.PAYFAST_ENVIRONMENT || 'sandbox').trim().toLowerCase();
   const isSandbox = env === 'sandbox' || env === 'test';
   const baseUrl = isSandbox
     ? 'https://sandbox.payfast.co.za/eng/process'
@@ -24,41 +24,64 @@ function getPayfastConfig() {
     : 'https://www.payfast.co.za/eng/query/validate';
 
   return {
-    merchantId: process.env.PAYFAST_MERCHANT_ID || '10000100',
-    merchantKey: process.env.PAYFAST_MERCHANT_KEY || '46f0cd694581a',
-    passphrase: process.env.PAYFAST_PASSPHRASE || '',
+    merchantId: (process.env.PAYFAST_MERCHANT_ID || '10000100').trim(),
+    merchantKey: (process.env.PAYFAST_MERCHANT_KEY || '46f0cd694581a').trim(),
+    passphrase: (process.env.PAYFAST_PASSPHRASE || '').trim(),
     baseUrl,
     validateUrl,
-    notifyUrl: process.env.PAYFAST_NOTIFY_URL || 'https://loan-saas47-production.up.railway.app/api/v1/commerce/payfast/notify',
-    returnUrl: process.env.PAYFAST_RETURN_URL || 'https://point47.co.za/admin/payment/success',
-    cancelUrl: process.env.PAYFAST_CANCEL_URL || 'https://point47.co.za/admin/payment/cancel',
+    notifyUrl: (process.env.PAYFAST_NOTIFY_URL || 'https://loan-saas47-production.up.railway.app/api/v1/commerce/payfast/notify').trim(),
+    returnUrl: (process.env.PAYFAST_RETURN_URL || 'https://point47.co.za/admin/payment/success').trim(),
+    cancelUrl: (process.env.PAYFAST_CANCEL_URL || 'https://point47.co.za/admin/payment/cancel').trim(),
     isSandbox,
   };
 }
 
 /**
- * Generate Payfast Signature
- * Standard MD5 signature calculation over alphabetically sorted key-value pairs.
+ * URL-encode a value cleanly matching PHP urlencode() (used by Payfast /eng/process & ITN).
+ * encodeURIComponent leaves ! ' ( ) * ~ unencoded and uses %20 for spaces.
  */
-function generateSignature(data, passphrase = '') {
-  let pfOutput = '';
-  const sortedKeys = Object.keys(data).sort();
+function pfUrlEncode(value) {
+  return encodeURIComponent(String(value).trim())
+    .replace(/%20/g, '+')
+    .replace(/!/g, '%21')
+    .replace(/'/g, '%27')
+    .replace(/\(/g, '%28')
+    .replace(/\)/g, '%29')
+    .replace(/\*/g, '%2A')
+    .replace(/~/g, '%7E');
+}
 
-  for (const key of sortedKeys) {
+/**
+ * Serialize non-blank Payfast payload parameters into signature pre-image string.
+ * Payfast Custom Integration (/eng/process) requires form/attribute insertion order, NOT alphabetical sort.
+ */
+function buildSignatureString(data, passphrase = '', { sortKeys = false } = {}) {
+  const keys = sortKeys ? Object.keys(data).sort() : Object.keys(data);
+  const pairs = [];
+
+  for (const key of keys) {
     if (key === 'signature') continue;
     const val = data[key];
     if (val !== undefined && val !== null && String(val).trim() !== '') {
-      pfOutput += `${key}=${encodeURIComponent(String(val).trim()).replace(/%20/g, '+')}&`;
+      pairs.push(`${key}=${pfUrlEncode(val)}`);
     }
   }
 
-  // Remove trailing &
-  pfOutput = pfOutput.slice(0, -1);
-
-  if (passphrase && passphrase.trim() !== '') {
-    pfOutput += `&passphrase=${encodeURIComponent(passphrase.trim()).replace(/%20/g, '+')}`;
+  let pfOutput = pairs.join('&');
+  if (passphrase && String(passphrase).trim() !== '') {
+    const passPair = `passphrase=${pfUrlEncode(passphrase)}`;
+    pfOutput = pfOutput ? `${pfOutput}&${passPair}` : passPair;
   }
 
+  return pfOutput;
+}
+
+/**
+ * Generate Payfast Signature
+ * MD5 hash over parameter pairs in payload/form order (unless sortKeys: true is requested for REST API).
+ */
+function generateSignature(data, passphrase = '', options = {}) {
+  const pfOutput = buildSignatureString(data, passphrase, options);
   return crypto.createHash('md5').update(pfOutput).digest('hex');
 }
 
@@ -67,24 +90,14 @@ function generateSignature(data, passphrase = '') {
  */
 function validateSignature(body, passphrase = '') {
   if (!body || !body.signature) return false;
-  const expectedSorted = generateSignature(body, passphrase);
-  if (body.signature.toLowerCase() === expectedSorted.toLowerCase()) return true;
+  const submitted = String(body.signature).toLowerCase();
 
-  // Try raw key order (as received in body)
-  let pfOutput = '';
-  for (const key of Object.keys(body)) {
-    if (key === 'signature') continue;
-    const val = body[key];
-    if (val !== undefined && val !== null && String(val).trim() !== '') {
-      pfOutput += `${key}=${encodeURIComponent(String(val).trim()).replace(/%20/g, '+')}&`;
-    }
-  }
-  pfOutput = pfOutput.slice(0, -1);
-  if (passphrase && passphrase.trim() !== '') {
-    pfOutput += `&passphrase=${encodeURIComponent(passphrase.trim()).replace(/%20/g, '+')}`;
-  }
-  const expectedRaw = crypto.createHash('md5').update(pfOutput).digest('hex');
-  return body.signature.toLowerCase() === expectedRaw.toLowerCase();
+  // Check raw insertion order (standard Payfast form/ITN order) first, then alphabetical fallback
+  const expectedRaw = generateSignature(body, passphrase, { sortKeys: false }).toLowerCase();
+  if (submitted === expectedRaw) return true;
+
+  const expectedSorted = generateSignature(body, passphrase, { sortKeys: true }).toLowerCase();
+  return submitted === expectedSorted;
 }
 
 /**
@@ -93,7 +106,8 @@ function validateSignature(body, passphrase = '') {
 async function verifyItnWithHost(body, validateUrl) {
   try {
     const pfParamString = Object.keys(body)
-      .map((key) => `${key}=${encodeURIComponent(String(body[key]).trim()).replace(/%20/g, '+')}`)
+      .filter((key) => body[key] !== undefined && body[key] !== null)
+      .map((key) => `${key}=${pfUrlEncode(body[key])}`)
       .join('&');
 
     const response = await axios.post(validateUrl, pfParamString, {
@@ -179,6 +193,10 @@ async function createMarketplacePaymentRequest(tenantId, { orderId, amount, item
     custom_str4: String(pfTx._id),
   };
 
+  if (cfg.passphrase && cfg.passphrase.trim() !== '') {
+    payload.signature = generateSignature(payload, cfg.passphrase);
+  }
+
   return {
     actionUrl: cfg.baseUrl,
     payload,
@@ -236,6 +254,7 @@ async function createSubscriptionPaymentRequest(tenantId, { planId, billingCycle
 
   const formattedBillingDate = billingDate.toISOString().split('T')[0];
 
+  const safePlanName = String(plan.name || 'SaaS Plan').replace(/[—–]/g, '-').trim();
   const payload = {
     merchant_id: cfg.merchantId,
     merchant_key: cfg.merchantKey,
@@ -244,17 +263,17 @@ async function createSubscriptionPaymentRequest(tenantId, { planId, billingCycle
     notify_url: cfg.notifyUrl,
     m_payment_id: mPaymentId,
     amount: Number(price).toFixed(2),
-    item_name: `Point.47 SaaS — ${plan.name} (${billingCycle})`,
-    subscription_type: '1',
-    billing_date: formattedBillingDate,
-    recurring_amount: Number(price).toFixed(2),
-    frequency: billingCycle === 'yearly' ? '6' : '3',
-    cycles: '0',
+    item_name: `Point.47 SaaS - ${safePlanName} - ${billingCycle}`.slice(0, 100),
     custom_str1: String(tenantId),
     custom_str2: 'subscription',
     custom_str3: String(plan._id),
     custom_str4: String(pfTx._id),
     custom_str5: billingCycle,
+    subscription_type: '1',
+    billing_date: formattedBillingDate,
+    recurring_amount: Number(price).toFixed(2),
+    frequency: billingCycle === 'yearly' ? '6' : '3',
+    cycles: '0',
   };
 
   if (cfg.passphrase && cfg.passphrase.trim() !== '') {
@@ -443,6 +462,8 @@ async function processItnNotification(body) {
 
 module.exports = {
   getPayfastConfig,
+  pfUrlEncode,
+  buildSignatureString,
   generateSignature,
   validateSignature,
   verifyItnWithHost,

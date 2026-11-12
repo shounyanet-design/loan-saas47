@@ -250,3 +250,83 @@ test('Payfast 11: verifies zero regression / connection to LMS loan repayment sy
     );
   }
 });
+
+test('Payfast 12: preserves form insertion order and PHP urlencode encoding for /eng/process signatures', () => {
+  const orderedData = {
+    merchant_id: '10000100',
+    merchant_key: '46f0cd694581a',
+    return_url: 'https://point47.co.za/admin/payment/success',
+    m_payment_id: 'SUB-123',
+    amount: '999.00',
+    item_name: "Point.47 (Growth) !* ~Plan'",
+    blank_field: '   ',
+  };
+
+  const preImage = payfastService.buildSignatureString(orderedData, 'sec ret!');
+  assert.equal(
+    preImage,
+    'merchant_id=10000100&merchant_key=46f0cd694581a&return_url=https%3A%2F%2Fpoint47.co.za%2Fadmin%2Fpayment%2Fsuccess&m_payment_id=SUB-123&amount=999.00&item_name=Point.47+%28Growth%29+%21%2A+%7EPlan%27&passphrase=sec+ret%21'
+  );
+
+  const expectedMd5 = require('crypto').createHash('md5').update(preImage).digest('hex');
+  assert.equal(payfastService.generateSignature(orderedData, 'sec ret!'), expectedMd5);
+  assert.equal(payfastService.validateSignature({ ...orderedData, signature: expectedMd5 }, 'sec ret!'), true);
+});
+
+test('Payfast 13: subscription checkout places fields in Payfast doc order and generates matching signature when passphrase is set', async () => {
+  const planId = new mongoose.Types.ObjectId().toString();
+  const originalFindById = SubscriptionPlan.findById;
+  const prevPassphrase = process.env.PAYFAST_PASSPHRASE;
+
+  SubscriptionPlan.findById = async () => ({
+    _id: planId,
+    name: 'Growth (Pro)',
+    code: 'GROWTH',
+    monthlyPrice: 999.0,
+    yearlyPrice: 9990.0,
+  });
+  process.env.PAYFAST_PASSPHRASE = 'live_passphrase_test';
+
+  try {
+    const subReq = await payfastService.createSubscriptionPaymentRequest(tenantId, {
+      planId,
+      billingCycle: 'monthly',
+      userRef: 'tenant_admin@test.com',
+    });
+
+    const keys = Object.keys(subReq.payload);
+    assert.deepEqual(keys, [
+      'merchant_id',
+      'merchant_key',
+      'return_url',
+      'cancel_url',
+      'notify_url',
+      'm_payment_id',
+      'amount',
+      'item_name',
+      'custom_str1',
+      'custom_str2',
+      'custom_str3',
+      'custom_str4',
+      'custom_str5',
+      'subscription_type',
+      'billing_date',
+      'recurring_amount',
+      'frequency',
+      'cycles',
+      'signature',
+    ]);
+    assert.equal(subReq.payload.item_name, 'Point.47 SaaS - SaaS Plan - monthly');
+    assert.equal(
+      payfastService.validateSignature(subReq.payload, 'live_passphrase_test'),
+      true
+    );
+  } finally {
+    SubscriptionPlan.findById = originalFindById;
+    if (prevPassphrase === undefined) {
+      delete process.env.PAYFAST_PASSPHRASE;
+    } else {
+      process.env.PAYFAST_PASSPHRASE = prevPassphrase;
+    }
+  }
+});
