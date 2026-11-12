@@ -9,7 +9,19 @@ const mongoose = require('mongoose');
 const LoanApplication = require('../../../models/LoanApplication');
 const ActiveLoan = require('../../../models/ActiveLoan');
 const RepaymentSchedule = require('../../../models/RepaymentSchedule');
+const Borrower = require('../../../models/Borrower');
 const PlatformAuditLog = require('../../platform/models/PlatformAuditLog'); // Use existing audit model
+
+/**
+ * Resolve the Borrower profile matching a LoanApplication's borrowerId (which refs User._id).
+ * @param {mongoose.Types.ObjectId|String} borrowerRefId
+ * @param {mongoose.ClientSession} session
+ */
+async function resolveBorrowerForApplication(borrowerRefId, session) {
+  return Borrower.findOne({
+    $or: [{ _id: borrowerRefId }, { userId: borrowerRefId }]
+  }).session(session);
+}
 
 /**
  * Disburse a loan application.
@@ -36,15 +48,13 @@ async function disburseLoan(applicationId, context) {
     }
 
     // Verification Hash Integrity Gate
+    let borrowerDoc = null;
     if (application.creditAssessment) {
       if (!application.creditAssessment.verificationHash) {
         throw new Error('Disbursement blocked: Credit assessment verification hash is missing.');
       }
       const { generateVerificationHash } = require('../../../utils/verificationHashEngine');
-      const Borrower = require('../../../models/Borrower');
-      const borrowerDoc = await Borrower.findOne({
-        $or: [{ _id: application.borrowerId }, { userId: application.borrowerId }]
-      }).session(session);
+      borrowerDoc = await resolveBorrowerForApplication(application.borrowerId, session);
       const calculatedHash = generateVerificationHash(application, borrowerDoc);
       if (calculatedHash !== application.creditAssessment.verificationHash) {
         throw new Error('Disbursement blocked: Agreement verification hash mismatch detected.');
@@ -58,6 +68,12 @@ async function disburseLoan(applicationId, context) {
       session.endSession();
       return { existing: true, activeLoan };
     }
+
+    if (!borrowerDoc) {
+      borrowerDoc = await resolveBorrowerForApplication(application.borrowerId, session);
+    }
+    // ActiveLoan and RepaymentSchedule reference Borrower._id (not User._id)
+    const resolvedBorrowerId = borrowerDoc ? borrowerDoc._id : application.borrowerId;
 
     // Resolve authoritative financial snapshot
     const { calculateLoanFinances, generateRepaymentSchedule } = require('../../../services/loanFinancialCalculator');
@@ -120,7 +136,7 @@ async function disburseLoan(applicationId, context) {
     activeLoan = (await ActiveLoan.create([
       {
         tenantId: context.tenantId,
-        borrowerId: application.borrowerId,
+        borrowerId: resolvedBorrowerId,
         borrowerName: application.fullName,
         borrowerEmail: application.emailAddress,
         borrowerPhone: application.phoneNumber,
@@ -149,7 +165,7 @@ async function disburseLoan(applicationId, context) {
     const repaymentEntries = emiSchedule.map(e => ({
       tenantId: context.tenantId,
       loanId: activeLoan._id,
-      borrowerId: application.borrowerId,
+      borrowerId: resolvedBorrowerId,
       emiNumber: e.installmentNumber,
       dueDate: e.dueDate,
       amount: e.emiAmount,

@@ -12,9 +12,30 @@ const { sendSuccess, sendError } = require('../../utils/responseHandler');
  * @access  Private/Borrower
  */
 const getBorrowerDashboard = asyncHandler(async (req, res) => {
-  // 1. Identify Borrower
-  const borrower = await Borrower.findOne({ userId: req.user._id });
-  
+  // 1. Identify Borrower (support both Borrower profile _id and User _id)
+  const userId = req.user._id;
+  const borrower = await Borrower.findOne({ userId });
+  const borrowerIds = borrower && borrower._id.toString() !== userId.toString()
+    ? [borrower._id, userId]
+    : [borrower ? borrower._id : userId];
+
+  // Fetch unread alerts & recent activities regardless of loan lookup so dashboard cards stay accurate
+  const [activeLoan, alerts, activities] = await Promise.all([
+    // 2. Fetch Active Loan (matches either Borrower._id or legacy/disbursed User._id records)
+    ActiveLoan.findOne({
+      borrowerId: { $in: borrowerIds },
+      loanStatus: { $in: ['Active', 'Overdue'] },
+      isDeleted: false
+    }).sort({ createdAt: -1 }),
+    BorrowerAlert.find({
+      borrowerId: { $in: borrowerIds },
+      isRead: false
+    }).sort({ createdAt: -1 }).limit(5),
+    LoanActivity.find({
+      borrowerId: { $in: borrowerIds }
+    }).sort({ createdAt: -1 }).limit(10)
+  ]);
+
   // Default empty state
   let dashboardData = {
     loanOverview: null,
@@ -25,27 +46,32 @@ const getBorrowerDashboard = asyncHandler(async (req, res) => {
     },
     loanStatus: 'No Active Loan',
     repaymentProgress: 0,
-    alerts: [],
-    recentActivities: [],
+    alerts,
+    recentActivities: activities,
     loanSummary: null
   };
 
-  if (!borrower) {
-    return sendSuccess(res, 'Dashboard data loaded successfully (Profile missing)', dashboardData);
-  }
-
-  // 2. Fetch Active Loan
-  const activeLoan = await ActiveLoan.findOne({ 
-    borrowerId: borrower._id,
-    loanStatus: { $in: ['Active', 'Overdue'] }
-  }).sort({ createdAt: -1 });
-
   if (activeLoan) {
-    // 3. Find Next EMI
-    const nextEmi = await RepaymentSchedule.findOne({
+    // 3. Find Next EMI (fallback to embedded schedule if RepaymentSchedule collection isn't populated yet)
+    let nextEmi = await RepaymentSchedule.findOne({
       loanId: activeLoan._id,
       status: { $in: ['Pending', 'Overdue', 'Partial'] }
     }).sort({ dueDate: 1 });
+
+    if (!nextEmi && Array.isArray(activeLoan.repaymentSchedule) && activeLoan.repaymentSchedule.length > 0) {
+      const pendingEmis = activeLoan.repaymentSchedule
+        .filter(emi => ['Pending', 'Overdue', 'Partial'].includes(emi.paymentStatus))
+        .sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate));
+      if (pendingEmis.length > 0) {
+        const emi = pendingEmis[0];
+        nextEmi = {
+          amount: emi.emiAmount,
+          dueDate: emi.dueDate,
+          emiNumber: emi.installmentNumber,
+          status: emi.paymentStatus
+        };
+      }
+    }
 
     // 4. Calculate Days Left
     let daysLeft = 0;
@@ -58,20 +84,12 @@ const getBorrowerDashboard = asyncHandler(async (req, res) => {
       daysLeft = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
     }
 
-    // 5. Calculate Repayment Progress
-    const totalPaid = (activeLoan.approvedAmount - activeLoan.remainingBalance) || 0;
-    const progress = Math.min(100, Math.round((totalPaid / activeLoan.approvedAmount) * 100));
-
-    // 6. Fetch Alerts
-    const alerts = await BorrowerAlert.find({ 
-      borrowerId: borrower._id,
-      isRead: false 
-    }).sort({ createdAt: -1 }).limit(5);
-
-    // 7. Fetch Recent Activities
-    const activities = await LoanActivity.find({ 
-      borrowerId: borrower._id 
-    }).sort({ createdAt: -1 }).limit(10);
+    // 5. Calculate Repayment Progress (clamped to 0..100 against total payable obligation)
+    const totalPayable = activeLoan.totalPayableAmount || activeLoan.approvedAmount || 0;
+    const totalPaid = Math.max(0, totalPayable - (activeLoan.remainingBalance || 0));
+    const progress = totalPayable > 0
+      ? Math.max(0, Math.min(100, Math.round((totalPaid / totalPayable) * 100)))
+      : 0;
 
     dashboardData = {
       loanOverview: {
