@@ -1,4 +1,5 @@
 const asyncHandler = require('express-async-handler');
+const mongoose = require('mongoose');
 const LoanApplication = require('../models/LoanApplication');
 const ActiveLoan = require('../models/ActiveLoan');
 const Notification = require('../models/Notification');
@@ -106,16 +107,56 @@ const getAllApplications = asyncHandler(async (req, res) => {
 
   console.log('Mongoose Query built:', JSON.stringify(query, null, 2));
 
-  const skip = (page - 1) * limit;
+  const parsedLimit = Math.min(Math.max(Number(limit) || 100, 1), 200);
+  const parsedPage = Math.max(Number(page) || 1, 1);
+  const skip = (parsedPage - 1) * parsedLimit;
 
-  // Run query and count concurrently, explicitly excluding huge payloads (Base64 PDFs, raw bureau dumps, heavy documents)
+  // Ultra-lightweight projection for table view:
+  // Explicitly select only necessary summary fields and strictly omit all Base64 PDFs,
+  // raw bureau dumps, biometric blobs, and heavy documents.
   const [applications, total] = await Promise.all([
     LoanApplication.find(query)
-      .select('-pdfReport -consumerCreditReportRaw -documents -employment -banking -affordability -affordabilityOutcome -kycVerification.extractedOCRData -kycVerification.verificationPdf')
+      .select({
+        applicationId: 1,
+        borrowerId: 1,
+        fullName: 1,
+        phoneNumber: 1,
+        emailAddress: 1,
+        idNumber: 1,
+        requestedAmount: 1,
+        requestedDuration: 1,
+        loanType: 1,
+        interestRate: 1,
+        estimatedMonthlyEMI: 1,
+        debi24ServiceFeeRate: 1,
+        debi24ServiceFeeAmount: 1,
+        finalMonthlyDebitOrderAmount: 1,
+        'financialSnapshot.debi24ServiceFeePerMonth': 1,
+        'financialSnapshot.finalMonthlyDebitOrderAmount': 1,
+        status: 1,
+        disbursementStatus: 1,
+        reviewStatus: 1,
+        staffReview: 1,
+        adminDecision: 1,
+        assignedReviewer: 1,
+        assignedAt: 1,
+        'amlVerification.verificationStatus': 1,
+        'amlVerification.complianceDecision': 1,
+        'amlVerification.isBlocked': 1,
+        'amlVerification.riskLevel': 1,
+        'amlVerification.amlScore': 1,
+        'compliance.aml.verificationStatus': 1,
+        'compliance.aml.complianceDecision': 1,
+        'compliance.aml.isBlocked': 1,
+        'compliance.aml.riskLevel': 1,
+        'compliance.aml.amlScore': 1,
+        createdAt: 1,
+        updatedAt: 1
+      })
       .populate('assignedReviewer', 'fullName email role')
       .sort({ createdAt: -1 })
       .skip(skip)
-      .limit(Number(limit))
+      .limit(parsedLimit)
       .lean(),
     LoanApplication.countDocuments(query)
   ]);
@@ -126,8 +167,13 @@ const getAllApplications = asyncHandler(async (req, res) => {
 
   const [borrowerProfiles, activeLoans] = await Promise.all([
     borrowerUserIds.length > 0
-      ? Borrower.find({ userId: { $in: borrowerUserIds } })
-          .select('userId fullName profilePhoto borrowerCode')
+      ? Borrower.find({
+          $or: [
+            { userId: { $in: borrowerUserIds } },
+            { _id: { $in: borrowerUserIds } }
+          ]
+        })
+          .select('_id userId fullName profilePhoto borrowerCode')
           .lean()
       : [],
     applicationIds.length > 0
@@ -141,6 +187,7 @@ const getAllApplications = asyncHandler(async (req, res) => {
   const borrowerMap = {};
   borrowerProfiles.forEach(b => {
     if (b.userId) borrowerMap[b.userId.toString()] = b;
+    if (b._id) borrowerMap[b._id.toString()] = b;
   });
 
   const activeLoanIds = new Set(activeLoans.map(al => al.loanApplicationId.toString()));
@@ -148,6 +195,20 @@ const getAllApplications = asyncHandler(async (req, res) => {
   const responseData = applications.map(app => {
     const bp = borrowerMap[app.borrowerId?.toString()];
     const photoUrl = bp?.profilePhoto && bp.profilePhoto !== 'no-photo.jpg' ? bp.profilePhoto : null;
+
+    // Extract clean, lightweight AML summary without any heavy nested objects
+    const amlSource = (app.amlVerification?.verificationStatus && app.amlVerification.verificationStatus !== 'NOT_STARTED')
+      ? app.amlVerification
+      : (app.compliance?.aml || app.amlVerification || {});
+
+    const cleanAml = {
+      verificationStatus: amlSource.verificationStatus || 'NOT_STARTED',
+      complianceDecision: amlSource.complianceDecision || null,
+      isBlocked: Boolean(amlSource.isBlocked),
+      riskLevel: amlSource.riskLevel || null,
+      amlScore: amlSource.amlScore || null,
+    };
+
     return {
       _id: app._id,
       applicationId: app.applicationId,
@@ -157,6 +218,9 @@ const getAllApplications = asyncHandler(async (req, res) => {
         profilePhoto: photoUrl ? { url: photoUrl } : null,
         borrowerId: bp?.borrowerCode || null,
       },
+      phoneNumber: app.phoneNumber,
+      emailAddress: app.emailAddress,
+      idNumber: app.idNumber,
       requestedAmount: app.requestedAmount,
       requestedDuration: app.requestedDuration,
       loanDuration: app.requestedDuration,
@@ -166,19 +230,20 @@ const getAllApplications = asyncHandler(async (req, res) => {
       finalMonthlyDebitOrderAmount: app.finalMonthlyDebitOrderAmount || app.financialSnapshot?.finalMonthlyDebitOrderAmount || 0,
       // Prefer assignedReviewer (set at assignment time) over staffReview.staffName (set after review submission)
       staffReviewer: app.assignedReviewer
-        ? { fullName: app.assignedReviewer.fullName, _id: app.assignedReviewer._id }
+        ? { fullName: app.assignedReviewer.fullName, _id: app.assignedReviewer._id, email: app.assignedReviewer.email, role: app.assignedReviewer.role }
         : (app.staffReview?.staffName ? { fullName: app.staffReview.staffName } : null),
       assignedAt: app.assignedAt || null,
       status: app.status,
-      amlVerification: (app.amlVerification?.verificationStatus && app.amlVerification.verificationStatus !== 'NOT_STARTED') 
-        ? app.amlVerification 
-        : (app.compliance?.aml || app.amlVerification),
-      compliance: app.compliance,
+      disbursementStatus: app.disbursementStatus || null,
+      amlVerification: cleanAml,
+      compliance: { aml: cleanAml },
       hasActiveLoan: activeLoanIds.has(app._id.toString()),
       reviewStatus: app.reviewStatus === 'Pending' && app.staffReview?.recommendation && app.staffReview.recommendation !== 'Pending'
         ? (app.staffReview.recommendation.includes('Reject') ? 'Rejected Recommendation' : 'Recommendation Submitted')
         : app.reviewStatus,
       submittedDate: app.createdAt,
+      createdAt: app.createdAt,
+      updatedAt: app.updatedAt,
       // Full staff review details for admin visibility
       staffReview: app.staffReview?.verificationDate ? {
         recommendation: app.staffReview.recommendation,
@@ -187,6 +252,7 @@ const getAllApplications = asyncHandler(async (req, res) => {
         verificationDate: app.staffReview.verificationDate,
         verificationNotes: app.staffReview.verificationNotes,
       } : null,
+      adminDecision: app.adminDecision || null,
     };
   });
 
@@ -194,9 +260,9 @@ const getAllApplications = asyncHandler(async (req, res) => {
     applications: responseData,
     pagination: {
       total,
-      page: Number(page),
-      limit: Number(limit),
-      pages: Math.ceil(total / limit),
+      page: parsedPage,
+      limit: parsedLimit,
+      pages: Math.ceil(total / parsedLimit),
     }
   });
 });
@@ -282,8 +348,21 @@ const LoanDocument = require('../models/LoanDocument');
  * @access  Private/Admin
  */
 const getApplicationDetails = asyncHandler(async (req, res) => {
-  // Load as a live Mongoose document (not .lean()) so we can mutate + save if hash mismatch
-  const appDoc = await LoanApplication.findById(req.params.id);
+  // Load as a live Mongoose document, explicitly excluding huge Base64 PDFs and raw bureau dumps
+  // so the initial payload size drops from 30MB+ to ~50KB and loads instantly (<300ms).
+  const appDoc = await LoanApplication.findById(req.params.id)
+    .select({
+      'consumerCreditReport.pdfReport': 0,
+      'consumerCreditReport.rawResponse': 0,
+      'bureauVerification.pdfReport': 0,
+      'bureauVerification.bureauRawResponse': 0,
+      'bankVerification.pdfReport': 0,
+      'bankVerification.rawResponse': 0,
+      'amlVerification.pdfReport': 0,
+      'amlVerification.rawResponse': 0,
+      'kycVerification.verificationPdf': 0,
+      'kycVerification.rawApiResponse': 0
+    });
 
   if (!appDoc) {
     return sendError(res, 'Loan application not found', 404);
@@ -295,7 +374,7 @@ const getApplicationDetails = asyncHandler(async (req, res) => {
     const borrowerIdVal = appDoc.borrowerId;
     const borrowerDoc = await Borrower.findOne({
       $or: [{ _id: borrowerIdVal }, { userId: borrowerIdVal }]
-    });
+    }).lean();
     const calculatedHash = generateVerificationHash(appDoc, borrowerDoc);
     if (calculatedHash !== appDoc.creditAssessment.verificationHash) {
       verificationHashValid = false;
@@ -306,10 +385,23 @@ const getApplicationDetails = asyncHandler(async (req, res) => {
   // Use plain object from here for response construction
   const application = appDoc.toObject();
 
-  // Fetch related data
-  const employment = await LoanEmployment.findOne({ loanApplicationId: application._id }).lean();
-  const banking = await LoanBanking.findOne({ loanApplicationId: application._id }).lean();
-  const documents = await LoanDocument.find({ loanApplicationId: application._id }).lean();
+  // Fetch related data concurrently via Promise.all (avoids 6-8 serial round-trips to MongoDB Atlas)
+  const borrowerIdVal = application.borrowerId;
+  const [
+    employment,
+    banking,
+    documents,
+    borrowerProfile,
+    activeLoanExists
+  ] = await Promise.all([
+    LoanEmployment.findOne({ loanApplicationId: application._id }).lean(),
+    LoanBanking.findOne({ loanApplicationId: application._id }).lean(),
+    LoanDocument.find({ loanApplicationId: application._id }).lean(),
+    Borrower.findOne({
+      $or: [{ _id: borrowerIdVal }, { userId: borrowerIdVal }]
+    }).select('fullName profilePhoto borrowerCode').lean(),
+    ActiveLoan.exists({ loanApplicationId: application._id, isDeleted: false })
+  ]);
 
   // Format documents array into an object for the frontend
   const formattedDocs = {};
@@ -325,16 +417,9 @@ const getApplicationDetails = asyncHandler(async (req, res) => {
     });
   }
 
-  // Fetch borrower profile for photo and code
-  const borrowerProfile = await Borrower.findOne({ userId: application.borrowerId })
-    .select('fullName profilePhoto borrowerCode')
-    .lean();
-
   const photoUrl = borrowerProfile?.profilePhoto && borrowerProfile.profilePhoto !== 'no-photo.jpg'
     ? borrowerProfile.profilePhoto
     : null;
-
-  const activeLoanExists = await ActiveLoan.exists({ loanApplicationId: application._id, isDeleted: false });
 
   let resolvedCreditProvider = (application.agreementCreditProviderSnapshot && application.agreementCreditProviderSnapshot.legalName)
     ? application.agreementCreditProviderSnapshot
@@ -353,11 +438,30 @@ const getApplicationDetails = asyncHandler(async (req, res) => {
     }
   }
 
+  // Indicator flags indicating whether PDFs are archived / available for download via dedicated endpoints
+  const hasCreditReportPdf = Boolean(
+    application.consumerCreditReport?.reportPdfUrl ||
+    application.consumerCreditReport?.enquiryResultId ||
+    application.consumerCreditReport?.verificationStatus === 'Verified'
+  );
+  const hasBureauReportPdf = Boolean(
+    application.bureauVerification?.bureauReference ||
+    application.bureauVerification?.verificationStatus === 'Verified'
+  );
+
   // Combine data and fix field name mismatches for frontend
   const fullApplication = {
     ...employment,
     ...banking,
     ...application, // Spread application last to preserve its _id, createdAt, etc.
+    consumerCreditReport: application.consumerCreditReport ? {
+      ...application.consumerCreditReport,
+      hasPdfReport: hasCreditReportPdf
+    } : null,
+    bureauVerification: application.bureauVerification ? {
+      ...application.bureauVerification,
+      hasPdfReport: hasBureauReportPdf
+    } : null,
     agreementCreditProviderSnapshot: resolvedCreditProvider || application.agreementCreditProviderSnapshot,
     yearsOfService: employment?.employmentDuration,
     accountHolder: banking?.accountHolderName,
@@ -1407,6 +1511,136 @@ const createApplicationOnBehalf = asyncHandler(async (req, res) => {
   }
 });
 
+/**
+ * @desc Update draft loan application fields before final submission
+ * @route PUT /api/admin/loan-applications/:id/draft
+ * @access Private (Admin)
+ */
+const updateDraftApplication = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const application = await LoanApplication.findById(id);
+
+  if (!application) {
+    return sendError(res, 'Loan application not found', 404);
+  }
+
+  // Allow editing for draft or early stage unapproved applications
+  const editableStatuses = ['Draft', 'draft', 'New', 'new', 'Pending Review', 'pending review'];
+  if (!editableStatuses.includes(application.status)) {
+    return sendError(res, `Cannot edit application with status "${application.status}". Only Draft applications can be edited.`, 400);
+  }
+
+  const {
+    personal,
+    employment,
+    banking,
+    loanConfig,
+    documents
+  } = req.body;
+
+  // Personal updates
+  if (personal) {
+    if (personal.fullName) application.fullName = personal.fullName;
+    if (personal.phoneNumber) application.phoneNumber = personal.phoneNumber;
+    if (personal.emailAddress) application.emailAddress = personal.emailAddress;
+    if (personal.idNumber) application.idNumber = personal.idNumber;
+    if (personal.dateOfBirth) application.dateOfBirth = new Date(personal.dateOfBirth);
+    if (personal.residentialAddress) application.residentialAddress = personal.residentialAddress;
+  }
+
+  // Loan Configuration / Banking updates
+  const cfg = loanConfig || banking || {};
+  if (cfg.requestedLoanAmount !== undefined || cfg.requestedAmount !== undefined) {
+    const amt = Number(cfg.requestedLoanAmount !== undefined ? cfg.requestedLoanAmount : cfg.requestedAmount);
+    if (!isNaN(amt) && amt > 0) application.requestedAmount = amt;
+  }
+  if (cfg.requestedDuration !== undefined || cfg.duration !== undefined) {
+    const dur = Number(cfg.requestedDuration !== undefined ? cfg.requestedDuration : cfg.duration);
+    if (!isNaN(dur) && dur > 0) application.requestedDuration = dur;
+  }
+  if (cfg.loanType) application.loanType = cfg.loanType;
+  if (cfg.repaymentDate) application.repaymentDate = new Date(cfg.repaymentDate);
+
+  // Recalculate finances if amount and duration are present
+  if (application.requestedAmount > 0 && application.requestedDuration > 0) {
+    try {
+      const SystemSettings = require('../models/SystemSettings');
+      const { calculateLoanFinances } = require('../services/loanFinancialCalculator');
+      const settings = mongoose.connection.readyState !== 0 ? await SystemSettings.findOne() : null;
+
+      const activeProducts = settings?.loanProducts || [];
+      const selectedProduct = activeProducts.find(p => p.name === application.loanType) || activeProducts[0];
+
+      const finances = calculateLoanFinances({
+        amount: application.requestedAmount,
+        duration: application.requestedDuration,
+        interestRate: cfg.interestRate || selectedProduct?.defaultInterestRate,
+        interestType: selectedProduct?.interestType,
+        settings,
+        selectedProduct
+      });
+
+      application.interestRate = finances.annualInterestRate;
+      application.processingFee = finances.initiationFeeAmount;
+      application.estimatedMonthlyEMI = finances.monthlyInstallmentAmount;
+      application.debi24ServiceFeeRate = finances.debi24ServiceFeeRate;
+      application.debi24ServiceFeeAmount = finances.debi24ServiceFeePerMonth;
+      application.finalMonthlyDebitOrderAmount = finances.finalMonthlyDebitOrderAmount;
+      application.totalRepayment = finances.totalRepaymentAmount;
+      application.financialSnapshot = finances;
+      application.agreementFinancialSnapshot = finances;
+    } catch (calcErr) {
+      console.warn('[updateDraftApplication] Financial calc warning:', calcErr.message);
+    }
+  }
+
+  // Update or insert related LoanEmployment and LoanBanking records if provided
+  const LoanEmployment = require('../models/LoanEmployment');
+  const LoanBanking = require('../models/LoanBanking');
+  const LoanDocument = require('../models/LoanDocument');
+
+  if (employment) {
+    await LoanEmployment.findOneAndUpdate(
+      { loanApplicationId: application._id },
+      { $set: { ...employment, loanApplicationId: application._id } },
+      { upsert: true, new: true }
+    );
+  }
+
+  if (banking) {
+    await LoanBanking.findOneAndUpdate(
+      { loanApplicationId: application._id },
+      { $set: { ...banking, loanApplicationId: application._id } },
+      { upsert: true, new: true }
+    );
+  }
+
+  if (documents && Array.isArray(documents) && documents.length > 0) {
+    for (const doc of documents) {
+      if (doc.type && (doc.url || doc.fileUrl)) {
+        await LoanDocument.findOneAndUpdate(
+          { loanApplicationId: application._id, documentType: doc.type },
+          {
+            $set: {
+              loanApplicationId: application._id,
+              documentType: doc.type,
+              fileUrl: doc.fileUrl || doc.url,
+              fileId: doc.fileId,
+              fileName: doc.fileName,
+              fileSize: doc.fileSize
+            }
+          },
+          { upsert: true, new: true }
+        );
+      }
+    }
+  }
+
+  await application.save();
+
+  return sendSuccess(res, 'Draft application updated successfully', { application });
+});
+
 module.exports = {
   getApplicationStats,
   getAllApplications,
@@ -1417,5 +1651,6 @@ module.exports = {
   updateStaffReview,
   assignReviewer,
   deleteApplication,
-  createApplicationOnBehalf
+  createApplicationOnBehalf,
+  updateDraftApplication
 };

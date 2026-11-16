@@ -133,44 +133,68 @@ exports.createBorrower = async (req, res, next) => {
 exports.getAllBorrowers = asyncHandler(async (req, res) => {
   const { search, status, loanStatus } = req.query;
 
-  // Auto-sync and heal any User accounts with role: 'borrower' who are missing a Borrower profile
+  // 1. Efficient Single-Batch Auto-Sync & Healing (O(1) roundtrips instead of O(N) sequential loop)
   try {
     const userQuery = { role: 'borrower' };
     if (req.tenantId) userQuery.tenantId = req.tenantId;
-    const borrowerUsers = await User.find(userQuery).lean();
+    const borrowerUsers = await User.find(userQuery)
+      .select('_id email fullName phone phoneNumber idNumber dateOfBirth address tenantId')
+      .lean();
 
-    for (const bUser of borrowerUsers) {
-      const exists = await Borrower.findOne({
+    if (borrowerUsers && borrowerUsers.length > 0) {
+      const userIds = borrowerUsers.map(u => u._id);
+      const emails = borrowerUsers.map(u => u.email).filter(Boolean);
+
+      // Single roundtrip to fetch all existing borrower records for these users
+      const existingBorrowers = await Borrower.find({
         $or: [
-          { userId: bUser._id },
-          { email: bUser.email }
+          { userId: { $in: userIds } },
+          { email: { $in: emails } }
         ]
-      });
+      }).select('userId email').lean();
 
-      if (!exists) {
-        const latestApp = await LoanApplication.findOne({
-          $or: [
-            { borrowerId: bUser._id },
-            { emailAddress: bUser.email }
-          ]
-        }).sort({ createdAt: -1 }).lean();
+      const existingUserSet = new Set(
+        existingBorrowers.map(b => (b.userId ? b.userId.toString() : null)).filter(Boolean)
+      );
+      const existingEmailSet = new Set(
+        existingBorrowers.map(b => (b.email ? b.email.toLowerCase() : null)).filter(Boolean)
+      );
 
-        try {
-          await Borrower.create({
-            userId: bUser._id,
-            tenantId: bUser.tenantId || req.tenantId,
-            fullName: latestApp?.fullName || bUser.fullName || 'Borrower Client',
-            email: bUser.email,
-            phoneNumber: latestApp?.phoneNumber || bUser.phone || bUser.phoneNumber || '',
-            idNumber: latestApp?.idNumber || bUser.idNumber || '',
-            dateOfBirth: latestApp?.dateOfBirth || bUser.dateOfBirth,
-            physicalAddress: latestApp?.residentialAddress || bUser.address || '',
-            monthlyNetSalary: latestApp?.affordabilityOutcome?.income?.basicSalary || latestApp?.employmentDetails?.monthlyNetSalary || 0,
-            accountStatus: 'Active'
-          });
-          console.log(`[BORROWER SYNC] Auto-created Borrower profile for User ${bUser._id} (${bUser.email})`);
-        } catch (createErr) {
-          console.warn(`[BORROWER SYNC] Could not auto-create Borrower for ${bUser.email}:`, createErr.message);
+      const missingUsers = borrowerUsers.filter(u => 
+        !existingUserSet.has(u._id.toString()) && 
+        (!u.email || !existingEmailSet.has(u.email.toLowerCase()))
+      );
+
+      // Only heal users who are genuinely missing a Borrower record
+      if (missingUsers.length > 0) {
+        for (const bUser of missingUsers) {
+          const latestApp = await LoanApplication.findOne({
+            $or: [
+              { borrowerId: bUser._id },
+              { emailAddress: bUser.email }
+            ]
+          }).sort({ createdAt: -1 }).lean();
+
+          try {
+            await Borrower.create({
+              userId: bUser._id,
+              tenantId: bUser.tenantId || req.tenantId,
+              fullName: latestApp?.fullName || bUser.fullName || 'Borrower Client',
+              email: bUser.email,
+              phoneNumber: latestApp?.phoneNumber || bUser.phone || bUser.phoneNumber || '',
+              idNumber: latestApp?.idNumber || bUser.idNumber || '',
+              dateOfBirth: latestApp?.dateOfBirth || bUser.dateOfBirth,
+              physicalAddress: latestApp?.residentialAddress || bUser.address || '',
+              monthlyNetSalary: latestApp?.affordabilityOutcome?.income?.basicSalary || latestApp?.employmentDetails?.monthlyNetSalary || 0,
+              accountStatus: 'Active'
+            });
+            console.log(`[BORROWER SYNC] Auto-created Borrower profile for User ${bUser._id} (${bUser.email})`);
+          } catch (createErr) {
+            // E11000 duplicate key error means concurrent request already created it — safe to ignore
+            if (createErr.code !== 11000) {
+              console.warn(`[BORROWER SYNC] Could not auto-create Borrower for ${bUser.email}:`, createErr.message);
+            }
+          }
         }
       }
     }
@@ -194,9 +218,19 @@ exports.getAllBorrowers = asyncHandler(async (req, res) => {
     query.accountStatus = status;
   }
 
-  const borrowers = await Borrower.find(query).sort({ createdAt: -1 });
+  // 2. Parallelize: Fetch Borrowers + 4 Summary Counts simultaneously via Promise.all
+  const [borrowers, totalBorrowers, activeBorrowers, blacklistedBorrowers, frozenBorrowers] = await Promise.all([
+    Borrower.find(query)
+      .select('-kycSnapshot')
+      .sort({ createdAt: -1 })
+      .lean(),
+    Borrower.countDocuments(),
+    Borrower.countDocuments({ accountStatus: 'Active' }),
+    Borrower.countDocuments({ accountStatus: 'Blacklisted' }),
+    Borrower.countDocuments({ accountStatus: 'Frozen' })
+  ]);
   
-  // Fetch active loans count for retrieved borrowers in a single efficient query, handling user/borrower ID mapping inconsistency
+  // 3. Batch Fetch Active Loans Count using a lean single query with index projection
   const borrowerIds = borrowers.map(b => b._id);
   const userIds = borrowers.filter(b => b.userId).map(b => b.userId);
   
@@ -207,26 +241,33 @@ exports.getAllBorrowers = asyncHandler(async (req, res) => {
     ],
     loanStatus: { $in: ['Active', 'Overdue'] },
     isDeleted: false 
-  });
+  }).select('borrowerId').lean();
   
+  // Fast O(1) hash map lookup for active loan counts
+  const loanCountMap = new Map();
+  for (const loan of activeLoans) {
+    if (loan.borrowerId) {
+      const idStr = loan.borrowerId.toString();
+      loanCountMap.set(idStr, (loanCountMap.get(idStr) || 0) + 1);
+    }
+  }
+
   const borrowersWithLoans = borrowers.map(b => {
-    const activeLoansCount = activeLoans.filter(l => 
-      l.borrowerId.toString() === b._id.toString() || 
-      (b.userId && l.borrowerId.toString() === b.userId.toString())
-    ).length;
+    const bId = b._id.toString();
+    const uId = b.userId ? b.userId.toString() : null;
+    const activeLoansCount = (loanCountMap.get(bId) || 0) + (uId ? (loanCountMap.get(uId) || 0) : 0);
     
     return {
-      ...b.toObject(),
+      ...b,
       activeLoansCount
     };
   });
   
-  // Calculate stats
   const stats = {
-    totalBorrowers: await Borrower.countDocuments(),
-    activeBorrowers: await Borrower.countDocuments({ accountStatus: 'Active' }),
-    blacklistedBorrowers: await Borrower.countDocuments({ accountStatus: 'Blacklisted' }),
-    frozenBorrowers: await Borrower.countDocuments({ accountStatus: 'Frozen' }),
+    totalBorrowers,
+    activeBorrowers,
+    blacklistedBorrowers,
+    frozenBorrowers
   };
 
   sendSuccess(res, 'Borrowers retrieved successfully', { borrowers: borrowersWithLoans, stats });

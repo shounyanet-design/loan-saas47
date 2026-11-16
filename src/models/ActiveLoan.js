@@ -218,5 +218,7 @@ activeLoanSchema.index({ tenantId: 1, loanApplicationId: 1 }, { unique: true, sp
 // Hot-path: active-loan lists/dashboards filter by status and soft-delete flag.
 activeLoanSchema.index({ tenantId: 1, loanStatus: 1, isDeleted: 1 });
 activeLoanSchema.index({ tenantId: 1, collectionStatus: 1 });
+// Fast tenant-scoped lookup of active loans by borrowerId
+activeLoanSchema.index({ tenantId: 1, borrowerId: 1, loanStatus: 1, isDeleted: 1 });
 
 module.exports = mongoose.model('ActiveLoan', activeLoanSchema);

@@ -8,12 +8,16 @@ const AgreementOTP = require('../models/AgreementOTP');
  * @returns {Promise<boolean>} True if successfully verified
  */
 const verifyOTP = async (borrowerId, loanApplicationId, otpCode) => {
-  // Find the latest unverified OTP record
-  const latestOtp = await AgreementOTP.findOne({
-    borrowerId,
+  // Find the latest unverified OTP record for this loan application
+  const query = {
     loanApplicationId,
     verified: false,
-  }).sort({ createdAt: -1 });
+  };
+  if (borrowerId) {
+    query.$or = [{ borrowerId }, { loanApplicationId }];
+  }
+
+  const latestOtp = await AgreementOTP.findOne(query).sort({ createdAt: -1 });
 
   if (!latestOtp) {
     throw new Error('No active OTP request found. Please request a new OTP.');

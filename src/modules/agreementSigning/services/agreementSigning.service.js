@@ -186,51 +186,147 @@ const sendAgreementOTP = async (loanApplicationId, requestUser) => {
     throw new Error('OTP can only be requested for loans in Agreement Pending status.');
   }
 
-  // Fetch borrower user
-  const borrowerUser = await User.findById(application.borrowerId);
+  // Fetch borrower user or resolve from Borrower profile
+  let borrowerUser = null;
+  let borrowerDoc = null;
+
+  // 1. Try finding by borrowerId as User._id
+  if (application.borrowerId) {
+    borrowerUser = await User.findById(application.borrowerId).catch(() => null);
+  }
+
+  // 2. If not found directly as User, look up in Borrower collection
   if (!borrowerUser) {
+    borrowerDoc = await Borrower.findOne({
+      $or: [
+        ...(application.borrowerId ? [{ _id: application.borrowerId }, { userId: application.borrowerId }] : []),
+        ...(application.idNumber ? [{ idNumber: application.idNumber }] : [])
+      ]
+    }).catch(() => null);
+
+    if (borrowerDoc && borrowerDoc.userId) {
+      borrowerUser = await User.findById(borrowerDoc.userId).catch(() => null);
+    }
+  } else {
+    // If borrowerUser was found, also grab borrowerDoc if available
+    borrowerDoc = await Borrower.findOne({
+      $or: [
+        { userId: borrowerUser._id },
+        { _id: application.borrowerId },
+        ...(application.idNumber ? [{ idNumber: application.idNumber }] : [])
+      ]
+    }).catch(() => null);
+  }
+
+  // 3. If borrowerUser is STILL not found, auto-create a linked User account
+  // for this client (consistent with existing client flow in signAgreement)
+  if (!borrowerUser) {
+    const email = application.emailAddress || borrowerDoc?.email;
+    const fullName = application.fullName || borrowerDoc?.fullName || 'Borrower';
+    const idNumber = application.idNumber || borrowerDoc?.idNumber;
+    const phone = application.phoneNumber || borrowerDoc?.phoneNumber || '';
+
+    // Check if User exists by email or idNumber
+    borrowerUser = await User.findOne({
+      $or: [
+        ...(email ? [{ email }] : []),
+        ...(idNumber ? [{ idNumber }] : [])
+      ]
+    }).catch(() => null);
+
+    if (!borrowerUser && email) {
+      try {
+        const crypto = require('crypto');
+        const randomPassword = crypto.randomBytes(16).toString('hex');
+        borrowerUser = await User.create({
+          fullName,
+          email,
+          phone,
+          idNumber,
+          role: 'borrower',
+          tenantId: application.tenantId,
+          password: randomPassword,
+          isEmailVerified: true,
+          status: 'Active'
+        });
+        console.log(`[AgreementService] Auto-created borrower user account for ${email} (ID: ${borrowerUser._id})`);
+      } catch (createErr) {
+        console.warn(`[AgreementService] Could not auto-create User for borrower: ${createErr.message}`);
+      }
+    }
+
+    if (borrowerUser) {
+      if (borrowerDoc && !borrowerDoc.userId) {
+        borrowerDoc.userId = borrowerUser._id;
+        await borrowerDoc.save().catch(() => null);
+      }
+      if (!application.borrowerId || application.borrowerId.toString() !== borrowerUser._id.toString()) {
+        application.borrowerId = borrowerUser._id;
+        await application.save().catch(() => null);
+      }
+    }
+  }
+
+  const effectiveBorrowerId = borrowerUser?._id || borrowerDoc?._id || application.borrowerId;
+  if (!effectiveBorrowerId) {
     throw new Error('Associated borrower user account not found.');
   }
 
   // Generate secure OTP
-  const otpRecord = await generateAndSaveOTP(borrowerUser._id, application._id);
-  console.log(`[AgreementService] OTP generated successfully for borrower ${borrowerUser._id}. Expiration: ${otpRecord.expiresAt}`);
+  const otpRecord = await generateAndSaveOTP(effectiveBorrowerId, application._id);
+  console.log(`[AgreementService] OTP generated successfully for borrower ${effectiveBorrowerId}. Expiration: ${otpRecord.expiresAt}`);
 
   try {
     const tenantId = application.tenantId;
 
-    // Charge for email OTP
-    const emailIdemKey = `idem-otp-email-${application._id}-${otpRecord.otpCode}`;
-    await tokenService.charge(tenantId, 'email', {
-      actor: borrowerUser._id,
-      idempotencyKey: emailIdemKey,
-      metadata: { applicationId: application._id }
-    });
+    // Charge for email OTP (non-blocking for critical security OTP dispatch)
+    try {
+      const emailIdemKey = `idem-otp-email-${application._id}-${otpRecord.otpCode}`;
+      await tokenService.charge(tenantId, 'email', {
+        actor: effectiveBorrowerId,
+        idempotencyKey: emailIdemKey,
+        metadata: { applicationId: application._id }
+      });
+    } catch (chargeErr) {
+      console.warn(`[AgreementService] Token charge for email failed (non-blocking for critical OTP): ${chargeErr.message}`);
+    }
+
+    const recipientEmail = application.emailAddress || borrowerUser?.email || borrowerDoc?.email;
+    const recipientName = application.fullName || borrowerUser?.fullName || borrowerDoc?.fullName || 'Borrower';
+    const recipientPhone = application.phoneNumber || borrowerUser?.phone || borrowerUser?.phoneNumber || borrowerDoc?.phoneNumber;
+
+    if (!recipientEmail) {
+      throw new Error('Borrower email address is missing for OTP dispatch.');
+    }
 
     // Send EmailJS request
     await sendOtpEmail(
-      application.emailAddress, 
-      application.fullName, 
+      recipientEmail, 
+      recipientName, 
       otpRecord.otpCode, 
       application.applicationId
     );
-    console.log(`[AgreementService] OTP Email sent successfully to ${application.emailAddress} for agreement ${application.applicationId}`);
+    console.log(`[AgreementService] OTP Email sent successfully to ${recipientEmail} for agreement ${application.applicationId}`);
 
     // Send SMS via BulkSMS integration
-    if (application.phoneNumber) {
+    if (recipientPhone) {
       // Don't wait for it to block the main flow, or wrap in a generic try-catch to avoid failing the whole process if SMS fails
       try {
         // Charge for SMS OTP
         const smsIdemKey = `idem-otp-sms-${application._id}-${otpRecord.otpCode}`;
-        await tokenService.charge(tenantId, 'sms', {
-          actor: borrowerUser._id,
-          idempotencyKey: smsIdemKey,
-          metadata: { applicationId: application._id }
-        });
+        try {
+          await tokenService.charge(tenantId, 'sms', {
+            actor: effectiveBorrowerId,
+            idempotencyKey: smsIdemKey,
+            metadata: { applicationId: application._id }
+          });
+        } catch (smsChargeErr) {
+          console.warn(`[AgreementService] Token charge for SMS failed (non-blocking): ${smsChargeErr.message}`);
+        }
 
-        await sendOtpSms(application.phoneNumber, otpRecord.otpCode, application.applicationId);
+        await sendOtpSms(recipientPhone, otpRecord.otpCode, application.applicationId);
       } catch (smsError) {
-        console.error(`[AgreementService] Non-fatal: SMS dispatch or token charge failed to ${application.phoneNumber}: ${smsError.message}`);
+        console.error(`[AgreementService] Non-fatal: SMS dispatch failed to ${recipientPhone}: ${smsError.message}`);
       }
     }
 

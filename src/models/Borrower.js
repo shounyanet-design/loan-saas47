@@ -252,5 +252,10 @@ borrowerSchema.index(
   { tenantId: 1, borrowerCode: 1 },
   { unique: true, partialFilterExpression: { borrowerCode: { $type: 'string' } } }
 );
+// Fast tenant-scoped lookup by userId
+borrowerSchema.index({ tenantId: 1, userId: 1 });
+// Fast tenant-scoped listing, sorting and filtering by accountStatus
+borrowerSchema.index({ tenantId: 1, createdAt: -1 });
+borrowerSchema.index({ tenantId: 1, accountStatus: 1, createdAt: -1 });
 
 module.exports = mongoose.model('Borrower', borrowerSchema);

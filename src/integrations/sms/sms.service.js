@@ -140,20 +140,18 @@ const sendOtpSms = async (phoneNumber, otpCode, agreementNumber) => {
   const tenantId = tenantContext.getTenantId();
   if (tenantId) {
     const resolved = await credentialService.resolve(tenantId, 'bulksms');
-    if (resolved && resolved.source === 'tenant') {
+    if (resolved && resolved.credentials) {
       const creds = resolved.credentials || {};
       baseUrl = creds.baseUrl || baseUrl;
       if (creds.token) {
         authToken = creds.token;
-        authMethod = 'Tenant BulkSMS Token';
+        authMethod = resolved.source === 'tenant' ? 'Tenant BulkSMS Token' : 'Environment BulkSMS Token';
       } else if (creds.tokenId && creds.tokenSecret) {
         const rawCreds = `${creds.tokenId}:${creds.tokenSecret}`;
         const base64Creds = Buffer.from(rawCreds).toString('base64');
         authToken = `Basic ${base64Creds}`;
-        authMethod = 'Tenant Token ID + Token Secret (Dynamic)';
+        authMethod = resolved.source === 'tenant' ? 'Tenant Token ID + Token Secret (Dynamic)' : 'Environment Token ID + Token Secret (Dynamic)';
       }
-    } else if (process.env.NODE_ENV === 'production' && resolved.source === 'env') {
-      throw new Error('BulkSMS credentials are not configured for this tenant in production.');
     }
   }
 

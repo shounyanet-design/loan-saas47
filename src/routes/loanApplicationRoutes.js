@@ -10,7 +10,8 @@ const {
   updateStaffReview,
   assignReviewer,
   deleteApplication,
-  createApplicationOnBehalf
+  createApplicationOnBehalf,
+  updateDraftApplication
 } = require('../controllers/loanApplicationController');
 const { protect } = require('../middlewares/authMiddleware');
 const { authorize } = require('../middlewares/roleMiddleware');
@@ -23,6 +24,7 @@ router.get('/', getAllApplications);
 router.get('/stats', getApplicationStats);
 router.post('/create-on-behalf', createApplicationOnBehalf);
 router.get('/:id', getApplicationDetails);
+router.put('/:id/draft', updateDraftApplication);
 router.put('/:id/approve', approveApplication);
 router.put('/:id/reject', rejectApplication);
 router.put('/:id/hold', holdApplication);

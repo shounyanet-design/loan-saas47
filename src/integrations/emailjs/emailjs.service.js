@@ -25,15 +25,17 @@ const sendOtpEmail = async (toEmail, userName, otpCode, agreementNumber) => {
 
   if (tenantId) {
     const resolved = await credentialService.resolve(tenantId, 'emailjs');
-    if (resolved && resolved.source === 'tenant') {
+    if (resolved && resolved.credentials) {
       const creds = resolved.credentials || {};
       serviceId = creds.serviceId || serviceId;
       templateId = creds.templateId || templateId;
       publicKey = creds.publicKey || publicKey;
       privateKey = creds.privateKey || privateKey;
-    } else if (process.env.NODE_ENV === 'production' && resolved.source === 'env') {
-      throw new Error('EmailJS credentials are not configured for this tenant in production.');
     }
+  }
+
+  if (!serviceId || !publicKey) {
+    throw new Error('EmailJS credentials are not configured. Please configure EmailJS in Admin Settings or environment variables.');
   }
 
   const templateParams = buildOtpEmailPayload(toEmail, userName, otpCode, agreementNumber);
