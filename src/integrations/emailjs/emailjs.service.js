@@ -156,7 +156,74 @@ const sendPasswordResetEmail = async (toEmail, userName, resetToken) => {
   }
 };
 
+/**
+ * Sends a Payment Reminder Email via EmailJS
+ */
+const sendPaymentReminderEmail = async (toEmail, userName, message, loanCode) => {
+  if (!toEmail || typeof toEmail !== 'string' || !toEmail.includes('@')) {
+    console.error(`[EmailJS] Invalid recipient email: "${toEmail}"`);
+    return false;
+  }
+
+  const tenantId = tenantContext.getTenantId();
+  let serviceId = config.serviceId;
+  let templateId = config.templateId;
+  let publicKey = config.publicKey;
+  let privateKey = config.privateKey;
+  let apiUrl = config.apiUrl || 'https://api.emailjs.com/api/v1.0/email/send';
+
+  if (tenantId) {
+    const resolved = await credentialService.resolve(tenantId, 'emailjs');
+    if (resolved && resolved.credentials) {
+      const creds = resolved.credentials || {};
+      serviceId = creds.serviceId || serviceId;
+      templateId = creds.templateId || templateId;
+      publicKey = creds.publicKey || publicKey;
+      privateKey = creds.privateKey || privateKey;
+    }
+  }
+
+  const payload = {
+    service_id: serviceId,
+    template_id: templateId,
+    user_id: publicKey,
+    accessToken: privateKey,
+    template_params: {
+      to_email: toEmail,
+      email: toEmail,
+      user_email: toEmail,
+      recipient_email: toEmail,
+      user_name: userName || 'Valued Borrower',
+      to_name: userName || 'Valued Borrower',
+      agreement_number: loanCode || 'PAYMENT-REMINDER',
+      message: message,
+    },
+  };
+
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000);
+    let response;
+    try {
+      response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timeout);
+    }
+    console.log(`[EmailJS] Payment reminder sent to ${toEmail}. Status: ${response.status}`);
+    return response.ok;
+  } catch (error) {
+    console.error(`[EmailJS] Failed to send reminder email to ${toEmail}:`, error.message);
+    return false;
+  }
+};
+
 module.exports = {
   sendOtpEmail,
   sendPasswordResetEmail,
+  sendPaymentReminderEmail,
 };

@@ -6,6 +6,8 @@ const { sendSuccess, sendError } = require('../../utils/responseHandler');
 const { createNotification } = require('../../utils/notificationHelper');
 const Borrower = require('../../models/Borrower');
 const SystemSettings = require('../../models/SystemSettings');
+const { sendPaymentReminderEmail } = require('../../integrations/emailjs/emailjs.service');
+const { sendSms } = require('../../integrations/sms/sms.service');
 
 /**
  * Utility function to sync Due Payments from ActiveLoans
@@ -311,12 +313,42 @@ const sendReminder = asyncHandler(async (req, res) => {
   const duePayment = await DuePayment.findOne(query);
   if (!duePayment) return sendError(res, 'Due payment not found', 404);
 
-  const senderName = req.user.firstName + ' ' + req.user.lastName;
-  const message = `Reminder: Your EMI of R ${duePayment.totalDueAmount} for loan ${duePayment.loanCode} is ${duePayment.dueStatus}.`;
+  const { channel = 'Email', message: customMessage } = req.body;
+  const senderName = ((req.user?.firstName || 'Admin') + ' ' + (req.user?.lastName || '')).trim();
+  const message = customMessage || `Dear ${duePayment.borrowerName}, your loan repayment of R ${duePayment.totalDueAmount} for loan ${duePayment.loanCode} is ${duePayment.dueStatus}. Please ensure funds are available.`;
+
+  const isEmailChannel = channel === 'Email' || channel === 'Both' || channel === 'SMS+Email';
+  const isSmsChannel = channel === 'SMS' || channel === 'Both' || channel === 'SMS+Email';
+
+  // 1. Dispatch Email
+  if (isEmailChannel && duePayment.borrowerEmail) {
+    try {
+      await sendPaymentReminderEmail(
+        duePayment.borrowerEmail,
+        duePayment.borrowerName,
+        message,
+        duePayment.loanCode
+      );
+    } catch (err) {
+      console.error(`[DuePayment] Email dispatch error: ${err.message}`);
+    }
+  }
+
+  // 2. Dispatch SMS
+  if (isSmsChannel && duePayment.borrowerPhone) {
+    try {
+      await sendSms(duePayment.borrowerPhone, message);
+    } catch (err) {
+      console.error(`[DuePayment] SMS dispatch error: ${err.message}`);
+    }
+  }
+
+  // 3. Resolve history type
+  const historyType = (channel === 'Both' || channel === 'SMS+Email') ? 'SMS+Email' : channel;
 
   duePayment.reminderHistory.push({
     date: new Date(),
-    type: 'Email',
+    type: historyType,
     status: 'Sent',
     senderName,
     message
@@ -326,7 +358,7 @@ const sendReminder = asyncHandler(async (req, res) => {
   duePayment.lastReminderDate = new Date();
   await duePayment.save();
 
-  sendSuccess(res, 'Reminder sent successfully', { duePayment });
+  sendSuccess(res, `Payment reminder sent successfully via ${historyType}`, { duePayment });
 });
 
 /**
@@ -335,7 +367,7 @@ const sendReminder = asyncHandler(async (req, res) => {
  * @access  Private/Admin
  */
 const sendBulkReminders = asyncHandler(async (req, res) => {
-  const { filter } = req.body;
+  const { filter, channel = 'Email' } = req.body;
   let query = { isDeleted: false, dueStatus: { $ne: 'Paid' } };
   if (req.tenantId) query.tenantId = req.tenantId;
 
@@ -344,22 +376,34 @@ const sendBulkReminders = asyncHandler(async (req, res) => {
   }
 
   const duePayments = await DuePayment.find(query);
-  const senderName = req.user.firstName + ' ' + req.user.lastName;
-  
+  const senderName = ((req.user?.firstName || 'Admin') + ' ' + (req.user?.lastName || '')).trim();
+  const historyType = (channel === 'Both' || channel === 'SMS+Email') ? 'SMS+Email' : channel;
+  const isEmailChannel = channel === 'Email' || channel === 'Both' || channel === 'SMS+Email';
+  const isSmsChannel = channel === 'SMS' || channel === 'Both' || channel === 'SMS+Email';
+
   for (const dp of duePayments) {
+    const msg = `Dear ${dp.borrowerName}, this is an automated reminder that your EMI of R ${dp.totalDueAmount} for loan ${dp.loanCode} is ${dp.dueStatus}.`;
+
+    if (isEmailChannel && dp.borrowerEmail) {
+      sendPaymentReminderEmail(dp.borrowerEmail, dp.borrowerName, msg, dp.loanCode).catch(() => {});
+    }
+    if (isSmsChannel && dp.borrowerPhone) {
+      sendSms(dp.borrowerPhone, msg).catch(() => {});
+    }
+
     dp.reminderHistory.push({
       date: new Date(),
-      type: 'Email',
+      type: historyType,
       status: 'Sent',
       senderName,
-      message: `Automated Reminder for ${dp.loanCode}`
+      message: msg
     });
     dp.reminderStatus = 'Reminder Sent';
     dp.lastReminderDate = new Date();
     await dp.save();
   }
 
-  sendSuccess(res, `Bulk reminders sent to ${duePayments.length} borrowers.`);
+  sendSuccess(res, `Bulk reminders sent to ${duePayments.length} borrowers via ${historyType}.`);
 });
 
 /**

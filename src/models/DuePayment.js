@@ -3,7 +3,7 @@ const tenantPlugin = require('../tenancy/tenantPlugin');
 
 const reminderHistorySchema = new mongoose.Schema({
   date: { type: Date, default: Date.now },
-  type: { type: String, enum: ['Email', 'SMS', 'System'], default: 'System' },
+  type: { type: String, enum: ['Email', 'SMS', 'SMS+Email', 'Both', 'System'], default: 'Email' },
   status: { type: String, enum: ['Sent', 'Failed'], default: 'Sent' },
   senderName: { type: String },
   message: { type: String }

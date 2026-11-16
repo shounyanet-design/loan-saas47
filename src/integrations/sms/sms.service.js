@@ -304,7 +304,90 @@ const sendOtpSms = async (phoneNumber, otpCode, agreementNumber) => {
   }
 };
 
+/**
+ * Sends a generic SMS using BulkSMS API (for reminders, alerts, notices)
+ * @param {string} phoneNumber - Recipient phone number
+ * @param {string} messageText - Message body to send
+ * @returns {Promise<boolean>} True if dispatched or handled
+ */
+const sendSms = async (phoneNumber, messageText) => {
+  if (!phoneNumber || !messageText) return false;
+
+  let formattedPhone;
+  try {
+    formattedPhone = normalizePhoneNumber(phoneNumber);
+  } catch (normError) {
+    console.error(`[BulkSMS] Normalization failed for ${phoneNumber}:`, normError.message);
+    return false;
+  }
+
+  if (process.env.SMS_TEST_MODE === 'true') {
+    console.log('====================================');
+    console.log('[BulkSMS TEST MODE] Generic SMS Dispatch');
+    console.log(`Recipient: ${formattedPhone}`);
+    console.log(`Message:   ${messageText}`);
+    console.log('====================================');
+    return true;
+  }
+
+  let baseUrl = process.env.BULKSMS_BASE_URL || 'https://api.bulksms.com/v1';
+  let authToken = process.env.SMS_AUTH_TOKEN;
+
+  const tenantId = tenantContext.getTenantId();
+  if (tenantId) {
+    const resolved = await credentialService.resolve(tenantId, 'bulksms');
+    if (resolved && resolved.credentials) {
+      const creds = resolved.credentials || {};
+      baseUrl = creds.baseUrl || baseUrl;
+      if (creds.token) {
+        authToken = creds.token;
+      } else if (creds.tokenId && creds.tokenSecret) {
+        const rawCreds = `${creds.tokenId}:${creds.tokenSecret}`;
+        authToken = `Basic ${Buffer.from(rawCreds).toString('base64')}`;
+      }
+    }
+  }
+
+  if (!authToken && process.env.BULKSMS_TOKEN_ID && process.env.BULKSMS_TOKEN_SECRET) {
+    const rawCreds = `${process.env.BULKSMS_TOKEN_ID}:${process.env.BULKSMS_TOKEN_SECRET}`;
+    authToken = `Basic ${Buffer.from(rawCreds).toString('base64')}`;
+  }
+
+  if (!authToken) {
+    console.warn('[BulkSMS] No auth credentials configured for SMS dispatch.');
+    return false;
+  }
+
+  const apiUrl = baseUrl.endsWith('/') ? `${baseUrl}messages` : `${baseUrl}/messages`;
+  const isSouthAfrican = formattedPhone.startsWith('27');
+  const payload = {
+    to: formattedPhone,
+    body: messageText
+  };
+
+  const senderId = process.env.BULKSMS_SENDER_ID;
+  if (!isSouthAfrican && senderId) {
+    payload.from = senderId;
+  }
+
+  try {
+    const response = await axios.post(apiUrl, payload, {
+      headers: {
+        'Authorization': authToken,
+        'Content-Type': 'application/json'
+      },
+      timeout: 5000
+    });
+    console.log(`[BulkSMS] SMS successfully sent to ${formattedPhone}. Status: ${response.status}`);
+    return true;
+  } catch (err) {
+    console.error(`[BulkSMS] Failed to send SMS to ${formattedPhone}:`, err.message);
+    return false;
+  }
+};
+
 module.exports = {
   sendOtpSms,
+  sendSms,
   normalizePhoneNumber
 };
